@@ -19,7 +19,6 @@ import {
   loadUiStateFromLocalStorage,
   registerCloudSyncHandler,
   saveToLocalStorage,
-  saveUiStateToLocalStorage,
   setCloudLoadError,
   setCloudLoadSuccess,
   setCloudSession,
@@ -47,16 +46,12 @@ const tabs = [
 
 const currentTab = ref('home')
 const fileInputRef = ref(null)
-const showWebdavSettings = ref(false)
 const showLogsModal = ref(false)
 const showLogDetailModal = ref(false)
 const selectedLog = ref(null)
 const logTypeMeta = {
   app_import: { label: '系统导入', color: 'text-teal-600', icon: 'fa-solid fa-upload', pillClass: 'bg-teal-100 text-teal-700' },
   app_export: { label: '系统导出', color: 'text-blue-600', icon: 'fa-solid fa-download', pillClass: 'bg-blue-100 text-blue-700' },
-  webdav_settings: { label: 'WebDAV', color: 'text-indigo-600', icon: 'fa-solid fa-cloud', pillClass: 'bg-indigo-100 text-indigo-700' },
-  webdav_upload: { label: 'WebDAV', color: 'text-indigo-600', icon: 'fa-solid fa-cloud-arrow-up', pillClass: 'bg-indigo-100 text-indigo-700' },
-  webdav_download: { label: 'WebDAV', color: 'text-indigo-600', icon: 'fa-solid fa-cloud-arrow-down', pillClass: 'bg-indigo-100 text-indigo-700' },
   cloud_settings: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-cloud', pillClass: 'bg-cyan-100 text-cyan-700' },
   cloud_signin: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-user-check', pillClass: 'bg-cyan-100 text-cyan-700' },
   cloud_signout: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-user-slash', pillClass: 'bg-cyan-100 text-cyan-700' },
@@ -144,7 +139,6 @@ function getLogModule(type) {
   const [mod] = String(type).split('_')
   const map = {
     app: '系统',
-    webdav: 'WebDAV',
     cloud: '云端',
     purchase: '采购',
     inventory: '库存',
@@ -165,12 +159,6 @@ function getLogRawJson(detail) {
   }
 }
 
-const webdavForm = ref({
-  url: '',
-  username: '',
-  password: '',
-  enabled: false,
-})
 const showCloudSettings = ref(false)
 const cloudForm = ref({
   supabaseUrl: '',
@@ -382,10 +370,6 @@ async function loadCloudOnStartup() {
   }
 }
 
-function getToday() {
-  return new Date().toISOString().slice(0, 10)
-}
-
 const currentDate = computed(() => {
   const d = new Date()
   const yyyy = d.getFullYear()
@@ -430,79 +414,6 @@ function handleExport() {
   a.remove()
   URL.revokeObjectURL(url)
   addOperationLog('app_export', '导出备份', { fileName: a.download })
-}
-
-function openWebdavSettings() {
-  webdavForm.value = {
-    url: store.webdavSettings.url || '',
-    username: store.webdavSettings.username || '',
-    password: store.webdavSettings.password || '',
-    enabled: !!store.webdavSettings.enabled,
-  }
-  showWebdavSettings.value = true
-}
-
-function saveWebdavSettings() {
-  Object.assign(store.webdavSettings, webdavForm.value)
-  saveUiStateToLocalStorage()
-  addOperationLog('webdav_settings', '更新WebDAV配置', {
-    url: webdavForm.value.url,
-    enabled: webdavForm.value.enabled,
-  })
-  showWebdavSettings.value = false
-}
-
-async function uploadToWebdav() {
-  if (!webdavForm.value.url) {
-    alert('请先配置WebDAV地址')
-    return
-  }
-  try {
-    const data = exportData()
-    const filename = `饮食派数据_${getToday()}.json`
-    const target = `${webdavForm.value.url}/${filename}`
-    const auth = btoa(`${webdavForm.value.username || ''}:${webdavForm.value.password || ''}`)
-    const res = await fetch(target, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Basic ${auth}`,
-      },
-      body: JSON.stringify(data),
-    })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    addOperationLog('webdav_upload', 'WebDAV上传成功', { file: filename })
-    alert('数据上传成功')
-  } catch (err) {
-    alert(`上传失败: ${err.message}`)
-  }
-}
-
-async function downloadFromWebdav() {
-  if (!webdavForm.value.url) {
-    alert('请先配置WebDAV地址')
-    return
-  }
-  try {
-    const filename = `饮食派数据_${getToday()}.json`
-    const target = `${webdavForm.value.url}/${filename}`
-    const auth = btoa(`${webdavForm.value.username || ''}:${webdavForm.value.password || ''}`)
-    const res = await fetch(target, {
-      method: 'GET',
-      headers: {
-        Authorization: `Basic ${auth}`,
-      },
-    })
-    if (!res.ok) throw new Error('文件不存在')
-    const data = await res.json()
-    if (!confirm('确定要下载并覆盖当前数据吗？')) return
-    loadData(data)
-    saveToLocalStorage()
-    addOperationLog('webdav_download', 'WebDAV下载成功', { file: filename })
-    alert('数据下载成功')
-  } catch (err) {
-    alert(`下载失败: ${err.message}`)
-  }
 }
 
 onMounted(async () => {
@@ -567,7 +478,6 @@ onMounted(async () => {
       @select="currentTab = $event"
       @import="triggerImport"
       @export="handleExport"
-      @webdav="openWebdavSettings"
       @cloud="openCloudSettings"
       @logs="showLogsModal = true"
     />
@@ -590,32 +500,6 @@ onMounted(async () => {
         </div>
       </div>
     </main>
-
-    <GlassModal v-model="showWebdavSettings" panel-class="w-full max-w-md p-6 relative" :close-on-overlay="true">
-      <div class="mb-6 text-xl font-bold">WebDAV同步设置</div>
-      <div class="space-y-4">
-        <div>
-          <label class="block text-sm mb-1 text-gray-600">WebDAV地址</label>
-          <input v-model="webdavForm.url" class="apple-input" placeholder="https://dav.jianguoyun.com/dav/" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1 text-gray-600">用户名</label>
-          <input v-model="webdavForm.username" class="apple-input" placeholder="WebDAV用户名" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1 text-gray-600">密码</label>
-          <input v-model="webdavForm.password" class="apple-input" type="password" placeholder="应用密码" />
-        </div>
-      </div>
-      <div class="mt-8 flex justify-end gap-3">
-        <button class="btn btn-outline" @click="showWebdavSettings = false">取消</button>
-        <button class="btn btn-primary" @click="saveWebdavSettings">保存设置</button>
-      </div>
-      <div class="mt-3 flex gap-3">
-        <button class="btn btn-outline flex-1" :disabled="!webdavForm.url" @click="uploadToWebdav">上传数据</button>
-        <button class="btn btn-outline flex-1" :disabled="!webdavForm.url" @click="downloadFromWebdav">下载数据</button>
-      </div>
-    </GlassModal>
 
     <GlassModal v-model="showCloudSettings" panel-class="w-full max-w-md p-6 relative" :close-on-overlay="true">
       <div class="mb-4 text-xl font-bold">云端同步设置</div>
