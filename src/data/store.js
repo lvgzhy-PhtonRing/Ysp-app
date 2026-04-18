@@ -4,6 +4,8 @@ import { reactive } from 'vue'
 
 const APP_VERSION = '2.1.2'
 const CLOUD_SYNC_DEBOUNCE_MS = 800
+const MAX_UNDO_STEPS = 20
+const HISTORY_META_EXPIRE_MS = 3000
 
 const DEFAULT_CALC = {
   debt: 0,
@@ -77,6 +79,8 @@ export const state = reactive({
   cloudStatus: {
     ...DEFAULT_CLOUD_STATUS,
   },
+  undoStack: [],
+  redoStack: [],
   operationLogs: [],
 })
 
@@ -84,6 +88,11 @@ const UI_STORAGE_KEY = 'ysp_ui'
 let cloudSyncHandler = null
 let cloudSyncTimer = null
 let suppressCloudSync = false
+let suppressHistory = false
+let lastPersistedData = null
+let lastPersistedSerialized = ''
+let hasPersistedSnapshot = false
+let pendingHistoryMeta = null
 
 function trimString(value) {
   return typeof value === 'string' ? value.trim() : ''
@@ -120,6 +129,64 @@ function clearCloudSyncTimer() {
   if (!cloudSyncTimer) return
   clearTimeout(cloudSyncTimer)
   cloudSyncTimer = null
+}
+
+function setPersistedSnapshot(data) {
+  const safeData = data && typeof data === 'object' ? clone(data) : exportData()
+  lastPersistedData = safeData
+  lastPersistedSerialized = JSON.stringify(safeData)
+  hasPersistedSnapshot = true
+}
+
+function clearPendingHistoryMeta() {
+  pendingHistoryMeta = null
+}
+
+function trimHistoryStacks() {
+  if (state.undoStack.length > MAX_UNDO_STEPS) {
+    state.undoStack.splice(0, state.undoStack.length - MAX_UNDO_STEPS)
+  }
+  if (state.redoStack.length > MAX_UNDO_STEPS) {
+    state.redoStack.splice(0, state.redoStack.length - MAX_UNDO_STEPS)
+  }
+}
+
+function pushHistoryEntry(before, after) {
+  const entry = {
+    id: Date.now() + Math.floor(Math.random() * 1000),
+    time: new Date().toISOString(),
+    type: 'data_change',
+    message: '数据变更',
+    before: clone(before),
+    after: clone(after),
+  }
+
+  state.undoStack.push(entry)
+  state.redoStack.splice(0, state.redoStack.length)
+  trimHistoryStacks()
+
+  pendingHistoryMeta = {
+    id: entry.id,
+    expireAt: Date.now() + HISTORY_META_EXPIRE_MS,
+  }
+}
+
+function attachHistoryMetaFromOperationLog(type, message) {
+  if (!pendingHistoryMeta?.id) return
+  if (Date.now() > Number(pendingHistoryMeta.expireAt || 0)) {
+    clearPendingHistoryMeta()
+    return
+  }
+
+  const entry = state.undoStack.find((x) => x.id === pendingHistoryMeta.id)
+  if (!entry) {
+    clearPendingHistoryMeta()
+    return
+  }
+
+  entry.type = type || entry.type
+  entry.message = message || entry.message
+  clearPendingHistoryMeta()
 }
 
 function hasCloudSyncConfig() {
@@ -238,7 +305,17 @@ export function exportData() {
 }
 
 export function saveToLocalStorage() {
-  localStorage.setItem('ysp_data', JSON.stringify(exportData()))
+  const currentData = exportData()
+  const serialized = JSON.stringify(currentData)
+
+  if (hasPersistedSnapshot && !suppressHistory && serialized !== lastPersistedSerialized) {
+    pushHistoryEntry(lastPersistedData, currentData)
+  } else {
+    clearPendingHistoryMeta()
+  }
+
+  localStorage.setItem('ysp_data', serialized)
+  setPersistedSnapshot(currentData)
   scheduleCloudSync()
 }
 
@@ -250,9 +327,69 @@ export function setCloudSyncSuppressed(flag) {
   suppressCloudSync = Boolean(flag)
 }
 
+export function setHistorySuppressed(flag) {
+  suppressHistory = Boolean(flag)
+}
+
 export async function syncToCloudNow() {
   clearCloudSyncTimer()
   return runCloudSync({ reason: 'manual', force: true })
+}
+
+export function undoLastChange() {
+  if (state.undoStack.length === 0) return null
+
+  const entry = state.undoStack.pop()
+  state.redoStack.push(entry)
+  trimHistoryStacks()
+
+  const previousSuppress = suppressHistory
+  suppressHistory = true
+  try {
+    loadData(entry.before)
+    saveToLocalStorage()
+  } finally {
+    suppressHistory = previousSuppress
+  }
+
+  clearPendingHistoryMeta()
+  return {
+    id: entry.id,
+    type: entry.type,
+    message: entry.message,
+    time: entry.time,
+  }
+}
+
+export function redoLastChange() {
+  if (state.redoStack.length === 0) return null
+
+  const entry = state.redoStack.pop()
+  state.undoStack.push(entry)
+  trimHistoryStacks()
+
+  const previousSuppress = suppressHistory
+  suppressHistory = true
+  try {
+    loadData(entry.after)
+    saveToLocalStorage()
+  } finally {
+    suppressHistory = previousSuppress
+  }
+
+  clearPendingHistoryMeta()
+  return {
+    id: entry.id,
+    type: entry.type,
+    message: entry.message,
+    time: entry.time,
+  }
+}
+
+export function clearUndoRedoHistory() {
+  state.undoStack.splice(0, state.undoStack.length)
+  state.redoStack.splice(0, state.redoStack.length)
+  clearPendingHistoryMeta()
 }
 
 export function setCloudSettings(settings = {}) {
@@ -288,6 +425,8 @@ export function setCloudLoadError(message = '') {
 }
 
 export function addOperationLog(type, message, detail = {}) {
+  attachHistoryMetaFromOperationLog(type, message)
+
   state.operationLogs.unshift({
     id: Date.now() + Math.floor(Math.random() * 1000),
     time: new Date().toISOString(),
@@ -349,8 +488,14 @@ export function loadUiStateFromLocalStorage() {
 
 export function loadFromLocalStorage() {
   const raw = localStorage.getItem('ysp_data')
-  if (!raw) return
+  if (!raw) {
+    hasPersistedSnapshot = false
+    lastPersistedData = null
+    lastPersistedSerialized = ''
+    return
+  }
 
   const parsed = JSON.parse(raw)
   loadData(parsed)
+  setPersistedSnapshot(exportData())
 }
