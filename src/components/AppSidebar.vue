@@ -14,7 +14,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['select', 'import', 'export', 'webdav', 'logs'])
+const emit = defineEmits(['select', 'import', 'export', 'webdav', 'cloud', 'logs'])
 
 const iconMap = {
   home: 'fa-solid fa-chart-pie',
@@ -73,6 +73,12 @@ const iconMap = {
         @click="emit('webdav')"
       >
         <i class="fa-solid fa-cloud mr-2" />WebDAV
+      </button>
+      <button
+        class="w-full text-left px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg"
+        @click="emit('cloud')"
+      >
+        <i class="fa-solid fa-database mr-2" />云端同步
       </button>
       <button
         class="w-full text-left px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg"

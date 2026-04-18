@@ -11,15 +11,30 @@ import FinanceModule from './modules/finance/FinanceModule.vue'
 import PaytonModule from './modules/payton/PaytonModule.vue'
 import {
   addOperationLog,
+  clearCloudSession,
   clearOperationLogs,
   exportData,
   loadData,
   loadFromLocalStorage,
   loadUiStateFromLocalStorage,
+  registerCloudSyncHandler,
   saveToLocalStorage,
   saveUiStateToLocalStorage,
+  setCloudLoadError,
+  setCloudLoadSuccess,
+  setCloudSession,
+  setCloudSettings,
+  setCloudSyncSuppressed,
   state as store,
+  syncToCloudNow,
 } from './data/store'
+import {
+  fetchCloudState,
+  isCloudConfigReady,
+  readCloudConfigFromPublic,
+  saveCloudState,
+  signInWithPassword,
+} from './services/cloudStore'
 
 const tabs = [
   { id: 'home', name: '数据透视' },
@@ -42,6 +57,11 @@ const logTypeMeta = {
   webdav_settings: { label: 'WebDAV', color: 'text-indigo-600', icon: 'fa-solid fa-cloud', pillClass: 'bg-indigo-100 text-indigo-700' },
   webdav_upload: { label: 'WebDAV', color: 'text-indigo-600', icon: 'fa-solid fa-cloud-arrow-up', pillClass: 'bg-indigo-100 text-indigo-700' },
   webdav_download: { label: 'WebDAV', color: 'text-indigo-600', icon: 'fa-solid fa-cloud-arrow-down', pillClass: 'bg-indigo-100 text-indigo-700' },
+  cloud_settings: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-cloud', pillClass: 'bg-cyan-100 text-cyan-700' },
+  cloud_signin: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-user-check', pillClass: 'bg-cyan-100 text-cyan-700' },
+  cloud_signout: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-user-slash', pillClass: 'bg-cyan-100 text-cyan-700' },
+  cloud_sync: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-arrows-rotate', pillClass: 'bg-cyan-100 text-cyan-700' },
+  cloud_pull: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-cloud-arrow-down', pillClass: 'bg-cyan-100 text-cyan-700' },
   purchase_add: { label: '采购新增', color: 'text-yellow-600', icon: 'fa-solid fa-plus', pillClass: 'bg-yellow-100 text-yellow-700' },
   purchase_transfer: { label: '采购转运', color: 'text-amber-600', icon: 'fa-solid fa-truck', pillClass: 'bg-amber-100 text-amber-700' },
   purchase_transfer_delete: { label: '采购转运', color: 'text-amber-600', icon: 'fa-solid fa-truck-ramp-box', pillClass: 'bg-amber-100 text-amber-700' },
@@ -125,6 +145,7 @@ function getLogModule(type) {
   const map = {
     app: '系统',
     webdav: 'WebDAV',
+    cloud: '云端',
     purchase: '采购',
     inventory: '库存',
     sales: '销售',
@@ -150,6 +171,216 @@ const webdavForm = ref({
   password: '',
   enabled: false,
 })
+const showCloudSettings = ref(false)
+const cloudForm = ref({
+  supabaseUrl: '',
+  supabaseAnonKey: '',
+  stateId: 'main',
+  enabled: false,
+  publicRead: true,
+  email: '',
+  password: '',
+})
+const cloudBusy = ref(false)
+
+function getEnvCloudSettings() {
+  const enabledRaw = String(import.meta.env.VITE_SUPABASE_ENABLED || '').toLowerCase()
+  const publicReadRaw = String(import.meta.env.VITE_SUPABASE_PUBLIC_READ || 'true').toLowerCase()
+  return {
+    supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
+    supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
+    stateId: import.meta.env.VITE_SUPABASE_STATE_ID || 'main',
+    enabled: enabledRaw === 'true' || enabledRaw === '1',
+    publicRead: !(publicReadRaw === 'false' || publicReadRaw === '0'),
+  }
+}
+
+async function tryLoadCloudConfigFromPublicFile() {
+  const basePath = import.meta.env.BASE_URL || '/'
+  try {
+    const config = await readCloudConfigFromPublic(basePath)
+    if (isCloudConfigReady(config)) {
+      setCloudSettings({
+        ...store.cloudSettings,
+        ...config,
+      })
+    }
+  } catch (_) {
+    // ignore
+  }
+}
+
+function applyCloudDataToStore(payload = {}) {
+  if (!payload || typeof payload !== 'object') return false
+  setCloudSyncSuppressed(true)
+  try {
+    loadData(payload)
+    saveToLocalStorage()
+  } finally {
+    setCloudSyncSuppressed(false)
+  }
+  return true
+}
+
+function openCloudSettings() {
+  cloudForm.value = {
+    supabaseUrl: store.cloudSettings.supabaseUrl || '',
+    supabaseAnonKey: store.cloudSettings.supabaseAnonKey || '',
+    stateId: store.cloudSettings.stateId || 'main',
+    enabled: !!store.cloudSettings.enabled,
+    publicRead: store.cloudSettings.publicRead !== false,
+    email: store.cloudSession.user?.email || '',
+    password: '',
+  }
+  showCloudSettings.value = true
+}
+
+function saveCloudSettingsFromForm(notify = true) {
+  setCloudSettings({
+    supabaseUrl: cloudForm.value.supabaseUrl,
+    supabaseAnonKey: cloudForm.value.supabaseAnonKey,
+    stateId: cloudForm.value.stateId,
+    enabled: cloudForm.value.enabled,
+    publicRead: cloudForm.value.publicRead,
+  })
+  addOperationLog('cloud_settings', '更新云端同步配置', {
+    supabaseUrl: cloudForm.value.supabaseUrl,
+    stateId: cloudForm.value.stateId,
+    enabled: cloudForm.value.enabled,
+  })
+  if (notify) {
+    alert('云端配置已保存')
+  }
+}
+
+async function cloudSignIn() {
+  const email = cloudForm.value.email || ''
+  const password = cloudForm.value.password || ''
+  if (!email || !password) {
+    alert('请填写云端账号和密码')
+    return
+  }
+
+  saveCloudSettingsFromForm(false)
+  if (!isCloudConfigReady(store.cloudSettings)) {
+    alert('请先填写完整 Supabase 地址和 anon key')
+    return
+  }
+
+  cloudBusy.value = true
+  try {
+    const session = await signInWithPassword(store.cloudSettings, email, password)
+    setCloudSession(session)
+    cloudForm.value.password = ''
+    addOperationLog('cloud_signin', '云端登录成功', {
+      email: session.user?.email,
+    })
+    alert('云端登录成功')
+  } catch (err) {
+    alert(`云端登录失败: ${err.message}`)
+  } finally {
+    cloudBusy.value = false
+  }
+}
+
+function cloudSignOut() {
+  clearCloudSession()
+  addOperationLog('cloud_signout', '云端已退出登录')
+  alert('已退出云端账号')
+}
+
+async function pullFromCloud() {
+  if (!isCloudConfigReady(store.cloudSettings)) {
+    alert('请先配置云端参数')
+    return
+  }
+
+  cloudBusy.value = true
+  try {
+    const result = await fetchCloudState(store.cloudSettings, {
+      session: store.cloudSession,
+      onSession: (session) => setCloudSession(session),
+      publicOnly: false,
+    })
+    if (!result?.payload) {
+      alert('云端没有可用数据')
+      return
+    }
+    applyCloudDataToStore(result.payload)
+    setCloudLoadSuccess(result.updatedAt)
+    addOperationLog('cloud_pull', '从云端加载数据成功', {
+      updatedAt: result.updatedAt,
+    })
+    alert('已从云端加载最新数据')
+  } catch (err) {
+    setCloudLoadError(err.message)
+    alert(`从云端加载失败: ${err.message}`)
+  } finally {
+    cloudBusy.value = false
+  }
+}
+
+async function syncCloudNowFromUi() {
+  if (!isCloudConfigReady(store.cloudSettings)) {
+    alert('请先配置云端参数')
+    return
+  }
+
+  cloudBusy.value = true
+  try {
+    const result = await syncToCloudNow()
+    addOperationLog('cloud_sync', '手动同步云端成功', {
+      updatedAt: result?.updatedAt,
+    })
+    alert('云端同步成功')
+  } catch (err) {
+    alert(`云端同步失败: ${err.message}`)
+  } finally {
+    cloudBusy.value = false
+  }
+}
+
+function getCloudStatusText() {
+  if (store.cloudStatus.syncing) return '同步中'
+  if (store.cloudStatus.connected) return '已连接'
+  return '未连接'
+}
+
+function getCloudStatusClass() {
+  if (store.cloudStatus.syncing) return 'text-blue-600'
+  if (store.cloudStatus.connected) return 'text-green-600'
+  return 'text-gray-500'
+}
+
+function getCloudSyncTimeText() {
+  if (!store.cloudStatus.lastSyncAt) return '-'
+  return new Date(store.cloudStatus.lastSyncAt).toLocaleString()
+}
+
+function getCloudLoadTimeText() {
+  if (!store.cloudStatus.lastCloudLoadAt) return '-'
+  return new Date(store.cloudStatus.lastCloudLoadAt).toLocaleString()
+}
+
+async function loadCloudOnStartup() {
+  if (!store.cloudSettings.enabled) return false
+  if (!isCloudConfigReady(store.cloudSettings)) return false
+
+  try {
+    const result = await fetchCloudState(store.cloudSettings, {
+      session: store.cloudSession,
+      onSession: (session) => setCloudSession(session),
+      publicOnly: false,
+    })
+    if (!result?.payload) return false
+    applyCloudDataToStore(result.payload)
+    setCloudLoadSuccess(result.updatedAt)
+    return true
+  } catch (err) {
+    setCloudLoadError(err.message)
+    return false
+  }
+}
 
 function getToday() {
   return new Date().toISOString().slice(0, 10)
@@ -275,12 +506,39 @@ async function downloadFromWebdav() {
 }
 
 onMounted(async () => {
-  loadFromLocalStorage()
   loadUiStateFromLocalStorage()
-  if (store.items.length === 0) {
+  loadFromLocalStorage()
+
+  const envCloudSettings = getEnvCloudSettings()
+  if (!isCloudConfigReady(store.cloudSettings) && isCloudConfigReady(envCloudSettings)) {
+    setCloudSettings({
+      ...store.cloudSettings,
+      ...envCloudSettings,
+    })
+  }
+
+  if (!isCloudConfigReady(store.cloudSettings)) {
+    await tryLoadCloudConfigFromPublicFile()
+  }
+
+  registerCloudSyncHandler(async (payload) => {
+    const result = await saveCloudState(store.cloudSettings, payload, {
+      session: store.cloudSession,
+      onSession: (session) => setCloudSession(session),
+      makePublic: store.cloudSettings.publicRead,
+    })
+    return {
+      updatedAt: result?.updatedAt,
+      row: result?.row,
+    }
+  })
+
+  const cloudLoaded = await loadCloudOnStartup()
+
+  if (!cloudLoaded && store.items.length === 0) {
     try {
       const basePath = import.meta.env.BASE_URL || '/'
-      const res = await fetch(`${basePath}a.json`)
+      const res = await fetch(`${basePath}a.json?t=${Date.now()}`, { cache: 'no-store' })
       if (res.ok) {
         const json = await res.json()
         loadData(json)
@@ -310,6 +568,7 @@ onMounted(async () => {
       @import="triggerImport"
       @export="handleExport"
       @webdav="openWebdavSettings"
+      @cloud="openCloudSettings"
       @logs="showLogsModal = true"
     />
 
@@ -355,6 +614,63 @@ onMounted(async () => {
       <div class="mt-3 flex gap-3">
         <button class="btn btn-outline flex-1" :disabled="!webdavForm.url" @click="uploadToWebdav">上传数据</button>
         <button class="btn btn-outline flex-1" :disabled="!webdavForm.url" @click="downloadFromWebdav">下载数据</button>
+      </div>
+    </GlassModal>
+
+    <GlassModal v-model="showCloudSettings" panel-class="w-full max-w-md p-6 relative" :close-on-overlay="true">
+      <div class="mb-4 text-xl font-bold">云端同步设置</div>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-sm mb-1 text-gray-600">Supabase URL</label>
+          <input v-model="cloudForm.supabaseUrl" class="apple-input" placeholder="https://xxxx.supabase.co" />
+        </div>
+        <div>
+          <label class="block text-sm mb-1 text-gray-600">Supabase anon key</label>
+          <input v-model="cloudForm.supabaseAnonKey" class="apple-input" placeholder="eyJ..." />
+        </div>
+        <div>
+          <label class="block text-sm mb-1 text-gray-600">State ID</label>
+          <input v-model="cloudForm.stateId" class="apple-input" placeholder="main" />
+        </div>
+        <div class="flex items-center gap-3 text-sm">
+          <label class="inline-flex items-center gap-2 cursor-pointer">
+            <input v-model="cloudForm.enabled" type="checkbox" />
+            <span>启用云端同步</span>
+          </label>
+          <label class="inline-flex items-center gap-2 cursor-pointer">
+            <input v-model="cloudForm.publicRead" type="checkbox" />
+            <span>手机页匿名读取</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="mt-4 border-t border-gray-100 pt-4 space-y-3">
+        <div class="text-sm font-medium text-gray-700">云端登录（写入需要）</div>
+        <div>
+          <label class="block text-sm mb-1 text-gray-600">邮箱</label>
+          <input v-model="cloudForm.email" class="apple-input" placeholder="you@example.com" />
+        </div>
+        <div>
+          <label class="block text-sm mb-1 text-gray-600">密码</label>
+          <input v-model="cloudForm.password" type="password" class="apple-input" placeholder="Supabase 账号密码" />
+        </div>
+      </div>
+
+      <div class="mt-4 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
+        <div class="flex justify-between"><span>状态</span><span :class="getCloudStatusClass()">{{ getCloudStatusText() }}</span></div>
+        <div class="flex justify-between"><span>最近同步</span><span>{{ getCloudSyncTimeText() }}</span></div>
+        <div class="flex justify-between"><span>最近拉取</span><span>{{ getCloudLoadTimeText() }}</span></div>
+        <div v-if="store.cloudStatus.lastSyncError" class="mt-1 text-red-500">同步错误：{{ store.cloudStatus.lastSyncError }}</div>
+        <div v-if="store.cloudStatus.lastCloudLoadError" class="mt-1 text-red-500">拉取错误：{{ store.cloudStatus.lastCloudLoadError }}</div>
+      </div>
+
+      <div class="mt-6 flex flex-wrap justify-end gap-2">
+        <button class="btn btn-outline" @click="showCloudSettings = false">关闭</button>
+        <button class="btn btn-outline" :disabled="cloudBusy" @click="saveCloudSettingsFromForm">保存配置</button>
+        <button class="btn btn-outline" :disabled="cloudBusy" @click="cloudSignIn">登录云端</button>
+        <button class="btn btn-outline" :disabled="cloudBusy" @click="cloudSignOut">退出登录</button>
+        <button class="btn btn-outline" :disabled="cloudBusy" @click="pullFromCloud">从云端拉取</button>
+        <button class="btn btn-primary" :disabled="cloudBusy" @click="syncCloudNowFromUi">立即同步</button>
       </div>
     </GlassModal>
 

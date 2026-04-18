@@ -505,6 +505,70 @@ function getDefaultJsonUrl() {
   return `${location.origin}${basePath}a.json`;
 }
 
+function getPublicCloudConfigUrl() {
+  const pathname = String(location.pathname || '/');
+  const basePath = pathname.endsWith('/') ? pathname : pathname.slice(0, pathname.lastIndexOf('/') + 1);
+  return `${location.origin}${basePath}cloud-config.json`;
+}
+
+function appendNoCache(url) {
+  const sep = String(url).includes('?') ? '&' : '?';
+  return `${url}${sep}t=${Date.now()}`;
+}
+
+function normalizeCloudConfig(raw) {
+  return {
+    supabaseUrl: String(raw?.supabaseUrl || raw?.url || '').trim().replace(/\/+$/, ''),
+    supabaseAnonKey: String(raw?.supabaseAnonKey || raw?.anonKey || '').trim(),
+    stateId: String(raw?.stateId || 'main').trim() || 'main',
+    enabled: Boolean(raw?.enabled),
+    publicRead: raw?.publicRead !== false,
+  };
+}
+
+function isCloudConfigReady(config) {
+  return Boolean(config?.supabaseUrl && config?.supabaseAnonKey && config?.stateId);
+}
+
+async function readCloudConfigFromPublic() {
+  const target = appendNoCache(getPublicCloudConfigUrl());
+  const resp = await fetch(target, { cache: 'no-store' });
+  if (!resp.ok) return null;
+  const json = await resp.json();
+  const config = normalizeCloudConfig(json);
+  return isCloudConfigReady(config) ? config : null;
+}
+
+async function loadFromCloudConfig(config) {
+  if (!isCloudConfigReady(config)) throw new Error('云端配置不完整');
+
+  const params = new URLSearchParams();
+  params.set('id', `eq.${config.stateId}`);
+  params.set('is_public', 'eq.true');
+  params.set('select', 'payload,updated_at');
+  params.set('limit', '1');
+  const target = `${config.supabaseUrl}/rest/v1/ysp_state?${params.toString()}`;
+
+  const resp = await fetch(target, {
+    method: 'GET',
+    headers: {
+      apikey: config.supabaseAnonKey,
+      Authorization: `Bearer ${config.supabaseAnonKey}`,
+    },
+    cache: 'no-store',
+  });
+
+  if (!resp.ok) throw new Error('云端读取失败: HTTP ' + resp.status);
+  const rows = await resp.json();
+  if (!Array.isArray(rows) || rows.length === 0 || !rows[0]?.payload) {
+    throw new Error('云端暂无可用数据');
+  }
+
+  initApp(rows[0].payload);
+  const updatedAt = rows[0].updated_at ? new Date(rows[0].updated_at).toLocaleString() : '';
+  showLoadMsg(updatedAt ? `云端加载成功（${updatedAt}）` : '云端加载成功', true);
+}
+
 const urlInputEl = document.getElementById('url-input');
 if (urlInputEl && !urlInputEl.value) {
   urlInputEl.value = getDefaultJsonUrl();
@@ -530,7 +594,7 @@ async function loadFromUrl() {
   if (!url) return;
   showLoadMsg('加载中...', null);
   try {
-    const resp = await fetch(url);
+    const resp = await fetch(appendNoCache(url), { cache: 'no-store' });
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const json = await resp.json();
     initApp(json);
@@ -539,10 +603,25 @@ async function loadFromUrl() {
   }
 }
 
+async function loadFromCloud() {
+  showLoadMsg('云端加载中...', null);
+  try {
+    const config = await readCloudConfigFromPublic();
+    if (!config) throw new Error('未找到 cloud-config.json 或配置不完整');
+    await loadFromCloudConfig(config);
+    return true;
+  } catch (err) {
+    showLoadMsg('云端加载失败：' + err.message, false);
+    return false;
+  }
+}
+
 window.addEventListener('load', () => {
   const autoLoad = new URLSearchParams(location.search).get('auto');
   if (autoLoad === '0') return;
-  loadFromUrl();
+  loadFromCloud().then((ok) => {
+    if (!ok) loadFromUrl();
+  });
 });
 
 function showLoadMsg(msg, ok) {
