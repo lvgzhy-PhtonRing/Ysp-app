@@ -23,9 +23,12 @@ import {
   setCloudLoadSuccess,
   setCloudSession,
   setCloudSettings,
+  setHistorySuppressed,
   setCloudSyncSuppressed,
   state as store,
+  redoLastChange,
   syncToCloudNow,
+  undoLastChange,
 } from './data/store'
 import {
   fetchCloudState,
@@ -52,6 +55,8 @@ const selectedLog = ref(null)
 const logTypeMeta = {
   app_import: { label: '系统导入', color: 'text-teal-600', icon: 'fa-solid fa-upload', pillClass: 'bg-teal-100 text-teal-700' },
   app_export: { label: '系统导出', color: 'text-blue-600', icon: 'fa-solid fa-download', pillClass: 'bg-blue-100 text-blue-700' },
+  app_undo: { label: '系统撤销', color: 'text-orange-600', icon: 'fa-solid fa-rotate-left', pillClass: 'bg-orange-100 text-orange-700' },
+  app_redo: { label: '系统重做', color: 'text-emerald-600', icon: 'fa-solid fa-rotate-right', pillClass: 'bg-emerald-100 text-emerald-700' },
   cloud_settings: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-cloud', pillClass: 'bg-cyan-100 text-cyan-700' },
   cloud_signin: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-user-check', pillClass: 'bg-cyan-100 text-cyan-700' },
   cloud_signout: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-user-slash', pillClass: 'bg-cyan-100 text-cyan-700' },
@@ -198,16 +203,49 @@ async function tryLoadCloudConfigFromPublicFile() {
   }
 }
 
-function applyCloudDataToStore(payload = {}) {
+function applyCloudDataToStore(payload = {}, options = {}) {
   if (!payload || typeof payload !== 'object') return false
+  const trackHistory = options.trackHistory !== false
+
   setCloudSyncSuppressed(true)
+  setHistorySuppressed(!trackHistory)
   try {
     loadData(payload)
     saveToLocalStorage()
   } finally {
+    setHistorySuppressed(false)
     setCloudSyncSuppressed(false)
   }
   return true
+}
+
+const canUndo = computed(() => store.undoStack.length > 0)
+const canRedo = computed(() => store.redoStack.length > 0)
+
+function handleUndo() {
+  if (!canUndo.value) {
+    alert('当前没有可撤销的操作')
+    return
+  }
+  const result = undoLastChange()
+  if (!result) {
+    alert('撤销失败')
+    return
+  }
+  addOperationLog('app_undo', `撤销：${result.message || result.type || '数据变更'}`)
+}
+
+function handleRedo() {
+  if (!canRedo.value) {
+    alert('当前没有可重做的操作')
+    return
+  }
+  const result = redoLastChange()
+  if (!result) {
+    alert('重做失败')
+    return
+  }
+  addOperationLog('app_redo', `重做：${result.message || result.type || '数据变更'}`)
 }
 
 function openCloudSettings() {
@@ -361,7 +399,7 @@ async function loadCloudOnStartup() {
       publicOnly: false,
     })
     if (!result?.payload) return false
-    applyCloudDataToStore(result.payload)
+    applyCloudDataToStore(result.payload, { trackHistory: false })
     setCloudLoadSuccess(result.updatedAt)
     return true
   } catch (err) {
@@ -561,7 +599,11 @@ onMounted(async () => {
     <GlassModal v-model="showLogsModal" panel-class="w-full max-w-2xl relative max-h-[80vh] flex flex-col p-0" :close-on-overlay="true">
       <div class="px-4 py-4 border-b border-gray-100 flex items-center justify-between">
         <h3 class="text-xl font-bold">操作日志 <span class="text-sm font-normal text-gray-500">(近7天)</span></h3>
-        <button class="btn btn-outline btn-sm" @click="clearOperationLogs">清空日志</button>
+        <div class="flex items-center gap-2">
+          <button class="btn btn-outline btn-sm" :disabled="!canUndo" @click="handleUndo">撤销 {{ store.undoStack.length }}</button>
+          <button class="btn btn-outline btn-sm" :disabled="!canRedo" @click="handleRedo">重做 {{ store.redoStack.length }}</button>
+          <button class="btn btn-outline btn-sm" @click="clearOperationLogs">清空日志</button>
+        </div>
       </div>
       <div class="flex-1 overflow-y-auto space-y-2 p-4">
         <div v-if="store.operationLogs.length === 0" class="text-center text-gray-400 py-8">暂无日志记录</div>
