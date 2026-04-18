@@ -502,7 +502,7 @@ function toNum(v, fb=0) { const n=Number(v); return isFinite(n)?n:fb; }
 function getDefaultJsonUrl() {
   const pathname = String(location.pathname || '/');
   const basePath = pathname.endsWith('/') ? pathname : pathname.slice(0, pathname.lastIndexOf('/') + 1);
-  return `${location.origin}${basePath}public/a.json`;
+  return `${location.origin}${basePath}a.json`;
 }
 
 const urlInputEl = document.getElementById('url-input');
