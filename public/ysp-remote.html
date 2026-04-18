@@ -499,6 +499,17 @@ function esc(s) {
 function toNum(v, fb=0) { const n=Number(v); return isFinite(n)?n:fb; }
 
 // ===== Data Load =====
+function getDefaultJsonUrl() {
+  const pathname = String(location.pathname || '/');
+  const basePath = pathname.endsWith('/') ? pathname : pathname.slice(0, pathname.lastIndexOf('/') + 1);
+  return `${location.origin}${basePath}public/a.json`;
+}
+
+const urlInputEl = document.getElementById('url-input');
+if (urlInputEl && !urlInputEl.value) {
+  urlInputEl.value = getDefaultJsonUrl();
+}
+
 document.getElementById('file-input').addEventListener('change', function(e) {
   const file = e.target.files[0];
   if (!file) return;
@@ -527,6 +538,12 @@ async function loadFromUrl() {
     showLoadMsg('加载失败：' + err.message, false);
   }
 }
+
+window.addEventListener('load', () => {
+  const autoLoad = new URLSearchParams(location.search).get('auto');
+  if (autoLoad === '0') return;
+  loadFromUrl();
+});
 
 function showLoadMsg(msg, ok) {
   const el = document.getElementById('load-msg');
