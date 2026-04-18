@@ -1,7 +1,7 @@
 {
-  "supabaseUrl": "",
-  "supabaseAnonKey": "",
+  "supabaseUrl": "https://mqdxmbsaddebxlallgos.supabase.co",
+  "supabaseAnonKey": "Babey990411",
   "stateId": "main",
-  "enabled": false,
+  "enabled": true,
   "publicRead": true
 }
