@@ -3,6 +3,7 @@
 import { reactive } from 'vue'
 
 const APP_VERSION = '2.1.2'
+const CLOUD_SYNC_DEBOUNCE_MS = 800
 
 const DEFAULT_CALC = {
   debt: 0,
@@ -10,6 +11,34 @@ const DEFAULT_CALC = {
   publicExp: 0,
   unconfirmed: 0,
   fund: 0,
+}
+
+const DEFAULT_CLOUD_SETTINGS = {
+  supabaseUrl: '',
+  supabaseAnonKey: '',
+  stateId: 'main',
+  enabled: false,
+  publicRead: true,
+}
+
+const DEFAULT_CLOUD_SESSION = {
+  accessToken: '',
+  refreshToken: '',
+  expiresAt: 0,
+  tokenType: 'bearer',
+  user: {
+    id: '',
+    email: '',
+  },
+}
+
+const DEFAULT_CLOUD_STATUS = {
+  syncing: false,
+  connected: false,
+  lastSyncAt: '',
+  lastSyncError: '',
+  lastCloudLoadAt: '',
+  lastCloudLoadError: '',
 }
 
 function clone(value) {
@@ -42,10 +71,116 @@ export const state = reactive({
     password: '',
     enabled: false,
   },
+  cloudSettings: {
+    ...DEFAULT_CLOUD_SETTINGS,
+  },
+  cloudSession: {
+    ...DEFAULT_CLOUD_SESSION,
+    user: {
+      ...DEFAULT_CLOUD_SESSION.user,
+    },
+  },
+  cloudStatus: {
+    ...DEFAULT_CLOUD_STATUS,
+  },
   operationLogs: [],
 })
 
 const UI_STORAGE_KEY = 'ysp_ui'
+let cloudSyncHandler = null
+let cloudSyncTimer = null
+let suppressCloudSync = false
+
+function trimString(value) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function normalizeCloudSettings(settings = {}) {
+  return {
+    supabaseUrl: trimString(settings.supabaseUrl).replace(/\/+$/, ''),
+    supabaseAnonKey: trimString(settings.supabaseAnonKey),
+    stateId: trimString(settings.stateId) || 'main',
+    enabled: Boolean(settings.enabled),
+    publicRead: settings.publicRead !== false,
+  }
+}
+
+function normalizeCloudSession(session = {}) {
+  return {
+    accessToken: trimString(session.accessToken),
+    refreshToken: trimString(session.refreshToken),
+    expiresAt: Number(session.expiresAt || 0) || 0,
+    tokenType: trimString(session.tokenType) || 'bearer',
+    user: {
+      id: trimString(session.user?.id),
+      email: trimString(session.user?.email),
+    },
+  }
+}
+
+function setCloudStatusPatch(patch = {}) {
+  Object.assign(state.cloudStatus, patch)
+}
+
+function clearCloudSyncTimer() {
+  if (!cloudSyncTimer) return
+  clearTimeout(cloudSyncTimer)
+  cloudSyncTimer = null
+}
+
+function hasCloudSyncConfig() {
+  return Boolean(
+    trimString(state.cloudSettings.supabaseUrl) &&
+      trimString(state.cloudSettings.supabaseAnonKey) &&
+      trimString(state.cloudSettings.stateId),
+  )
+}
+
+async function runCloudSync({ reason = 'auto', force = false } = {}) {
+  if (suppressCloudSync) return null
+  if (!state.cloudSettings.enabled && !force) return null
+  if (!hasCloudSyncConfig()) return null
+  if (typeof cloudSyncHandler !== 'function') return null
+
+  setCloudStatusPatch({
+    syncing: true,
+    lastSyncError: '',
+  })
+
+  try {
+    const result = await cloudSyncHandler(exportData(), { reason })
+    setCloudStatusPatch({
+      syncing: false,
+      connected: true,
+      lastSyncAt: result?.updatedAt || new Date().toISOString(),
+      lastSyncError: '',
+    })
+    saveUiStateToLocalStorage()
+    return result
+  } catch (err) {
+    setCloudStatusPatch({
+      syncing: false,
+      connected: false,
+      lastSyncError: err?.message || '云端同步失败',
+    })
+    saveUiStateToLocalStorage()
+    throw err
+  }
+}
+
+function scheduleCloudSync() {
+  if (suppressCloudSync) return
+  if (!state.cloudSettings.enabled) return
+  if (!hasCloudSyncConfig()) return
+  if (typeof cloudSyncHandler !== 'function') return
+
+  clearCloudSyncTimer()
+  cloudSyncTimer = setTimeout(() => {
+    runCloudSync({ reason: 'debounced' }).catch(() => {
+      // ignore
+    })
+  }, CLOUD_SYNC_DEBOUNCE_MS)
+}
 
 export function loadData(jsonObject = {}) {
   const data = jsonObject && typeof jsonObject === 'object' ? jsonObject : {}
@@ -110,6 +245,52 @@ export function exportData() {
 
 export function saveToLocalStorage() {
   localStorage.setItem('ysp_data', JSON.stringify(exportData()))
+  scheduleCloudSync()
+}
+
+export function registerCloudSyncHandler(handler) {
+  cloudSyncHandler = typeof handler === 'function' ? handler : null
+}
+
+export function setCloudSyncSuppressed(flag) {
+  suppressCloudSync = Boolean(flag)
+}
+
+export async function syncToCloudNow() {
+  clearCloudSyncTimer()
+  return runCloudSync({ reason: 'manual', force: true })
+}
+
+export function setCloudSettings(settings = {}) {
+  Object.assign(state.cloudSettings, normalizeCloudSettings(settings))
+  saveUiStateToLocalStorage()
+}
+
+export function setCloudSession(session = {}) {
+  Object.assign(state.cloudSession, normalizeCloudSession(session))
+  saveUiStateToLocalStorage()
+}
+
+export function clearCloudSession() {
+  Object.assign(state.cloudSession, normalizeCloudSession(DEFAULT_CLOUD_SESSION))
+  saveUiStateToLocalStorage()
+}
+
+export function setCloudLoadSuccess(at = '') {
+  setCloudStatusPatch({
+    connected: true,
+    lastCloudLoadAt: at || new Date().toISOString(),
+    lastCloudLoadError: '',
+  })
+  saveUiStateToLocalStorage()
+}
+
+export function setCloudLoadError(message = '') {
+  setCloudStatusPatch({
+    connected: false,
+    lastCloudLoadError: message || '云端加载失败',
+  })
+  saveUiStateToLocalStorage()
 }
 
 export function addOperationLog(type, message, detail = {}) {
@@ -136,6 +317,12 @@ export function clearOperationLogs() {
 export function saveUiStateToLocalStorage() {
   const payload = {
     webdavSettings: { ...state.webdavSettings },
+    cloudSettings: { ...state.cloudSettings },
+    cloudSession: {
+      ...state.cloudSession,
+      user: { ...state.cloudSession.user },
+    },
+    cloudStatus: { ...state.cloudStatus },
     operationLogs: [...state.operationLogs],
   }
   localStorage.setItem(UI_STORAGE_KEY, JSON.stringify(payload))
@@ -148,6 +335,21 @@ export function loadUiStateFromLocalStorage() {
   const parsed = JSON.parse(raw)
   if (parsed?.webdavSettings && typeof parsed.webdavSettings === 'object') {
     Object.assign(state.webdavSettings, parsed.webdavSettings)
+  }
+
+  if (parsed?.cloudSettings && typeof parsed.cloudSettings === 'object') {
+    Object.assign(state.cloudSettings, normalizeCloudSettings(parsed.cloudSettings))
+  }
+
+  if (parsed?.cloudSession && typeof parsed.cloudSession === 'object') {
+    Object.assign(state.cloudSession, normalizeCloudSession(parsed.cloudSession))
+  }
+
+  if (parsed?.cloudStatus && typeof parsed.cloudStatus === 'object') {
+    Object.assign(state.cloudStatus, {
+      ...DEFAULT_CLOUD_STATUS,
+      ...parsed.cloudStatus,
+    })
   }
 
   if (Array.isArray(parsed?.operationLogs)) {

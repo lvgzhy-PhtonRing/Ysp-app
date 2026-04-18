@@ -1,0 +1,7 @@
+{
+  "supabaseUrl": "",
+  "supabaseAnonKey": "",
+  "stateId": "main",
+  "enabled": false,
+  "publicRead": true
+}
