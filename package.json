@@ -1,0 +1,28 @@
+{
+  "name": "ysp-app",
+  "private": true,
+  "version": "2.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "integration": "node scripts/integration_test.js a.json"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-free": "^7.2.0",
+    "fuse.js": "^7.2.0",
+    "vue": "^3.5.30"
+  },
+  "devDependencies": {
+    "@testing-library/vue": "^7.0.0",
+    "@vitejs/plugin-vue": "^6.0.5",
+    "@vue/test-utils": "^2.4.6",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
+    "vite": "^8.0.1",
+    "vitest": "^2.1.9"
+  }
+}
