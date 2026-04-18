@@ -1,0 +1,2355 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>PhtonRing在哪儿查询</title>
+<style>
+/* ===== Reset & Base ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', sans-serif; background: #f2f2f7; color: #1c1c1e; font-size: 15px; }
+button { cursor: pointer; border: none; background: none; font-family: inherit; }
+input, select { font-family: inherit; }
+
+/* ===== Layout ===== */
+#app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+#main-content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.page { display: none; padding-bottom: 80px; }
+.page.active { display: block; }
+
+/* ===== Bottom Nav ===== */
+#bottom-nav {
+  display: flex; background: rgba(255,255,255,0.95);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(0,0,0,0.1);
+  padding: 6px 0 calc(6px + env(safe-area-inset-bottom, 0));
+  position: sticky; bottom: 0; z-index: 100; flex-shrink: 0;
+}
+.nav-item {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  gap: 2px; padding: 4px 2px; color: #8e8e93; font-size: 10px;
+  transition: color 0.15s; text-decoration: none;
+}
+.nav-item.active { color: #007aff; }
+.nav-icon { font-size: 20px; line-height: 1.2; }
+
+/* ===== Page Header ===== */
+.page-header {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(242,242,247,0.95); backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  padding: 12px 16px 8px;
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+}
+.page-title { font-size: 22px; font-weight: 700; color: #1c1c1e; }
+.page-subtitle { font-size: 12px; color: #8e8e93; margin-top: 1px; }
+
+/* ===== Cards ===== */
+.card {
+  background: #fff; border-radius: 12px; margin: 10px 16px 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden;
+}
+.card-header {
+  padding: 11px 16px; display: flex; align-items: center;
+  justify-content: space-between; border-bottom: 1px solid #f2f2f7;
+}
+.card-title { font-size: 14px; font-weight: 600; color: #1c1c1e; }
+.card-body { padding: 12px 16px; }
+
+/* ===== Stats Row ===== */
+.stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 10px 16px 0; }
+.stat-card {
+  background: #fff; border-radius: 12px;
+  padding: 10px 8px; text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.stat-val { font-size: 17px; font-weight: 700; color: #1c1c1e; }
+.stat-val.blue { color: #007aff; }
+.stat-val.green { color: #34c759; }
+.stat-val.orange { color: #ff9500; }
+.stat-val.red { color: #ff3b30; }
+.stat-val.purple { color: #af52de; }
+.stat-val.teal { color: #5ac8fa; }
+.stat-label { font-size: 10px; color: #8e8e93; margin-top: 2px; }
+
+/* ===== Filter Bar ===== */
+.filter-bar {
+  padding: 8px 16px; display: flex; gap: 6px; overflow-x: auto;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.filter-bar::-webkit-scrollbar { display: none; }
+.filter-chip {
+  flex-shrink: 0; padding: 5px 12px; border-radius: 20px;
+  font-size: 13px; background: #e5e5ea; color: #3c3c43;
+  transition: all 0.15s; white-space: nowrap; border: none; cursor: pointer;
+}
+.filter-chip.active { background: #007aff; color: #fff; }
+.filter-chip.small { padding: 4px 9px; font-size: 12px; }
+.filter-chip.green.active { background: #34c759; }
+.filter-chip.orange.active { background: #ff9500; }
+
+/* ===== View Mode Tabs ===== */
+.view-tabs {
+  display: flex; gap: 0; padding: 8px 16px;
+  background: transparent;
+}
+.view-tab {
+  flex: 1; padding: 6px 4px; text-align: center; font-size: 12px;
+  background: #e5e5ea; color: #3c3c43; border: none; cursor: pointer;
+  transition: all 0.15s;
+}
+.view-tab:first-child { border-radius: 8px 0 0 8px; }
+.view-tab:last-child { border-radius: 0 8px 8px 0; }
+.view-tab.active { background: #007aff; color: #fff; font-weight: 600; }
+
+/* ===== Search Input ===== */
+.search-wrap { padding: 6px 16px; }
+.search-input {
+  width: 100%; padding: 9px 14px; border-radius: 10px;
+  border: 1px solid #e5e5ea; background: #fff; font-size: 14px;
+  outline: none; color: #1c1c1e;
+}
+.search-input:focus { border-color: #007aff; }
+
+/* ===== Group Section ===== */
+.group-section { margin: 8px 16px 0; }
+.group-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; background: #fff; border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.07); cursor: pointer;
+  transition: background 0.1s;
+}
+.group-header:active { background: #f2f2f7; }
+.group-header.expanded { border-radius: 10px 10px 0 0; }
+.group-name { font-size: 14px; font-weight: 600; color: #1c1c1e; }
+.group-meta { font-size: 11px; color: #8e8e93; margin-top: 2px; }
+.group-badge {
+  display: flex; gap: 8px; align-items: center; flex-shrink: 0;
+}
+.badge {
+  font-size: 11px; padding: 2px 7px; border-radius: 10px;
+  background: #e5e5ea; color: #3c3c43; white-space: nowrap;
+}
+.badge.blue { background: #e3f0ff; color: #007aff; }
+.badge.green { background: #e3f9e8; color: #34c759; }
+.badge.orange { background: #fff3e0; color: #ff9500; }
+.badge.red { background: #ffe3e3; color: #ff3b30; }
+.badge.purple { background: #f3e8ff; color: #af52de; }
+.chevron { font-size: 12px; color: #c7c7cc; transition: transform 0.2s; margin-left: 6px; }
+.chevron.open { transform: rotate(90deg); }
+
+/* ===== Item List ===== */
+.item-list {
+  background: #fff; border-radius: 0 0 10px 10px;
+  border-top: 1px solid #f2f2f7; overflow: hidden;
+}
+.item-row {
+  padding: 10px 14px; border-bottom: 1px solid #f2f2f7;
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 8px;
+}
+.item-row:last-child { border-bottom: none; }
+.item-main { flex: 1; min-width: 0; }
+.item-name { font-size: 14px; font-weight: 500; color: #1c1c1e; word-break: break-all; }
+.item-sid { font-size: 11px; color: #8e8e93; margin-top: 2px; font-family: monospace; }
+.item-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.tag {
+  font-size: 10px; padding: 1px 6px; border-radius: 6px;
+  background: #e5e5ea; color: #636366;
+}
+.tag.defect { background: #ffe3e3; color: #ff3b30; }
+.tag.longterm { background: #fff3e0; color: #ff9500; }
+.tag.pending { background: #fff3e0; color: #ff9500; }
+.tag.completed { background: #e3f9e8; color: #34c759; }
+.tag.sold { background: #e3f0ff; color: #007aff; }
+.item-right { text-align: right; flex-shrink: 0; }
+.item-cost { font-size: 15px; font-weight: 600; color: #1c1c1e; }
+.item-qty { font-size: 11px; color: #8e8e93; margin-top: 2px; }
+
+/* ===== Sub-group (purchase 3-level) ===== */
+.sub-group { margin: 0; background: #f9f9f9; }
+.sub-group-header {
+  padding: 8px 14px 8px 22px; display: flex; align-items: center;
+  justify-content: space-between; border-bottom: 1px solid #f2f2f7;
+  cursor: pointer; background: #f9f9f9;
+}
+.sub-group-header:active { background: #f2f2f7; }
+.sub-group-name { font-size: 13px; font-weight: 500; color: #3c3c43; }
+.sub-group-meta { font-size: 11px; color: #8e8e93; }
+.sub-item-list { background: #fff; }
+.sub-item-row {
+  padding: 9px 14px 9px 28px; border-bottom: 1px solid #f2f2f7;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
+}
+.sub-item-row:last-child { border-bottom: none; }
+
+/* ===== Table ===== */
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th {
+  padding: 8px 10px; text-align: left; font-size: 11px; font-weight: 600;
+  color: #8e8e93; background: #f9f9f9; border-bottom: 1px solid #f2f2f7;
+  white-space: nowrap;
+}
+.data-table th.right, .data-table td.right { text-align: right; }
+.data-table td {
+  padding: 9px 10px; border-bottom: 1px solid #f2f2f7; color: #1c1c1e;
+}
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr.summary-row td { font-weight: 700; background: #f9f9f9; }
+.data-table tr.category-row td { font-weight: 600; background: #f0f6ff; color: #007aff; }
+
+/* ===== Modal ===== */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+  z-index: 200; align-items: flex-end; justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal-sheet {
+  background: #fff; border-radius: 20px 20px 0 0; width: 100%;
+  max-height: 85vh; overflow-y: auto; padding: 0 0 env(safe-area-inset-bottom, 16px);
+}
+.modal-handle {
+  width: 36px; height: 4px; background: #e5e5ea; border-radius: 2px;
+  margin: 10px auto 0;
+}
+.modal-header { padding: 12px 20px; border-bottom: 1px solid #f2f2f7; }
+.modal-title { font-size: 17px; font-weight: 600; }
+.modal-body { padding: 16px 20px; }
+.modal-close {
+  float: right; font-size: 20px; color: #8e8e93; padding: 0 0 0 12px;
+  background: none; border: none; cursor: pointer;
+}
+
+/* ===== Data Load Screen ===== */
+#load-screen {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 100vh; padding: 32px 24px; text-align: center; gap: 16px;
+}
+#load-screen h1 { font-size: 28px; font-weight: 800; color: #1c1c1e; }
+#load-screen p { font-size: 14px; color: #8e8e93; line-height: 1.6; }
+.load-btn {
+  width: 100%; max-width: 320px; padding: 14px 20px; border-radius: 12px;
+  font-size: 16px; font-weight: 600; cursor: pointer; border: none;
+  transition: opacity 0.15s;
+}
+.load-btn:active { opacity: 0.7; }
+.load-btn.primary { background: #007aff; color: #fff; }
+.load-btn.secondary { background: #e5e5ea; color: #1c1c1e; }
+.load-url-row { display: flex; gap: 8px; width: 100%; max-width: 320px; }
+.load-url-input {
+  flex: 1; padding: 12px 14px; border-radius: 10px; border: 1px solid #e5e5ea;
+  font-size: 14px; outline: none;
+}
+.load-url-input:focus { border-color: #007aff; }
+.load-divider {
+  display: flex; align-items: center; gap: 12px; width: 100%; max-width: 320px;
+  color: #8e8e93; font-size: 13px;
+}
+.load-divider::before, .load-divider::after {
+  content: ''; flex: 1; height: 1px; background: #e5e5ea;
+}
+.load-error { color: #ff3b30; font-size: 13px; }
+.load-success { color: #34c759; font-size: 13px; }
+
+/* ===== Misc ===== */
+.empty-state {
+  text-align: center; padding: 40px 20px; color: #8e8e93; font-size: 14px;
+}
+.profit-pos { color: #34c759; }
+.profit-neg { color: #ff3b30; }
+.mono { font-family: 'SF Mono', 'Courier New', monospace; }
+.text-right { text-align: right; }
+.text-center { text-align: center; }
+.mt8 { margin-top: 8px; }
+.mt12 { margin-top: 12px; }
+.row-flex { display: flex; align-items: center; justify-content: space-between; }
+.label-val { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f2f2f7; font-size: 14px; }
+.label-val:last-child { border-bottom: none; }
+.label-val .label { color: #8e8e93; }
+.label-val .val { font-weight: 500; }
+.section-title { font-size: 13px; font-weight: 600; color: #8e8e93; padding: 12px 16px 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* ===== Calc inputs ===== */
+.calc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.calc-item { background: #f9f9f9; border-radius: 10px; padding: 10px 12px; }
+.calc-item label { font-size: 11px; color: #8e8e93; display: block; margin-bottom: 4px; }
+.calc-item input {
+  width: 100%; border: none; background: transparent; font-size: 16px;
+  font-weight: 600; color: #1c1c1e; outline: none;
+}
+.calc-result {
+  background: #e3f0ff; border-radius: 12px; padding: 14px 16px;
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 10px;
+}
+.calc-result-label { font-size: 14px; color: #007aff; font-weight: 500; }
+.calc-result-val { font-size: 22px; font-weight: 800; color: #007aff; }
+
+/* ===== Search result ===== */
+.search-result-item {
+  padding: 10px 14px; border-bottom: 1px solid #f2f2f7; cursor: pointer;
+}
+.search-result-item:last-child { border-bottom: none; }
+.search-result-item:active { background: #f2f2f7; }
+.search-match-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.match-tag { font-size: 10px; padding: 1px 5px; border-radius: 4px; background: #e3f0ff; color: #007aff; }
+
+/* ===== Payton account cards ===== */
+.account-cards { display: flex; gap: 10px; padding: 10px 16px 0; }
+.account-card {
+  flex: 1; background: #fff; border-radius: 12px; padding: 12px 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.account-name { font-size: 12px; color: #8e8e93; }
+.account-balance { font-size: 20px; font-weight: 700; margin-top: 4px; }
+.account-balance.neg { color: #ff3b30; }
+.account-balance.pos { color: #34c759; }
+
+/* ===== Transfer record ===== */
+.transfer-card {
+  background: #fff; border-radius: 10px; margin: 8px 16px 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.07); overflow: hidden;
+}
+.transfer-header {
+  padding: 10px 14px; display: flex; justify-content: space-between;
+  align-items: center; cursor: pointer; border-bottom: 1px solid #f2f2f7;
+}
+.transfer-header:active { background: #f2f2f7; }
+.transfer-id { font-size: 13px; font-weight: 600; color: #1c1c1e; font-family: monospace; }
+.transfer-meta { font-size: 11px; color: #8e8e93; margin-top: 2px; }
+.transfer-amount { font-size: 16px; font-weight: 700; color: #ff9500; }
+
+/* ===== Finance record ===== */
+.finance-row {
+  padding: 10px 14px; border-bottom: 1px solid #f2f2f7;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.finance-row:last-child { border-bottom: none; }
+.finance-item-name { font-size: 14px; font-weight: 500; }
+.finance-date { font-size: 11px; color: #8e8e93; margin-top: 2px; }
+.finance-amount { font-size: 16px; font-weight: 600; }
+.finance-amount.income { color: #34c759; }
+.finance-amount.expense { color: #ff3b30; }
+
+/* ===== Loan summary ===== */
+.loan-party-card {
+  background: #fff; border-radius: 10px; margin: 8px 16px 0;
+  padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+}
+.loan-party-name { font-size: 15px; font-weight: 600; }
+.loan-progress { height: 4px; background: #e5e5ea; border-radius: 2px; margin: 8px 0 4px; }
+.loan-progress-bar { height: 100%; border-radius: 2px; background: #34c759; transition: width 0.3s; }
+
+/* ===== Batch return table ===== */
+.rate-high { color: #34c759; font-weight: 600; }
+.rate-mid { color: #8e8e93; }
+.rate-low { color: #c7c7cc; }
+
+/* ===== Scrollable table wrapper ===== */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* ===== Loading spinner ===== */
+.spinner {
+  width: 24px; height: 24px; border: 3px solid #e5e5ea;
+  border-top-color: #007aff; border-radius: 50%;
+  animation: spin 0.7s linear infinite; margin: 0 auto;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== Inventory filter mode ===== */
+.inv-filter-row { display: flex; gap: 6px; padding: 0 16px 6px; }
+.inv-filter-btn {
+  flex: 1; padding: 6px 4px; border-radius: 8px; font-size: 12px;
+  background: #e5e5ea; color: #3c3c43; border: none; cursor: pointer;
+  transition: all 0.15s; text-align: center;
+}
+.inv-filter-btn.active { background: #ff9500; color: #fff; font-weight: 600; }
+.inv-filter-btn.active.all { background: #007aff; }
+.inv-filter-btn.active.short { background: #af52de; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Data Load Screen -->
+  <div id="load-screen">
+    <div style="font-size:48px;color:#863bff">⚡</div>
+    <h1>PhtonRing在哪儿查询</h1>
+    <p>请选择数据加载方式</p>
+
+    <label class="load-btn primary" style="display:flex;align-items:center;justify-content:center;gap:8px;">
+      <span>📂 上传 JSON 文件</span>
+      <input type="file" id="file-input" accept=".json" style="display:none">
+    </label>
+
+    <div class="load-divider">或</div>
+
+    <div class="load-url-row">
+      <input type="text" id="url-input" class="load-url-input" placeholder="输入 JSON 文件 URL（含 WebDAV）">
+      <button class="load-btn primary" style="width:auto;padding:12px 16px;flex-shrink:0" onclick="loadFromUrl()">加载</button>
+    </div>
+    <p style="font-size:12px;color:#8e8e93;max-width:320px">支持 WebDAV、GitHub Raw、任意可访问的 JSON 地址。跨域请求需服务端支持 CORS。</p>
+    <div id="load-msg"></div>
+  </div>
+
+  <!-- Main App (hidden until data loaded) -->
+  <div id="main-app" style="display:none;flex-direction:column;height:100%;height:100dvh">
+    <div id="main-content">
+      <!-- Page: 数据透视 -->
+      <div class="page active" id="page-home">
+        <div class="page-header">
+          <div class="page-title">数据透视</div>
+          <div class="page-subtitle" id="home-date"></div>
+        </div>
+        <div id="home-content"></div>
+      </div>
+
+      <!-- Page: 库存 -->
+      <div class="page" id="page-inventory">
+        <div class="page-header">
+          <div class="page-title">库存查询</div>
+          <div class="page-subtitle" id="inv-subtitle"></div>
+        </div>
+        <div id="inventory-content"></div>
+      </div>
+
+      <!-- Page: 销售 -->
+      <div class="page" id="page-sales">
+        <div class="page-header">
+          <div class="page-title">销售清单</div>
+          <div class="page-subtitle" id="sales-subtitle"></div>
+        </div>
+        <div id="sales-content"></div>
+      </div>
+
+      <!-- Page: 采购 -->
+      <div class="page" id="page-purchase">
+        <div class="page-header">
+          <div class="page-title">采购 / 转运</div>
+          <div class="page-subtitle" id="purchase-subtitle"></div>
+        </div>
+        <div id="purchase-content"></div>
+      </div>
+
+      <!-- Page: 财务 -->
+      <div class="page" id="page-finance">
+        <div class="page-header">
+          <div class="page-title">收支 / Payton</div>
+          <div class="page-subtitle" id="finance-subtitle"></div>
+        </div>
+        <div id="finance-content"></div>
+      </div>
+    </div>
+
+    <!-- Bottom Nav -->
+    <nav id="bottom-nav">
+      <button class="nav-item active" onclick="switchPage('home',this)">
+        <span class="nav-icon">📊</span><span>透视</span>
+      </button>
+      <button class="nav-item" onclick="switchPage('inventory',this)">
+        <span class="nav-icon">📦</span><span>库存</span>
+      </button>
+      <button class="nav-item" onclick="switchPage('sales',this)">
+        <span class="nav-icon">💰</span><span>销售</span>
+      </button>
+      <button class="nav-item" onclick="switchPage('purchase',this)">
+        <span class="nav-icon">🛒</span><span>采购</span>
+      </button>
+      <button class="nav-item" onclick="switchPage('finance',this)">
+        <span class="nav-icon">🏦</span><span>财务</span>
+      </button>
+    </nav>
+  </div>
+</div>
+
+<script>
+// ===== Global State =====
+const APP = {
+  data: null,       // raw JSON data
+  calc: {},         // editable calc fields (debt, unconfirmed)
+  // UI state
+  currentPage: 'home',
+  invViewMode: 'batch',       // all/category/batch/brand
+  invFilterMode: 'all',       // all/long/short
+  invFilters: { category: '全部', batch: '全部', brand: '全部', keyword: '' },
+  salesViewMode: 'month',     // all/month/category/batch/brand
+  salesFilters: { category: '全部', batch: '全部', keyword: '' },
+  purchaseTab: '日淘',        // 日淘/美淘/国内
+  purchaseTransferTab: 'purchase', // purchase/transfer
+  collapsedGroups: {},        // key -> bool
+  financeTab: 'records',      // records/loans/payton
+  paytonTab: 'records',       // records/inventory
+  searchKeyword: '',
+  batchStatsCollapsed: true,
+};
+
+// ===== Utility =====
+function fmt(v, decimals=2) {
+  const n = Number(v || 0);
+  return n.toFixed(decimals);
+}
+function fmtMoney(v) { return fmt(v, 2); }
+function fmtProfit(v) {
+  const n = Number(v || 0);
+  return (n >= 0 ? '+' : '') + fmt(n, 2);
+}
+function profitClass(v) { return Number(v) >= 0 ? 'profit-pos' : 'profit-neg'; }
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function toNum(v, fb=0) { const n=Number(v); return isFinite(n)?n:fb; }
+
+// ===== Data Load =====
+document.getElementById('file-input').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      const json = JSON.parse(ev.target.result);
+      initApp(json);
+    } catch(err) {
+      showLoadMsg('JSON 解析失败：' + err.message, false);
+    }
+  };
+  reader.readAsText(file);
+});
+
+async function loadFromUrl() {
+  const url = document.getElementById('url-input').value.trim();
+  if (!url) return;
+  showLoadMsg('加载中...', null);
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const json = await resp.json();
+    initApp(json);
+  } catch(err) {
+    showLoadMsg('加载失败：' + err.message, false);
+  }
+}
+
+function showLoadMsg(msg, ok) {
+  const el = document.getElementById('load-msg');
+  el.textContent = msg;
+  el.className = ok === true ? 'load-success' : ok === false ? 'load-error' : '';
+}
+
+function initApp(json) {
+  APP.data = json;
+  // normalize
+  APP.data.items = APP.data.items || [];
+  APP.data.finance = APP.data.finance || {};
+  APP.data.finance.records = APP.data.finance.records || [];
+  APP.data.finance.loans = APP.data.finance.loans || [];
+  APP.data.transfers = APP.data.transfers || [];
+  APP.data.payton = APP.data.payton || {};
+  APP.data.payton.accounts = APP.data.payton.accounts || {};
+  APP.data.payton.records = APP.data.payton.records || [];
+  APP.data.payton.inventory = APP.data.payton.inventory || [];
+  APP.calc = Object.assign({ debt:0, wechat:0, publicExp:0, unconfirmed:0, fund:0 }, APP.data.calc || {});
+
+  document.getElementById('load-screen').style.display = 'none';
+  const mainApp = document.getElementById('main-app');
+  mainApp.style.display = 'flex';
+
+  renderAll();
+}
+
+// ===== Page Navigation =====
+function switchPage(name, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  APP.currentPage = name;
+  // scroll to top
+  document.getElementById('main-content').scrollTop = 0;
+}
+
+function renderAll() {
+  renderHome();
+  renderInventory();
+  renderSales();
+  renderPurchase();
+  renderFinance();
+}
+
+// ===== Toggle collapse =====
+function toggleGroup(key) {
+  APP.collapsedGroups[key] = !APP.collapsedGroups[key];
+  // re-render current page
+  if (APP.currentPage === 'inventory') renderInventory();
+  else if (APP.currentPage === 'sales') renderSales();
+  else if (APP.currentPage === 'purchase') renderPurchase();
+  else if (APP.currentPage === 'finance') renderFinance();
+}
+function isCollapsed(key) {
+  return APP.collapsedGroups[key] !== false; // default collapsed
+}
+function isExpanded(key) {
+  return APP.collapsedGroups[key] === true; // default collapsed = not expanded
+}
+// For purchase groups, default expanded = false (collapsed)
+function toggleGroupPurchase(key) {
+  APP.collapsedGroups['pur_'+key] = !APP.collapsedGroups['pur_'+key];
+  renderPurchase();
+}
+function isPurchaseExpanded(key) {
+  return APP.collapsedGroups['pur_'+key] === true;
+}
+</script>
+
+<script>
+// ===== INVENTORY MODULE =====
+const CATEGORY_ORDER = ['日淘','美淘','国内','2025JAPAN'];
+const BRAND_ORDER = ['hotwheels','minigt','tlv','kyosho','红白盒','其它'];
+const DEFAULT_BATCHES = {
+  '美淘': ['26下半年','26上半年','B组下半年','B组上半年','A组下半年','A组上半年'],
+  '日淘': ['26h批','26g批','26f批','26e批','预订','d批','c批','b批','a批'],
+  '国内': ['MINIGT预定','Hotwheels预定','国内现货','代理预定','苏州GTSHOW'],
+  '2025JAPAN': ['2025JAPAN'],
+};
+
+function normBrand(b) { return String(b||'').trim().toLowerCase(); }
+function brandRank(b) { const i=BRAND_ORDER.indexOf(normBrand(b)); return i>=0?i:99; }
+function catRank(c) { const i=CATEGORY_ORDER.indexOf(String(c||'')); return i>=0?i:99; }
+function batchRank(cat, batch) {
+  const b = String(batch||'').trim().toLowerCase();
+  if (cat==='日淘') {
+    if(b.includes('26h'))return 0; if(b.includes('26g'))return 1;
+    if(b.includes('26f'))return 2; if(b.includes('26e'))return 3;
+    if(b.includes('预订'))return 4; if(b==='d'||b.includes('d批'))return 5;
+    if(b==='c'||b.includes('c批'))return 6; if(b==='b'||b.includes('b批'))return 7;
+    if(b==='a'||b.includes('a批'))return 8; return 99;
+  }
+  if (cat==='美淘') {
+    if(b.includes('26下半年'))return 0; if(b.includes('26上半年'))return 1;
+    if(b.includes('b组下半年'))return 2; if(b.includes('b组上半年'))return 3;
+    if(b.includes('a组下半年'))return 4; if(b.includes('a组上半年'))return 5; return 99;
+  }
+  if (cat==='国内') {
+    if(b.includes('国内现货'))return 0; if(b.includes('代理预定'))return 1;
+    if(b.includes('苏州gtshow'))return 2; return 99;
+  }
+  return 99;
+}
+
+function filterInventoryItems() {
+  const f = APP.invFilters;
+  const kwNorm = String(f.keyword||'').trim().toLowerCase();
+  let items = APP.data.items.filter(i => {
+    if (i.status !== 'inventory') return false;
+    if (f.category !== '全部' && i.category !== f.category) return false;
+    if (f.batch !== '全部' && i.batch !== f.batch) return false;
+    if (f.brand !== '全部' && i.brand !== f.brand) return false;
+    if (kwNorm) {
+      const name = String(i.name||'').toLowerCase();
+      const sid = String(i.sid||'').toLowerCase();
+      if (!name.includes(kwNorm) && !sid.includes(kwNorm)) return false;
+    }
+    return true;
+  });
+  // long/short filter
+  if (APP.invFilterMode === 'long') items = items.filter(i => i.isLongTerm === true);
+  if (APP.invFilterMode === 'short') items = items.filter(i => i.isLongTerm !== true);
+  return items;
+}
+
+function groupInventoryItems(items) {
+  const mode = APP.invViewMode;
+  const map = new Map();
+
+  items.forEach(item => {
+    let key, groupLabel, groupBatch;
+    if (mode === 'all') { key='all'; groupLabel='全列表'; groupBatch='全部'; }
+    else if (mode === 'category') { key=item.category||'未分类'; groupLabel=key; groupBatch='按大类'; }
+    else if (mode === 'brand') { key=item.brand||'未分类品牌'; groupLabel=key; groupBatch=''; }
+    else { // batch
+      key=`${item.category||'未分类'}__${item.batch||'未分批'}`;
+      groupLabel=item.category||'未分类'; groupBatch=item.batch||'未分批';
+    }
+
+    if (!map.has(key)) {
+      map.set(key, { key, label:groupLabel, batch:groupBatch, category:item.category||'',
+        items:[], count:0, totalCost:0, longTermCount:0, longTermValue:0, defectCount:0, defectValue:0 });
+    }
+    const g = map.get(key);
+    g.items.push(item);
+    g.count++;
+    g.totalCost += toNum(item.cost);
+    if (item.isLongTerm) { g.longTermCount++; g.longTermValue += toNum(item.cost); }
+    if (item.isDefect) { g.defectCount++; g.defectValue += toNum(item.cost); }
+  });
+
+  // merge items by sid+name within each group
+  map.forEach(g => { g.mergedItems = mergeItemsBySidName(g.items); });
+
+  // sort groups
+  let groups = Array.from(map.values());
+  if (mode === 'batch') {
+    groups.sort((a,b) => {
+      const c1=catRank(a.category), c2=catRank(b.category);
+      if(c1!==c2) return c1-c2;
+      return batchRank(a.category,a.batch) - batchRank(b.category,b.batch);
+    });
+  } else if (mode === 'category') {
+    groups.sort((a,b) => catRank(a.label)-catRank(b.label));
+  } else if (mode === 'brand') {
+    groups.sort((a,b) => brandRank(a.label)-brandRank(b.label));
+  }
+  return groups;
+}
+
+function mergeItemsBySidName(items) {
+  const merged = new Map();
+  items.forEach(item => {
+    const key = `${item.sid||''}|${item.name||''}`;
+    if (!merged.has(key)) {
+      merged.set(key, { ...item, qty:1, itemIds:[item.id], totalCost:toNum(item.cost),
+        longTermCount:item.isLongTerm?1:0, longTermValue:item.isLongTerm?toNum(item.cost):0,
+        defectCount:item.isDefect?1:0, defectValue:item.isDefect?toNum(item.cost):0 });
+      return;
+    }
+    const g = merged.get(key);
+    g.qty++;
+    g.itemIds.push(item.id);
+    g.totalCost += toNum(item.cost);
+    if (item.isLongTerm) { g.longTermCount++; g.longTermValue += toNum(item.cost); if(!g.isLongTerm) g.isLongTerm=true; }
+    if (item.isDefect) { g.defectCount++; g.defectValue += toNum(item.cost); if(!g.isDefect) g.isDefect=true; }
+  });
+  return Array.from(merged.values());
+}
+
+function getInvStats() {
+  const items = APP.data.items;
+  const inv = items.filter(i=>i.status==='inventory');
+  const pur = items.filter(i=>i.status==='purchase');
+  const lt = inv.filter(i=>i.isLongTerm===true);
+  const def = inv.filter(i=>i.isDefect===true);
+  return {
+    invCount: inv.length,
+    invValue: inv.reduce((s,i)=>s+toNum(i.cost),0),
+    purCount: pur.length,
+    ltCount: lt.length,
+    ltValue: lt.reduce((s,i)=>s+toNum(i.cost),0),
+    defCount: def.length,
+  };
+}
+
+function renderInventory() {
+  const stats = getInvStats();
+  const items = filterInventoryItems();
+  const groups = groupInventoryItems(items);
+
+  // build category options
+  const cats = ['全部', ...CATEGORY_ORDER.filter(c =>
+    APP.data.items.some(i=>i.status==='inventory'&&i.category===c)
+  )];
+  // build batch options for selected category
+  let batches = ['全部'];
+  if (APP.invFilters.category !== '全部') {
+    const bSet = new Set();
+    APP.data.items.filter(i=>i.status==='inventory'&&i.category===APP.invFilters.category)
+      .forEach(i=>{ if(i.batch) bSet.add(i.batch); });
+    const order = DEFAULT_BATCHES[APP.invFilters.category]||[];
+    batches = ['全部', ...Array.from(bSet).sort((a,b)=>{
+      const ia=order.indexOf(a), ib=order.indexOf(b);
+      if(ia!==ib) return (ia>=0?ia:99)-(ib>=0?ib:99);
+      return String(a).localeCompare(String(b),'zh-CN');
+    })];
+  }
+  // brand options
+  const brandSet = new Set(['全部']);
+  APP.data.items.filter(i=>i.status==='inventory').forEach(i=>{ if(i.brand) brandSet.add(i.brand); });
+  const brands = Array.from(brandSet);
+
+  document.getElementById('inv-subtitle').textContent =
+    `库存 ${stats.invCount} 件 · ¥${fmtMoney(stats.invValue)}`;
+
+  let html = '';
+
+  // Stats cards
+  html += `<div class="stats-row">
+    <div class="stat-card"><div class="stat-val blue">${stats.invCount}</div><div class="stat-label">库存件数</div></div>
+    <div class="stat-card"><div class="stat-val blue">${fmtMoney(stats.invValue)}</div><div class="stat-label">库存货值</div></div>
+    <div class="stat-card"><div class="stat-val orange">${stats.ltCount}</div><div class="stat-label">长线件数</div></div>
+    <div class="stat-card"><div class="stat-val orange">${fmtMoney(stats.ltValue)}</div><div class="stat-label">长线货值</div></div>
+    <div class="stat-card"><div class="stat-val red">${stats.defCount}</div><div class="stat-label">残次件数</div></div>
+    <div class="stat-card"><div class="stat-val purple">${fmtMoney(stats.invValue-stats.ltValue)}</div><div class="stat-label">短线货值</div></div>
+  </div>`;
+
+  // Long/short filter
+  html += `<div class="inv-filter-row" style="margin-top:10px">
+    <button class="inv-filter-btn all ${APP.invFilterMode==='all'?'active':''}" onclick="setInvFilterMode('all')">全部</button>
+    <button class="inv-filter-btn ${APP.invFilterMode==='short'?'active short':''}" onclick="setInvFilterMode('short')">上架短线</button>
+    <button class="inv-filter-btn ${APP.invFilterMode==='long'?'active':''}" onclick="setInvFilterMode('long')">长线库存</button>
+  </div>`;
+
+  // View mode tabs
+  html += `<div class="view-tabs">
+    <button class="view-tab ${APP.invViewMode==='batch'?'active':''}" onclick="setInvView('batch')">批次</button>
+    <button class="view-tab ${APP.invViewMode==='category'?'active':''}" onclick="setInvView('category')">大类</button>
+    <button class="view-tab ${APP.invViewMode==='brand'?'active':''}" onclick="setInvView('brand')">品牌</button>
+    <button class="view-tab ${APP.invViewMode==='all'?'active':''}" onclick="setInvView('all')">全列表</button>
+  </div>`;
+
+  // Category filter chips
+  html += `<div class="filter-bar">`;
+  cats.forEach(c => {
+    html += `<button class="filter-chip ${APP.invFilters.category===c?'active':''}" onclick="setInvCat('${esc(c)}')">${esc(c)}</button>`;
+  });
+  html += `</div>`;
+
+  // Batch filter chips (only when category selected)
+  if (APP.invFilters.category !== '全部' && batches.length > 1) {
+    html += `<div class="filter-bar">`;
+    batches.forEach(b => {
+      html += `<button class="filter-chip small ${APP.invFilters.batch===b?'active':''}" onclick="setInvBatch('${esc(b)}')">${esc(b)}</button>`;
+    });
+    html += `</div>`;
+  }
+
+  // Brand filter chips
+  if (brands.length > 2) {
+    html += `<div class="filter-bar">`;
+    brands.forEach(b => {
+      html += `<button class="filter-chip small ${APP.invFilters.brand===b?'active':''}" onclick="setInvBrand('${esc(b)}')">${esc(b)}</button>`;
+    });
+    html += `</div>`;
+  }
+
+  // Search
+  html += `<div class="search-wrap">
+    <input class="search-input" type="text" placeholder="搜索名称或SID" value="${esc(APP.invFilters.keyword)}"
+      oninput="setInvKeyword(this.value)">
+  </div>`;
+
+  // Groups
+  if (groups.length === 0) {
+    html += `<div class="empty-state">暂无库存数据</div>`;
+  } else {
+    groups.forEach(g => {
+      const gKey = 'inv_' + g.key;
+      const expanded = APP.collapsedGroups[gKey] === true;
+      const chevron = expanded ? '▼' : '▶';
+      const groupTitle = APP.invViewMode === 'batch'
+        ? `${g.label} · ${g.batch}`
+        : g.label;
+
+      html += `<div class="group-section">
+        <div class="group-header ${expanded?'expanded':''}" onclick="toggleInvGroup('${esc(gKey)}')">
+          <div>
+            <div class="group-name">${esc(groupTitle)}</div>
+            <div class="group-meta">${g.count} 件 · ¥${fmtMoney(g.totalCost)}</div>
+          </div>
+          <div class="group-badge">`;
+      if (g.longTermCount > 0) html += `<span class="badge orange">长线 ${g.longTermCount}</span>`;
+      if (g.defectCount > 0) html += `<span class="badge red">残次 ${g.defectCount}</span>`;
+      html += `<span class="chevron ${expanded?'open':''}">${chevron}</span>
+          </div>
+        </div>`;
+
+      if (expanded) {
+        html += `<div class="item-list">`;
+        g.mergedItems.forEach(item => {
+          html += `<div class="item-row" onclick="openItemDetail(${JSON.stringify(item.id)})" style="cursor:pointer">
+            <div class="item-main">
+              <div class="item-name">${esc(item.name)}</div>
+              <div class="item-sid">${esc(item.sid||'')} · ${esc(item.brand||'')} · ${esc(item.batch||'')}</div>
+              <div class="item-tags">`;
+          if (item.isLongTerm) html += `<span class="tag longterm">长线</span>`;
+          if (item.isDefect) html += `<span class="tag defect">残次</span>`;
+          if (item.qty > 1 && item.longTermCount > 0 && item.longTermCount < item.qty)
+            html += `<span class="tag longterm">长线 ${item.longTermCount}/${item.qty}</span>`;
+          html += `</div>
+            </div>
+            <div class="item-right">
+              <div class="item-cost">¥${fmtMoney(item.qty > 1 ? item.totalCost : item.cost)}</div>
+              ${item.qty > 1 ? `<div class="item-qty">×${item.qty} · 单价¥${fmtMoney(item.cost)}</div>` : ''}
+            </div>
+          </div>`;
+        });
+        html += `</div>`;
+      }
+      html += `</div>`;
+    });
+  }
+
+  document.getElementById('inventory-content').innerHTML = html;
+}
+
+function setInvView(v) { APP.invViewMode=v; renderInventory(); }
+function setInvFilterMode(v) { APP.invFilterMode=v; renderInventory(); }
+function setInvCat(v) { APP.invFilters.category=v; APP.invFilters.batch='全部'; renderInventory(); }
+function setInvBatch(v) { APP.invFilters.batch=v; renderInventory(); }
+function setInvBrand(v) { APP.invFilters.brand=v; renderInventory(); }
+function setInvKeyword(v) { APP.invFilters.keyword=v; renderInventory(); }
+function toggleInvGroup(key) {
+  APP.collapsedGroups[key] = !APP.collapsedGroups[key];
+  renderInventory();
+}
+</script>
+
+<script>
+// ===== SALES MODULE =====
+function normFuzzy(s) {
+  return String(s||'').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g,'');
+}
+
+function filterSoldItems() {
+  const f = APP.salesFilters;
+  const kw = normFuzzy(f.keyword);
+  return APP.data.items.filter(i => {
+    if (i.status !== 'sold' || !i.saleDetails) return false;
+    if (f.category !== '全部' && i.category !== f.category) return false;
+    if (f.batch !== '全部' && i.batch !== f.batch) return false;
+    if (kw) {
+      const hay = normFuzzy(`${i.sid||''} ${i.name||''} ${i.brand||''} ${i.batch||''} ${i.category||''}`);
+      if (!hay.includes(kw)) return false;
+    }
+    return true;
+  });
+}
+
+function groupSoldItems(items) {
+  const mode = APP.salesViewMode;
+  const map = new Map();
+
+  const getTs = i => {
+    const d = i.saleDetails?.date;
+    if (!d) return 0;
+    const t = new Date(d).getTime();
+    return isFinite(t) ? t : 0;
+  };
+
+  items.forEach(item => {
+    let key;
+    if (mode === 'all') key = String(item.id);
+    else if (mode === 'month') key = item.saleDetails?.date?.slice(0,7) || '未记录月份';
+    else if (mode === 'category') key = item.category || '未分类';
+    else if (mode === 'batch') key = `${item.category||'未分类'} / ${item.batch||'未分批'}`;
+    else key = item.brand || '未分类品牌'; // brand
+
+    if (!map.has(key)) {
+      const title = mode === 'all' ? `${item.sid||''} / ${item.name||''}` : key;
+      map.set(key, { key, title, items:[], count:0, revenue:0, cost:0, profit:0 });
+    }
+    const g = map.get(key);
+    g.items.push(item);
+    g.count++;
+    g.revenue += toNum(item.saleDetails?.price);
+    g.cost += toNum(item.cost);
+    g.profit += toNum(item.saleDetails?.profit);
+  });
+
+  // sort items within each group by date desc
+  map.forEach(g => {
+    g.items.sort((a,b) => {
+      const ta=getTs(a), tb=getTs(b);
+      if(tb!==ta) return tb-ta;
+      return Number(b.id||0)-Number(a.id||0);
+    });
+  });
+
+  let groups = Array.from(map.values());
+
+  if (mode === 'all') {
+    groups.sort((a,b) => {
+      const da=a.items[0]?.saleDetails?.date||'', db=b.items[0]?.saleDetails?.date||'';
+      return String(db).localeCompare(String(da));
+    });
+  } else if (mode === 'month') {
+    groups.sort((a,b) => String(b.key).localeCompare(String(a.key)));
+  } else if (mode === 'category') {
+    groups.sort((a,b) => {
+      const x=catRank(a.key), y=catRank(b.key);
+      if(x!==y) return x-y;
+      return String(a.key).localeCompare(String(b.key),'zh-CN');
+    });
+  } else if (mode === 'batch') {
+    groups.sort((a,b) => {
+      const [ca,ba]=String(a.key||'').split(' / ');
+      const [cb,bb]=String(b.key||'').split(' / ');
+      const c1=catRank(ca), c2=catRank(cb);
+      if(c1!==c2) return c1-c2;
+      const br1=batchRank(ca,ba), br2=batchRank(cb,bb);
+      if(br1!==br2) return br1-br2;
+      return String(ba).localeCompare(String(bb),'zh-CN');
+    });
+  } else { // brand
+    groups.sort((a,b) => {
+      const r1=brandRank(a.key), r2=brandRank(b.key);
+      if(r1!==r2) return r1-r2;
+      return String(a.key).localeCompare(String(b.key),'zh-CN');
+    });
+  }
+  return groups;
+}
+
+function getSalesStats() {
+  const sold = APP.data.items.filter(i=>i.status==='sold');
+  const totalRevenue = sold.reduce((s,i)=>s+toNum(i.saleDetails?.price),0);
+  const totalProfit = sold.reduce((s,i)=>s+toNum(i.saleDetails?.profit),0);
+  const totalCost = sold.reduce((s,i)=>s+toNum(i.cost),0);
+  const profitMargin = totalCost>0 ? totalProfit/totalCost : 0;
+  const recoveryRate = totalCost>0 ? totalRevenue/totalCost : 0;
+  return { count:sold.length, totalRevenue, totalProfit, totalCost, profitMargin, recoveryRate };
+}
+
+function renderSales() {
+  const stats = getSalesStats();
+  const items = filterSoldItems();
+  const groups = groupSoldItems(items);
+
+  // category options
+  const catSet = new Set(['全部']);
+  APP.data.items.filter(i=>i.status==='sold').forEach(i=>{ if(i.category) catSet.add(i.category); });
+  const cats = Array.from(catSet);
+
+  // batch options
+  let batches = ['全部'];
+  const bSet = new Set();
+  APP.data.items.filter(i=>i.status==='sold' && (APP.salesFilters.category==='全部'||i.category===APP.salesFilters.category))
+    .forEach(i=>{ if(i.batch) bSet.add(i.batch); });
+  batches = ['全部', ...Array.from(bSet)];
+
+  document.getElementById('sales-subtitle').textContent =
+    `已售 ${stats.count} 件 · 利润 ¥${fmtMoney(stats.totalProfit)}`;
+
+  let html = '';
+
+  // Stats
+  html += `<div class="stats-row">
+    <div class="stat-card"><div class="stat-val blue">${stats.count}</div><div class="stat-label">已售件数</div></div>
+    <div class="stat-card"><div class="stat-val blue">${fmtMoney(stats.totalRevenue)}</div><div class="stat-label">总回款</div></div>
+    <div class="stat-card"><div class="stat-val">${fmtMoney(stats.totalCost)}</div><div class="stat-label">总成本</div></div>
+    <div class="stat-card"><div class="stat-val ${stats.totalProfit>=0?'green':'red'}">${fmtMoney(stats.totalProfit)}</div><div class="stat-label">总利润</div></div>
+    <div class="stat-card"><div class="stat-val purple">${fmt(stats.profitMargin*100,1)}%</div><div class="stat-label">利润率</div></div>
+    <div class="stat-card"><div class="stat-val teal">${fmt(stats.recoveryRate*100,1)}%</div><div class="stat-label">回本率</div></div>
+  </div>`;
+
+  // View mode tabs
+  html += `<div class="view-tabs">
+    <button class="view-tab ${APP.salesViewMode==='month'?'active':''}" onclick="setSalesView('month')">月份</button>
+    <button class="view-tab ${APP.salesViewMode==='batch'?'active':''}" onclick="setSalesView('batch')">批次</button>
+    <button class="view-tab ${APP.salesViewMode==='category'?'active':''}" onclick="setSalesView('category')">大类</button>
+    <button class="view-tab ${APP.salesViewMode==='brand'?'active':''}" onclick="setSalesView('brand')">品牌</button>
+    <button class="view-tab ${APP.salesViewMode==='all'?'active':''}" onclick="setSalesView('all')">全列表</button>
+  </div>`;
+
+  // Category filter
+  html += `<div class="filter-bar">`;
+  cats.forEach(c => {
+    html += `<button class="filter-chip ${APP.salesFilters.category===c?'active':''}" onclick="setSalesCat('${esc(c)}')">${esc(c)}</button>`;
+  });
+  html += `</div>`;
+
+  // Batch filter
+  if (batches.length > 2) {
+    html += `<div class="filter-bar">`;
+    batches.forEach(b => {
+      html += `<button class="filter-chip small ${APP.salesFilters.batch===b?'active':''}" onclick="setSalesBatch('${esc(b)}')">${esc(b)}</button>`;
+    });
+    html += `</div>`;
+  }
+
+  // Search
+  html += `<div class="search-wrap">
+    <input class="search-input" type="text" placeholder="搜索名称/SID/品牌" value="${esc(APP.salesFilters.keyword)}"
+      oninput="setSalesKeyword(this.value)">
+  </div>`;
+
+  if (groups.length === 0) {
+    html += `<div class="empty-state">暂无销售数据</div>`;
+  } else {
+    groups.forEach(g => {
+      const gKey = 'sales_' + g.key;
+      const expanded = APP.collapsedGroups[gKey] === true;
+
+      if (APP.salesViewMode === 'all') {
+        // flat list
+        const item = g.items[0];
+        const sd = item.saleDetails || {};
+        html += `<div class="card" style="margin-top:8px;cursor:pointer" onclick="openItemDetail(${JSON.stringify(item.id)})">
+          <div class="card-body" style="padding:10px 14px">
+            <div class="row-flex">
+              <div>
+                <div class="item-name">${esc(item.name)}</div>
+                <div class="item-sid">${esc(item.sid||'')} · ${esc(item.brand||'')} · ${esc(sd.date||'')}</div>
+              </div>
+              <div class="item-right">
+                <div class="item-cost">¥${fmtMoney(sd.price)}</div>
+                <div class="item-qty ${profitClass(sd.profit)}">${fmtProfit(sd.profit)}</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:6px;font-size:12px;color:#8e8e93">
+              <span>成本 ¥${fmtMoney(item.cost)}</span>
+              ${toNum(sd.express)>0?`<span>快递 ¥${fmtMoney(sd.express)}</span>`:''}
+              ${toNum(sd.feeRate)>0?`<span>费率 ${fmt(sd.feeRate*100,1)}%</span>`:''}
+              ${toNum(sd.deduction)>0?`<span>扣款 ¥${fmtMoney(sd.deduction)}</span>`:''}
+            </div>
+          </div>
+        </div>`;
+      } else {
+        const profitRate = g.cost > 0 ? g.profit/g.cost*100 : 0;
+        html += `<div class="group-section">
+          <div class="group-header ${expanded?'expanded':''}" onclick="toggleSalesGroup('${esc(gKey)}')">
+            <div>
+              <div class="group-name">${esc(g.title)}</div>
+              <div class="group-meta">${g.count} 件 · 回款¥${fmtMoney(g.revenue)} · 利润¥${fmtMoney(g.profit)}</div>
+            </div>
+            <div class="group-badge">
+              <span class="badge ${profitRate>=0?'green':'red'}">${fmt(profitRate,1)}%</span>
+              <span class="chevron ${expanded?'open':''}">${expanded?'▼':'▶'}</span>
+            </div>
+          </div>`;
+
+        if (expanded) {
+          html += `<div class="item-list">`;
+          g.items.forEach(item => {
+            const sd = item.saleDetails || {};
+            html += `<div class="item-row" onclick="openItemDetail(${JSON.stringify(item.id)})" style="cursor:pointer">
+              <div class="item-main">
+                <div class="item-name">${esc(item.name)}</div>
+                <div class="item-sid">${esc(item.sid||'')} · ${esc(item.brand||'')} · ${esc(sd.date||'')}</div>
+                <div style="font-size:12px;color:#8e8e93;margin-top:3px">
+                  成本¥${fmtMoney(item.cost)}
+                  ${toNum(sd.express)>0?' · 快递¥'+fmtMoney(sd.express):''}
+                  ${toNum(sd.feeRate)>0?' · 费率'+fmt(sd.feeRate*100,1)+'%':''}
+                  ${toNum(sd.deduction)>0?' · 扣款¥'+fmtMoney(sd.deduction):''}
+                </div>
+              </div>
+              <div class="item-right">
+                <div class="item-cost">¥${fmtMoney(sd.price)}</div>
+                <div class="item-qty ${profitClass(sd.profit)}">${fmtProfit(sd.profit)}</div>
+              </div>
+            </div>`;
+          });
+          html += `</div>`;
+        }
+        html += `</div>`;
+      }
+    });
+  }
+
+  document.getElementById('sales-content').innerHTML = html;
+}
+
+function setSalesView(v) { APP.salesViewMode=v; renderSales(); }
+function setSalesCat(v) { APP.salesFilters.category=v; APP.salesFilters.batch='全部'; renderSales(); }
+function setSalesBatch(v) { APP.salesFilters.batch=v; renderSales(); }
+function setSalesKeyword(v) { APP.salesFilters.keyword=v; renderSales(); }
+function toggleSalesGroup(key) {
+  APP.collapsedGroups[key] = !APP.collapsedGroups[key];
+  renderSales();
+}
+</script>
+
+<script>
+// ===== PURCHASE & TRANSFER MODULE =====
+const PURCHASE_TABS = ['日淘','美淘','国内'];
+
+function getPurchaseGroupKey(item) {
+  const pgId = String(item.purchaseDetails?.purchaseGroupId||'').trim();
+  const pb = String(item.purchaseDetails?.paymentBatch||'').trim();
+  if (pgId && pb) return `${pgId}__${pb}`;
+  if (pgId) return pgId;
+  return `${item.purchaseDetails?.date||''}__${item.purchaseDetails?.website||''}__${pb}`;
+}
+
+function mergeItemsBySid(items) {
+  const getSortTs = item => {
+    const d = item.purchaseDetails?.date;
+    const dateTs = d ? new Date(d).getTime() : 0;
+    const idTs = Number(item.id||0);
+    return (isFinite(dateTs)?dateTs:0)*1000000 + (isFinite(idTs)?idTs:0);
+  };
+  const map = new Map();
+  items.forEach(item => {
+    const key = String(item.sid||'');
+    if (!map.has(key)) {
+      map.set(key, {...item, qty:1, _latestTs:getSortTs(item)});
+      return;
+    }
+    const g = map.get(key);
+    g.qty++;
+    g._latestTs = Math.max(Number(g._latestTs||0), getSortTs(item));
+  });
+  return Array.from(map.values())
+    .sort((a,b) => Number(b._latestTs||0)-Number(a._latestTs||0))
+    .map(item => { const n={...item}; delete n._latestTs; return n; });
+}
+
+function buildPurchaseGroups(categoryItems) {
+  // Level 1: batch groups
+  const batchMap = new Map();
+  categoryItems.forEach(item => {
+    const key = `${item.category||'未分类'}__${item.batch||'未分批'}`;
+    if (!batchMap.has(key)) {
+      batchMap.set(key, {
+        key, category:item.category||'未分类', batch:item.batch||'未分批',
+        count:0, totalAmount:0, purchase:0, transfer:0,
+        pgMap: new Map()
+      });
+    }
+    const bg = batchMap.get(key);
+    bg.count++;
+    bg.totalAmount += toNum(item.cost);
+    bg.purchase += toNum(item.purchaseDetails?.preTransferCost);
+    bg.transfer += toNum(item.purchaseDetails?.transferCost);
+
+    // Level 2: purchase group
+    const pgKey = getPurchaseGroupKey(item);
+    if (!bg.pgMap.has(pgKey)) {
+      const pd = item.purchaseDetails || {};
+      bg.pgMap.set(pgKey, {
+        key: pgKey,
+        purchaseGroupId: pd.purchaseGroupId||'',
+        paymentBatch: pd.paymentBatch||'',
+        date: pd.date||'',
+        website: pd.website||'',
+        websiteAccount: pd.websiteAccount||'',
+        paymentAccount: pd.paymentAccount||'',
+        discount: pd.discount||'',
+        totalRMB: toNum(pd.totalRMB),
+        count:0, totalAmount:0, purchase:0, transfer:0,
+        items:[]
+      });
+    }
+    const pg = bg.pgMap.get(pgKey);
+    pg.count++;
+    pg.totalAmount += toNum(item.cost);
+    pg.purchase += toNum(item.purchaseDetails?.preTransferCost);
+    pg.transfer += toNum(item.purchaseDetails?.transferCost);
+    pg.items.push(item);
+  });
+
+  // sort batches
+  const batches = Array.from(batchMap.values());
+  batches.sort((a,b) => batchRank(a.category,a.batch)-batchRank(b.category,b.batch));
+
+  // sort purchase groups by date desc within each batch
+  batches.forEach(bg => {
+    const pgs = Array.from(bg.pgMap.values());
+    pgs.sort((a,b) => String(b.date).localeCompare(String(a.date)));
+    // merge items by sid within each pg
+    pgs.forEach(pg => { pg.mergedItems = mergeItemsBySid(pg.items); });
+    bg.purchaseGroups = pgs;
+  });
+
+  return batches;
+}
+
+function buildTransferList(category) {
+  const transfers = APP.data.transfers.filter(t => {
+    if (category === '全部') return true;
+    return t.category === category;
+  });
+  // sort by date desc
+  return transfers.slice().sort((a,b) => String(b.date||'').localeCompare(String(a.date||'')));
+}
+
+function getPurchaseStats() {
+  const items = APP.data.items.filter(i=>i.status==='purchase' && PURCHASE_TABS.includes(i.category));
+  const totalCount = items.length;
+  const totalAmount = items.reduce((s,i)=>s+toNum(i.cost),0);
+  const pendingCount = items.filter(i=>(i.purchaseDetails?.transferStatus||'pending')==='pending').length;
+  const completedCount = items.filter(i=>i.purchaseDetails?.transferStatus==='completed').length;
+  const byCategory = {};
+  PURCHASE_TABS.forEach(c => {
+    const ci = items.filter(i=>i.category===c);
+    byCategory[c] = {
+      count:ci.length,
+      amount:ci.reduce((s,i)=>s+toNum(i.cost),0),
+      purchase:ci.reduce((s,i)=>s+toNum(i.purchaseDetails?.preTransferCost),0),
+      transfer:ci.reduce((s,i)=>s+toNum(i.purchaseDetails?.transferCost),0),
+      pendingCount:ci.filter(i=>(i.purchaseDetails?.transferStatus||'pending')==='pending').length,
+    };
+  });
+  return { totalCount, totalAmount, pendingCount, completedCount, byCategory };
+}
+
+function renderPurchase() {
+  const stats = getPurchaseStats();
+  const tab = APP.purchaseTab;
+  const subTab = APP.purchaseTransferTab;
+
+  document.getElementById('purchase-subtitle').textContent =
+    `采购中 ${stats.totalCount} 件 · 待转运 ${stats.pendingCount} 件`;
+
+  let html = '';
+
+  // Overall stats
+  html += `<div class="stats-row" style="grid-template-columns:repeat(2,1fr)">
+    <div class="stat-card"><div class="stat-val orange">${stats.totalCount}</div><div class="stat-label">采购中(件)</div></div>
+    <div class="stat-card"><div class="stat-val orange">${fmtMoney(stats.totalAmount)}</div><div class="stat-label">采购中金额</div></div>
+    <div class="stat-card"><div class="stat-val red">${stats.pendingCount}</div><div class="stat-label">待转运</div></div>
+    <div class="stat-card"><div class="stat-val green">${stats.completedCount}</div><div class="stat-label">已转运</div></div>
+  </div>`;
+
+  // Sub-tab: purchase / transfer
+  html += `<div class="view-tabs" style="margin-top:10px">
+    <button class="view-tab ${subTab==='purchase'?'active':''}" onclick="setPurchaseSubTab('purchase')">采购清单</button>
+    <button class="view-tab ${subTab==='transfer'?'active':''}" onclick="setPurchaseSubTab('transfer')">转运清单</button>
+  </div>`;
+
+  if (subTab === 'purchase') {
+    // Category tabs
+    html += `<div class="filter-bar">`;
+    PURCHASE_TABS.forEach(c => {
+      const cs = stats.byCategory[c];
+      html += `<button class="filter-chip ${tab===c?'active':''}" onclick="setPurchaseTab('${c}')">
+        ${esc(c)} ${cs.count>0?`<span style="font-size:11px">(${cs.count})</span>`:''}
+      </button>`;
+    });
+    html += `</div>`;
+
+    // Category stats bar
+    const cs = stats.byCategory[tab];
+    html += `<div class="card" style="margin-top:8px">
+      <div class="card-body" style="padding:10px 14px">
+        <div style="display:flex;gap:16px;font-size:13px">
+          <div><span style="color:#8e8e93">件数</span> <b>${cs.count}</b></div>
+          <div><span style="color:#8e8e93">总额</span> <b>¥${fmtMoney(cs.amount)}</b></div>
+          <div><span style="color:#8e8e93">采购</span> <b>¥${fmtMoney(cs.purchase)}</b></div>
+          <div><span style="color:#8e8e93">转运</span> <b>¥${fmtMoney(cs.transfer)}</b></div>
+        </div>
+        <div style="margin-top:6px;font-size:12px;color:#8e8e93">待转运 ${cs.pendingCount} 件</div>
+      </div>
+    </div>`;
+
+    // Build purchase groups
+    const categoryItems = APP.data.items.filter(i=>i.status==='purchase'&&i.category===tab);
+    const batches = buildPurchaseGroups(categoryItems);
+
+    if (batches.length === 0) {
+      html += `<div class="empty-state">暂无采购数据</div>`;
+    } else {
+      batches.forEach(bg => {
+        const bgKey = 'pur_batch_' + bg.key;
+        const bgExpanded = APP.collapsedGroups[bgKey] === true;
+
+        html += `<div class="group-section">
+          <div class="group-header ${bgExpanded?'expanded':''}" onclick="togglePurGroup('${esc(bgKey)}')">
+            <div>
+              <div class="group-name">${esc(bg.batch)}</div>
+              <div class="group-meta">${bg.count} 件 · ¥${fmtMoney(bg.totalAmount)} · 采购¥${fmtMoney(bg.purchase)} · 转运¥${fmtMoney(bg.transfer)}</div>
+            </div>
+            <div class="group-badge">
+              <span class="chevron ${bgExpanded?'open':''}">▶</span>
+            </div>
+          </div>`;
+
+        if (bgExpanded) {
+          html += `<div class="item-list" style="border-radius:0 0 10px 10px">`;
+          bg.purchaseGroups.forEach(pg => {
+            const pgKey = 'pur_pg_' + bg.key + '_' + pg.key;
+            const pgExpanded = APP.collapsedGroups[pgKey] === true;
+
+            // Purchase group header (level 2)
+            html += `<div class="sub-group">
+              <div class="sub-group-header" onclick="togglePurGroup('${esc(pgKey)}')">
+                <div>
+                  <div class="sub-group-name">
+                    ${esc(pg.paymentBatch||pg.purchaseGroupId||'未知组')}
+                    ${pg.date?`<span style="color:#8e8e93;font-size:11px;margin-left:6px">${esc(pg.date)}</span>`:''}
+                  </div>
+                  <div class="sub-group-meta">
+                    ${pg.website?esc(pg.website):''}${pg.websiteAccount?' · '+esc(pg.websiteAccount):''}
+                    ${pg.paymentAccount?' · '+esc(pg.paymentAccount):''}
+                    ${pg.discount?' · 折扣'+esc(pg.discount):''}
+                  </div>
+                  <div class="sub-group-meta">
+                    ${pg.count} 件 · ¥${fmtMoney(pg.totalAmount)}
+                    ${pg.totalRMB>0?' · 总RMB¥'+fmtMoney(pg.totalRMB):''}
+                  </div>
+                </div>
+                <span class="chevron ${pgExpanded?'open':''}">▶</span>
+              </div>`;
+
+            if (pgExpanded) {
+              html += `<div class="sub-item-list">`;
+              pg.mergedItems.forEach(item => {
+                const pd = item.purchaseDetails || {};
+                const isPending = (pd.transferStatus||'pending') === 'pending';
+                html += `<div class="sub-item-row" onclick="openItemDetail(${JSON.stringify(item.id)})" style="cursor:pointer">
+                  <div class="item-main">
+                    <div class="item-name">${esc(item.name)}</div>
+                    <div class="item-sid">${esc(item.sid||'')} · ${esc(item.brand||'')}</div>
+                    <div class="item-tags">
+                      <span class="tag ${isPending?'pending':'completed'}">${isPending?'待转运':'已转运'}</span>
+                      ${pd.transferBatch?`<span class="tag">${esc(pd.transferBatch)}</span>`:''}
+                      ${item.qty>1?`<span class="tag">×${item.qty}</span>`:''}
+                    </div>
+                    <div style="font-size:11px;color:#8e8e93;margin-top:3px">
+                      ${pd.originalPrice?`原价${esc(String(pd.originalPrice))}`:''}
+                      ${pd.domesticShipping?` · 运费¥${fmtMoney(pd.domesticShipping)}`:''}
+                      ${pd.fee?` · 手续费¥${fmtMoney(pd.fee)}`:''}
+                      ${pd.transferCoefficient?` · 系数${pd.transferCoefficient}`:''}
+                      ${pd.preTransferCost?` · 在途¥${fmtMoney(pd.preTransferCost)}`:''}
+                      ${toNum(pd.transferCost)>0?` · 转运¥${fmtMoney(pd.transferCost)}`:''}
+                    </div>
+                  </div>
+                  <div class="item-right">
+                    <div class="item-cost">¥${fmtMoney(item.cost)}</div>
+                    ${item.qty>1?`<div class="item-qty">×${item.qty}</div>`:''}
+                  </div>
+                </div>`;
+              });
+              html += `</div>`;
+            }
+            html += `</div>`; // sub-group
+          });
+          html += `</div>`; // item-list
+        }
+        html += `</div>`; // group-section
+      });
+    }
+
+  } else {
+    // Transfer list
+    html += `<div class="filter-bar">`;
+    ['全部','日淘','美淘','国内'].forEach(c => {
+      html += `<button class="filter-chip ${APP.transferCat===c?'active':''}" onclick="setTransferCat('${c}')">${esc(c)}</button>`;
+    });
+    html += `</div>`;
+
+    const transfers = buildTransferList(APP.transferCat||'全部');
+    if (transfers.length === 0) {
+      html += `<div class="empty-state">暂无转运记录</div>`;
+    } else {
+      transfers.forEach(t => {
+        const tKey = 'transfer_' + t.transferId;
+        const tExpanded = APP.collapsedGroups[tKey] === true;
+
+        // find items for this transfer
+        const tItems = APP.data.items.filter(i =>
+          i.purchaseDetails?.transferId === t.transferId ||
+          (t.itemIds && t.itemIds.includes(i.id))
+        );
+
+        html += `<div class="transfer-card">
+          <div class="transfer-header" onclick="togglePurGroup('${esc(tKey)}')">
+            <div>
+              <div class="transfer-id">${esc(t.transferBatch||t.transferId)}</div>
+              <div class="transfer-meta">
+                ${t.date?esc(t.date)+' · ':''}
+                ${t.category?esc(t.category)+' ':''} ${t.batch?esc(t.batch):''}
+                · ${tItems.length} 件
+                ${t.paymentAccount?' · '+esc(t.paymentAccount):''}
+              </div>
+            </div>
+            <div style="text-align:right">
+              <div class="transfer-amount">¥${fmtMoney(t.totalRMB)}</div>
+              <span class="chevron ${tExpanded?'open':''}">▶</span>
+            </div>
+          </div>`;
+
+        if (tExpanded && tItems.length > 0) {
+          html += `<div class="item-list">`;
+          const merged = mergeItemsBySid(tItems);
+          merged.forEach(item => {
+            const pd = item.purchaseDetails || {};
+            html += `<div class="item-row" onclick="openItemDetail(${JSON.stringify(item.id)})" style="cursor:pointer">
+              <div class="item-main">
+                <div class="item-name">${esc(item.name)}</div>
+                <div class="item-sid">${esc(item.sid||'')} · ${esc(item.brand||'')} · ${esc(item.status==='inventory'?'已入库':'采购中')}</div>
+                <div style="font-size:11px;color:#8e8e93;margin-top:2px">
+                  系数${toNum(pd.transferCoefficient,1)} · 转运¥${fmtMoney(pd.transferCost)}
+                </div>
+              </div>
+              <div class="item-right">
+                <div class="item-cost">¥${fmtMoney(item.cost)}</div>
+                ${item.qty>1?`<div class="item-qty">×${item.qty}</div>`:''}
+              </div>
+            </div>`;
+          });
+          html += `</div>`;
+        }
+        html += `</div>`; // transfer-card
+      });
+    }
+  }
+
+  document.getElementById('purchase-content').innerHTML = html;
+}
+
+function setPurchaseTab(v) { APP.purchaseTab=v; renderPurchase(); }
+function setPurchaseSubTab(v) { APP.purchaseTransferTab=v; renderPurchase(); }
+function setTransferCat(v) { APP.transferCat=v; renderPurchase(); }
+function togglePurGroup(key) {
+  APP.collapsedGroups[key] = !APP.collapsedGroups[key];
+  renderPurchase();
+}
+</script>
+
+<script>
+// ===== FINANCE MODULE =====
+function getFinanceStats() {
+  const records = APP.data.finance.records;
+  const loans = APP.data.finance.loans;
+  const totalIncome = records.reduce((s,r)=>r.type==='income'?s+toNum(r.amount):s, 0);
+  const totalExpense = records.reduce((s,r)=>r.type==='expense'?s+toNum(r.amount):s, 0);
+  const totalBorrowed = loans.reduce((s,r)=>r.type==='borrow'?s+toNum(r.amount):s, 0);
+  const totalLent = loans.reduce((s,r)=>r.type==='lend'?s+toNum(r.amount):s, 0);
+  return { totalIncome, totalExpense, netBalance:totalIncome-totalExpense, totalBorrowed, totalLent, netLoan:totalBorrowed-totalLent };
+}
+
+function buildLoanSummary() {
+  const loans = APP.data.finance.loans;
+  const map = {};
+  loans.forEach(l => {
+    const cp = l.counterparty || '未知';
+    if (!map[cp]) map[cp] = { counterparty:cp, borrowAmount:0, repayAmount:0, borrowCount:0, repayCount:0, records:[] };
+    const g = map[cp];
+    if (l.type === 'borrow') { g.borrowAmount += toNum(l.amount); g.borrowCount++; }
+    else if (l.type === 'lend') { g.repayAmount += toNum(l.amount); g.repayCount++; } // lend=还款/归还
+    g.records.push(l);
+  });
+  return Object.values(map).filter(g => g.borrowAmount > 0).map(g => ({
+    ...g,
+    balance: g.borrowAmount - g.repayAmount,
+    progressPercent: g.borrowAmount > 0 ? Math.min(100, g.repayAmount/g.borrowAmount*100) : 0,
+  }));
+}
+
+function getLoanStatus(g) {
+  if (g.balance <= 0) return { text:'已还清', color:'#34c759' };
+  if (g.repayAmount > 0) return { text:'还款中', color:'#ff9500' };
+  return { text:'未还', color:'#ff3b30' };
+}
+
+function getPaytonStats() {
+  const accounts = APP.data.payton.accounts;
+  const records = APP.data.payton.records;
+  const inventory = APP.data.payton.inventory;
+  const totalBalance = Object.values(accounts).reduce((s,a)=>s+toNum(a.balance),0);
+  const inventoryValue = inventory.reduce((s,c)=>s+toNum(c.totalCost),0);
+  const totalModels = inventory.length;
+  const totalCars = inventory.reduce((s,c)=>s+toNum(c.qty),0);
+  const sellPool = inventory.filter(c=>String(c.pool||'sell')==='sell');
+  const keepPool = inventory.filter(c=>String(c.pool||'sell')==='keep');
+  const poolStats = list => ({
+    models:list.length,
+    cars:list.reduce((s,c)=>s+toNum(c.qty),0),
+    value:list.reduce((s,c)=>s+toNum(c.totalCost),0),
+  });
+  const totalIncome = records.reduce((s,r)=>r.type==='income'?s+toNum(r.amount):s,0);
+  const totalExpense = records.reduce((s,r)=>r.type==='expense'?s+toNum(r.amount):s,0);
+  return { totalBalance, inventoryValue, totalModels, totalCars, totalIncome, totalExpense,
+    sellStats:poolStats(sellPool), keepStats:poolStats(keepPool) };
+}
+
+function groupPaytonRecordsByMonth(records) {
+  const map = new Map();
+  const sorted = records.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
+  sorted.forEach(r => {
+    const month = String(r.date||'').slice(0,7) || '未知月份';
+    if (!map.has(month)) map.set(month, { month, records:[], income:0, expense:0 });
+    const g = map.get(month);
+    g.records.push(r);
+    if (r.type==='income') g.income += toNum(r.amount);
+    else if (r.type==='expense') g.expense += toNum(r.amount);
+  });
+  return Array.from(map.values());
+}
+
+function renderFinance() {
+  const finTab = APP.financeTab;
+  const fStats = getFinanceStats();
+  const pStats = getPaytonStats();
+
+  document.getElementById('finance-subtitle').textContent =
+    `收支净额 ¥${fmtMoney(fStats.netBalance)} · Payton ¥${fmtMoney(pStats.totalBalance)}`;
+
+  let html = '';
+
+  // Top tabs
+  html += `<div class="view-tabs" style="margin-top:10px">
+    <button class="view-tab ${finTab==='records'?'active':''}" onclick="setFinanceTab('records')">公共收支</button>
+    <button class="view-tab ${finTab==='loans'?'active':''}" onclick="setFinanceTab('loans')">借贷关系</button>
+    <button class="view-tab ${finTab==='payton'?'active':''}" onclick="setFinanceTab('payton')">Payton基金</button>
+  </div>`;
+
+  if (finTab === 'records') {
+    // Finance records
+    html += `<div class="stats-row" style="grid-template-columns:repeat(3,1fr)">
+      <div class="stat-card"><div class="stat-val green">${fmtMoney(fStats.totalIncome)}</div><div class="stat-label">总收入</div></div>
+      <div class="stat-card"><div class="stat-val red">${fmtMoney(fStats.totalExpense)}</div><div class="stat-label">总支出</div></div>
+      <div class="stat-card"><div class="stat-val ${fStats.netBalance>=0?'green':'red'}">${fmtMoney(fStats.netBalance)}</div><div class="stat-label">净余额</div></div>
+    </div>`;
+
+    const records = APP.data.finance.records.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
+    if (records.length === 0) {
+      html += `<div class="empty-state">暂无收支记录</div>`;
+    } else {
+      html += `<div class="card" style="margin-top:10px">`;
+      records.forEach(r => {
+        html += `<div class="finance-row">
+          <div>
+            <div class="finance-item-name">${esc(r.item||'')}</div>
+            <div class="finance-date">${esc(r.date||'')}${r.note?' · '+esc(r.note):''}</div>
+          </div>
+          <div class="finance-amount ${r.type}">${r.type==='income'?'+':'-'}¥${fmtMoney(r.amount)}</div>
+        </div>`;
+      });
+      html += `</div>`;
+    }
+
+  } else if (finTab === 'loans') {
+    // Loan records
+    html += `<div class="stats-row">
+      <div class="stat-card"><div class="stat-val orange">${fmtMoney(fStats.totalBorrowed)}</div><div class="stat-label">总借入</div></div>
+      <div class="stat-card"><div class="stat-val green">${fmtMoney(fStats.totalLent)}</div><div class="stat-label">已还款</div></div>
+      <div class="stat-card"><div class="stat-val ${fStats.netLoan>=0?'orange':'green'}">${fmtMoney(fStats.netLoan)}</div><div class="stat-label">待还余额</div></div>
+    </div>`;
+
+    const loanSummary = buildLoanSummary();
+    if (loanSummary.length === 0) {
+      html += `<div class="empty-state">暂无借贷记录</div>`;
+    } else {
+      loanSummary.forEach(g => {
+        const status = getLoanStatus(g);
+        html += `<div class="loan-party-card">
+          <div class="row-flex">
+            <div class="loan-party-name">${esc(g.counterparty)}</div>
+            <span style="font-size:12px;font-weight:600;color:${status.color}">${status.text}</span>
+          </div>
+          <div class="loan-progress">
+            <div class="loan-progress-bar" style="width:${g.progressPercent.toFixed(1)}%;background:${status.color}"></div>
+          </div>
+          <div style="display:flex;gap:16px;font-size:13px;color:#8e8e93">
+            <span>借入 <b style="color:#1c1c1e">¥${fmtMoney(g.borrowAmount)}</b></span>
+            <span>已还 <b style="color:#34c759">¥${fmtMoney(g.repayAmount)}</b></span>
+            <span>余额 <b style="color:${g.balance>0?'#ff3b30':'#34c759'}">¥${fmtMoney(g.balance)}</b></span>
+          </div>
+          <div style="margin-top:8px">`;
+        // individual loan records
+        g.records.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).forEach(l => {
+          const typeLabel = l.type==='borrow'?'借入':l.type==='lend'?'还款':'其它';
+          const typeColor = l.type==='borrow'?'#ff9500':'#34c759';
+          html += `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid #f2f2f7">
+            <span style="color:#8e8e93">${esc(l.date||'')} <span style="color:${typeColor}">${typeLabel}</span>${l.note?' · '+esc(l.note):''}</span>
+            <b>¥${fmtMoney(l.amount)}</b>
+          </div>`;
+        });
+        html += `</div></div>`;
+      });
+    }
+
+  } else {
+    // Payton
+    const paytonTab = APP.paytonTab;
+    html += `<div class="view-tabs">
+      <button class="view-tab ${paytonTab==='records'?'active':''}" onclick="setPaytonTab('records')">流水记录</button>
+      <button class="view-tab ${paytonTab==='inventory'?'active':''}" onclick="setPaytonTab('inventory')">小车库存</button>
+    </div>`;
+
+    // Account cards
+    html += `<div class="account-cards">`;
+    Object.entries(APP.data.payton.accounts).forEach(([key, acc]) => {
+      const bal = toNum(acc.balance);
+      html += `<div class="account-card">
+        <div class="account-name">${esc(acc.name||key)}</div>
+        <div class="account-balance ${bal>=0?'pos':'neg'}">¥${fmtMoney(bal)}</div>
+      </div>`;
+    });
+    html += `</div>`;
+
+    // Stats
+    html += `<div class="stats-row" style="grid-template-columns:repeat(2,1fr)">
+      <div class="stat-card"><div class="stat-val blue">${fmtMoney(pStats.totalBalance)}</div><div class="stat-label">账户总余额</div></div>
+      <div class="stat-card"><div class="stat-val orange">${fmtMoney(pStats.inventoryValue)}</div><div class="stat-label">库存总价值</div></div>
+      <div class="stat-card"><div class="stat-val green">${fmtMoney(pStats.totalIncome)}</div><div class="stat-label">总收入</div></div>
+      <div class="stat-card"><div class="stat-val red">${fmtMoney(pStats.totalExpense)}</div><div class="stat-label">总支出</div></div>
+    </div>`;
+
+    if (paytonTab === 'records') {
+      const monthGroups = groupPaytonRecordsByMonth(APP.data.payton.records);
+      if (monthGroups.length === 0) {
+        html += `<div class="empty-state">暂无流水记录</div>`;
+      } else {
+        monthGroups.forEach(mg => {
+          const mgKey = 'payton_month_' + mg.month;
+          const mgExpanded = APP.collapsedGroups[mgKey] === true;
+          html += `<div class="group-section">
+            <div class="group-header ${mgExpanded?'expanded':''}" onclick="toggleFinanceGroup('${esc(mgKey)}')">
+              <div>
+                <div class="group-name">${esc(mg.month)}</div>
+                <div class="group-meta">收入¥${fmtMoney(mg.income)} · 支出¥${fmtMoney(mg.expense)} · ${mg.records.length}笔</div>
+              </div>
+              <span class="chevron ${mgExpanded?'open':''}">▶</span>
+            </div>`;
+          if (mgExpanded) {
+            html += `<div class="item-list">`;
+            mg.records.forEach(r => {
+              html += `<div class="finance-row">
+                <div>
+                  <div class="finance-item-name">${esc(r.note||r.category||'')}</div>
+                  <div class="finance-date">${esc(r.date||'')} · ${esc(r.category||'')} · ${esc(APP.data.payton.accounts[r.account]?.name||r.account||'')}</div>
+                </div>
+                <div class="finance-amount ${r.type}">${r.type==='income'?'+':'-'}¥${fmtMoney(r.amount)}</div>
+              </div>`;
+            });
+            html += `</div>`;
+          }
+          html += `</div>`;
+        });
+      }
+    } else {
+      // Payton inventory
+      const sellPool = APP.data.payton.inventory.filter(c=>String(c.pool||'sell')==='sell');
+      const keepPool = APP.data.payton.inventory.filter(c=>String(c.pool||'sell')==='keep');
+
+      html += `<div class="section-title">卖出池 (sell) — ${pStats.sellStats.models}款 ${pStats.sellStats.cars}辆 ¥${fmtMoney(pStats.sellStats.value)}</div>`;
+      if (sellPool.length === 0) {
+        html += `<div class="empty-state" style="padding:16px">暂无卖出池库存</div>`;
+      } else {
+        html += `<div class="card">`;
+        sellPool.forEach(car => {
+          html += `<div class="item-row">
+            <div class="item-main">
+              <div class="item-name">${esc(car.name)}</div>
+              <div class="item-sid">${esc(car.brand||'')} · 均价¥${fmtMoney(car.avgPrice)}</div>
+            </div>
+            <div class="item-right">
+              <div class="item-cost">¥${fmtMoney(car.totalCost)}</div>
+              <div class="item-qty">×${toNum(car.qty)}</div>
+            </div>
+          </div>`;
+        });
+        html += `</div>`;
+      }
+
+      html += `<div class="section-title">自留池 (keep) — ${pStats.keepStats.models}款 ${pStats.keepStats.cars}辆 ¥${fmtMoney(pStats.keepStats.value)}</div>`;
+      if (keepPool.length === 0) {
+        html += `<div class="empty-state" style="padding:16px">暂无自留池库存</div>`;
+      } else {
+        html += `<div class="card">`;
+        keepPool.forEach(car => {
+          html += `<div class="item-row">
+            <div class="item-main">
+              <div class="item-name">${esc(car.name)}</div>
+              <div class="item-sid">${esc(car.brand||'')} · 均价¥${fmtMoney(car.avgPrice)}</div>
+            </div>
+            <div class="item-right">
+              <div class="item-cost">¥${fmtMoney(car.totalCost)}</div>
+              <div class="item-qty">×${toNum(car.qty)}</div>
+            </div>
+          </div>`;
+        });
+        html += `</div>`;
+      }
+    }
+  }
+
+  document.getElementById('finance-content').innerHTML = html;
+}
+
+function setFinanceTab(v) { APP.financeTab=v; renderFinance(); }
+function setPaytonTab(v) { APP.paytonTab=v; renderFinance(); }
+function toggleFinanceGroup(key) {
+  APP.collapsedGroups[key] = !APP.collapsedGroups[key];
+  renderFinance();
+}
+</script>
+
+<script>
+// ===== HOME / DATA INSIGHTS MODULE =====
+
+function getMonthStats(now) {
+  const y=now.getFullYear(), m=now.getMonth()+1;
+  const items = APP.data.items.filter(i => {
+    if (i.status!=='sold') return false;
+    const d = i.saleDetails?.date||'';
+    if (!d) return false;
+    const dt=new Date(d);
+    return dt.getFullYear()===y && dt.getMonth()+1===m;
+  });
+  return {
+    revenue: items.reduce((s,i)=>s+toNum(i.saleDetails?.price),0),
+    cost: items.reduce((s,i)=>s+toNum(i.cost),0),
+    profit: items.reduce((s,i)=>s+toNum(i.saleDetails?.profit),0),
+    count: items.length,
+  };
+}
+
+function getLast3MonthsStats(now) {
+  const result=[];
+  for(let i=0;i<3;i++){
+    const d=new Date(now.getFullYear(), now.getMonth()-i, 1);
+    const year=d.getFullYear(), month=d.getMonth()+1;
+    const items=APP.data.items.filter(it=>{
+      if(it.status!=='sold') return false;
+      const sd=it.saleDetails?.date;
+      if(!sd) return false;
+      const dt=new Date(sd);
+      return dt.getFullYear()===year && dt.getMonth()+1===month;
+    });
+    const revenue=items.reduce((s,it)=>s+toNum(it.saleDetails?.price),0);
+    const cost=items.reduce((s,it)=>s+toNum(it.cost),0);
+    const profit=items.reduce((s,it)=>s+toNum(it.saleDetails?.profit),0);
+    result.push({year,month,count:items.length,revenue,cost,profit});
+  }
+  return result;
+}
+
+function getPurchaseStatus() {
+  const items=APP.data.items.filter(i=>i.status==='purchase');
+  const inProgressAmount=items.reduce((s,i)=>s+toNum(i.cost),0);
+  const purchaseAmount=items.reduce((s,i)=>s+toNum(i.purchaseDetails?.preTransferCost),0);
+  const transferAmount=items.reduce((s,i)=>s+toNum(i.purchaseDetails?.transferCost),0);
+  const pendingCount=items.filter(i=>(i.purchaseDetails?.transferStatus||'pending')==='pending').length;
+  return {count:items.length,inProgressAmount,purchaseAmount,transferAmount,pendingCount,totalCost:inProgressAmount};
+}
+
+function getBatchReturnStats() {
+  const items=APP.data.items;
+  const batchMap={};
+  const categoryMap={
+    '2025JAPAN':{category:'2025JAPAN',totalCost:0,revenue:0},
+    '美淘':{category:'美淘',totalCost:0,revenue:0},
+    '日淘':{category:'日淘',totalCost:0,revenue:0},
+    '国内':{category:'国内',totalCost:0,revenue:0},
+  };
+  const catOrder={'2025JAPAN':1,'美淘':2,'日淘':3,'国内':4};
+  const batchOrderMap={
+    '美淘':{'A组上半年':1,'A组下半年':2,'B组下半年':3,'26上半年':4},
+    '日淘':{'a批':1,'b批':2,'d批':3,'预订':4,'预订批':4,'26d批':5,'26e批':6,'26f批':7},
+  };
+
+  const allCostMap={}, allCatCostMap={};
+  items.forEach(item=>{
+    const key=`${item.category}|${item.batch}`;
+    allCostMap[key]=(allCostMap[key]||0)+toNum(item.cost);
+    allCatCostMap[item.category]=(allCatCostMap[item.category]||0)+toNum(item.cost);
+    if(!batchMap[key]) batchMap[key]={category:item.category,batch:item.batch,totalCost:0,revenue:0};
+  });
+
+  const saleGroups={};
+  items.forEach(item=>{
+    if(item.status!=='sold') return;
+    const gk=`${item.sid||''}|${item.saleDetails?.date||''}`;
+    if(!saleGroups[gk]) saleGroups[gk]={sid:item.sid,category:item.category,batch:item.batch,
+      price:toNum(item.totalPrice||item.saleDetails?.price)};
+  });
+
+  Object.values(saleGroups).forEach(sale=>{
+    const key=`${sale.category}|${sale.batch}`;
+    if(!batchMap[key]) batchMap[key]={category:sale.category,batch:sale.batch,totalCost:0,revenue:0};
+    batchMap[key].revenue+=sale.price;
+    if(categoryMap[sale.category]) categoryMap[sale.category].revenue+=sale.price;
+  });
+
+  Object.keys(batchMap).forEach(k=>{ batchMap[k].totalCost=allCostMap[k]||0; });
+  Object.keys(categoryMap).forEach(c=>{ categoryMap[c].totalCost=allCatCostMap[c]||0; });
+
+  const catResults=Object.values(categoryMap)
+    .map(c=>({...c,batch:'',isCategory:true,rate:c.totalCost>0?(c.revenue/c.totalCost)*100:0}))
+    .filter(c=>c.totalCost>0)
+    .sort((a,b)=>(catOrder[a.category]||99)-(catOrder[b.category]||99));
+
+  const batchResults=Object.values(batchMap)
+    .map(b=>({...b,rate:b.totalCost>0?(b.revenue/b.totalCost)*100:0}))
+    .sort((a,b)=>{
+      const co=(catOrder[a.category]||99)-(catOrder[b.category]||99);
+      if(co!==0) return co;
+      const bo=(batchOrderMap[a.category]?.[a.batch]||99)-(batchOrderMap[b.category]?.[b.batch]||99);
+      return bo;
+    });
+
+  const result=[];
+  catResults.forEach(cat=>{
+    result.push(cat);
+    result.push(...batchResults.filter(b=>b.category===cat.category));
+  });
+
+  let allTotalCost=0, allRevenue=0;
+  Object.values(allCostMap).forEach(v=>{ allTotalCost+=v; });
+  Object.values(batchMap).forEach(b=>{ allRevenue+=b.revenue; });
+  result.push({category:'汇总',batch:'',totalCost:allTotalCost,revenue:allRevenue,
+    rate:allTotalCost>0?(allRevenue/allTotalCost)*100:0,isCategory:false,isSummary:true});
+  return result;
+}
+
+// Search (full logic from useHomeInsights.js)
+function normalizeText(v='') {
+  return String(v||'').toLowerCase().replace(/\s+/g,'').replace(/[\-_/.,，。；;:：()（）\[\]【】]/g,'');
+}
+function isSubsequence(query='',target='') {
+  if(!query||!target) return false;
+  let qi=0;
+  for(let i=0;i<target.length&&qi<query.length;i++) if(target[i]===query[qi]) qi++;
+  return qi===query.length;
+}
+function statusKeywords(status='') {
+  if(status==='sold') return ['sold','已售'];
+  if(status==='inventory') return ['inventory','库存','在库'];
+  if(status==='purchase') return ['purchase','采购','采购中'];
+  return [String(status||'')];
+}
+function itemSearchText(item={}) {
+  const p=item.purchaseDetails||{};
+  return [item.sid,item.name,item.brand,item.category,item.batch,
+    p.website,p.websiteAccount,p.paymentAccount,p.paymentBatch,...statusKeywords(item.status)]
+    .filter(Boolean).join(' ');
+}
+
+function searchItems(keyword='') {
+  const raw=String(keyword||'').trim().toLowerCase();
+  if(!raw) return [];
+  const normKw=normalizeText(raw);
+  const tokens=raw.split(/\s+/).filter(Boolean);
+  const normTokens=tokens.map(t=>normalizeText(t)).filter(Boolean);
+
+  const scored=APP.data.items.map(item=>{
+    const sid=String(item.sid||'').toLowerCase();
+    const name=String(item.name||'').toLowerCase();
+    const brand=String(item.brand||'').toLowerCase();
+    const text=itemSearchText(item).toLowerCase();
+    const sidN=normalizeText(sid), nameN=normalizeText(name), brandN=normalizeText(brand), textN=normalizeText(text);
+    let score=0; const reasons=new Set();
+
+    if(sid===raw){score+=300;reasons.add('SID精确');}
+    if(sidN===normKw){score+=260;reasons.add('SID标准化');}
+    if(name===raw){score+=220;reasons.add('名称精确');}
+    if(nameN===normKw){score+=180;reasons.add('名称标准化');}
+    if(brand===raw){score+=140;reasons.add('品牌精确');}
+    if(sid.includes(raw)){score+=160;reasons.add('SID命中');}
+    if(name.includes(raw)){score+=120;reasons.add('名称命中');}
+    if(brand.includes(raw)){score+=90;reasons.add('品牌命中');}
+    if(text.includes(raw)){score+=50;reasons.add('综合字段命中');}
+    if(sidN.includes(normKw)){score+=120;reasons.add('SID模糊');}
+    if(nameN.includes(normKw)){score+=80;reasons.add('名称模糊');}
+    if(textN.includes(normKw)){score+=40;reasons.add('字段模糊');}
+    if(isSubsequence(normKw,sidN)){score+=70;reasons.add('SID联想');}
+    if(isSubsequence(normKw,nameN)){score+=50;reasons.add('名称联想');}
+    const tokenHits=normTokens.reduce((h,t)=>textN.includes(t)||isSubsequence(t,textN)?h+1:h,0);
+    if(normTokens.length>1&&tokenHits>0){score+=tokenHits*25;reasons.add('多词命中');}
+    if(normTokens.length>1&&tokenHits===normTokens.length){score+=60;reasons.add('多词全中');}
+
+    return {item,score,reasons:Array.from(reasons)};
+  }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
+
+  const mergedMap=new Map(), mergedList=[];
+  function mergeKeyOf(item={}) {
+    const status=String(item.status||'');
+    if(!['purchase','inventory'].includes(status)) return null;
+    const p=item.purchaseDetails||{};
+    const cost=Number(item.cost||0), tc=Number(p.transferCost||0);
+    return [String(item.sid||''),status,cost.toFixed(4),String(p.transferStatus||''),
+      String(p.transferBatch||''),tc.toFixed(4)].join('|');
+  }
+
+  scored.forEach(({item,score,reasons})=>{
+    const key=mergeKeyOf(item);
+    const rSet=new Set(reasons||[]);
+    if(!key){
+      mergedList.push({...item,_isMerged:false,_groupCount:1,_groupTotalCost:Number(item.cost||0),
+        _groupItems:[item],_searchMatchTypes:Array.from(rSet).slice(0,3)});
+      return;
+    }
+    const existing=mergedMap.get(key);
+    if(!existing){
+      const rec={...item,_isMerged:true,_groupCount:1,_groupTotalCost:Number(item.cost||0),
+        _groupItems:[item],_searchScore:score,_reasonSet:rSet};
+      mergedMap.set(key,rec); mergedList.push(rec); return;
+    }
+    existing._groupCount++;
+    existing._groupTotalCost+=Number(item.cost||0);
+    existing._groupItems.push(item);
+    if(score>Number(existing._searchScore||0)) existing._searchScore=score;
+    rSet.forEach(r=>existing._reasonSet.add(r));
+  });
+
+  return mergedList.sort((a,b)=>Number(b._searchScore||0)-Number(a._searchScore||0))
+    .map(x=>({...x,_searchMatchTypes:Array.from(x._reasonSet||x._searchMatchTypes||[]).slice(0,3),
+      _groupTotalCost:Number(x._groupTotalCost||0),_searchScore:undefined,_reasonSet:undefined}));
+}
+
+function statusText(s) {
+  if(s==='inventory') return '库存';
+  if(s==='sold') return '已售';
+  if(s==='purchase') return '采购中';
+  return s||'-';
+}
+
+function calcAlipayBalance() {
+  const inv=APP.data.items.filter(i=>i.status==='inventory');
+  const invValue=inv.reduce((s,i)=>s+toNum(i.cost),0);
+  const sold=APP.data.items.filter(i=>i.status==='sold');
+  const totalActualProfit=sold.reduce((s,i)=>s+toNum(i.saleDetails?.profit),0);
+  const financeLoanBalance=APP.data.finance.loans.reduce((sum,l)=>{
+    if(l.type==='borrow') return sum+toNum(l.amount);
+    if(l.type==='lend') return sum-toNum(l.amount); // lend=还款/归还
+    return sum;
+  },0);
+  const financePublicExpense=APP.data.finance.records
+    .filter(r=>r.type==='expense').reduce((s,r)=>s+toNum(r.amount),0);
+  const paytonYeb=toNum(APP.data.payton.accounts.yeb?.balance);
+  const purchaseTotalCost=APP.data.items.filter(i=>i.status==='purchase').reduce((s,i)=>s+toNum(i.cost),0);
+
+  return toNum(APP.calc.debt)
+    + financeLoanBalance
+    + totalActualProfit
+    - invValue
+    - financePublicExpense
+    - toNum(APP.calc.unconfirmed)
+    + paytonYeb
+    - purchaseTotalCost;
+}
+
+function renderHome() {
+  const now = new Date();
+  document.getElementById('home-date').textContent = now.toISOString().slice(0,10);
+
+  const monthStats = getMonthStats(now);
+  const last3 = getLast3MonthsStats(now);
+  const purStats = getPurchaseStatus();
+  const inv = APP.data.items.filter(i=>i.status==='inventory');
+  const invValue = inv.reduce((s,i)=>s+toNum(i.cost),0);
+  const invCount = inv.length;
+  const lt = inv.filter(i=>i.isLongTerm===true);
+  const ltValue = lt.reduce((s,i)=>s+toNum(i.cost),0);
+  const ltCount = lt.length;
+  const sold = APP.data.items.filter(i=>i.status==='sold');
+  const totalActualProfit = sold.reduce((s,i)=>s+toNum(i.saleDetails?.profit),0);
+  const soldCost = sold.reduce((s,i)=>s+toNum(i.cost),0);
+  const totalProfitMargin = soldCost>0 ? totalActualProfit/soldCost : 0;
+
+  let html = '';
+
+  // Month stats
+  html += `<div class="card" style="margin-top:10px">
+    <div class="card-header"><div class="card-title">本月数据 (${now.getFullYear()}/${now.getMonth()+1})</div></div>
+    <div class="card-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div style="background:#f0f6ff;border-radius:10px;padding:10px;border-left:4px solid #007aff">
+          <div style="font-size:11px;color:#8e8e93">月销售额</div>
+          <div style="font-size:22px;font-weight:700;color:#1c1c1e">¥${fmtMoney(monthStats.revenue)}</div>
+        </div>
+        <div style="background:#fff9f0;border-radius:10px;padding:10px;border-left:4px solid #ff9500">
+          <div style="font-size:11px;color:#8e8e93">对应成本</div>
+          <div style="font-size:22px;font-weight:700;color:#1c1c1e">¥${fmtMoney(monthStats.cost)}</div>
+        </div>
+      </div>
+      <div style="background:#f9f9f9;border-radius:10px;padding:10px;margin-top:10px;border-left:4px solid #8e8e93">
+        <div style="font-size:11px;color:#8e8e93">月利润 (${monthStats.count}件)</div>
+        <div style="font-size:26px;font-weight:800;${monthStats.profit>=0?'color:#34c759':'color:#ff3b30'}">${fmtMoney(monthStats.profit)}</div>
+      </div>
+    </div>
+  </div>`;
+
+  // Last 3 months
+  html += `<div class="card" style="margin-top:10px">
+    <div class="card-header"><div class="card-title">近三个月销售</div></div>
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead><tr><th>月份</th><th class="right">件数</th><th class="right">回款</th><th class="right">成本</th><th class="right">利润</th><th class="right">利润率</th></tr></thead>
+        <tbody>`;
+  last3.forEach(m => {
+    const rate = m.cost>0 ? (m.profit/m.cost*100) : 0;
+    html += `<tr>
+      <td>${m.year}/${m.month}</td>
+      <td class="right">${m.count}</td>
+      <td class="right">¥${fmtMoney(m.revenue)}</td>
+      <td class="right">¥${fmtMoney(m.cost)}</td>
+      <td class="right ${profitClass(m.profit)}">${fmtMoney(m.profit)}</td>
+      <td class="right">${m.cost>0?fmt(rate,1)+'%':'-'}</td>
+    </tr>`;
+  });
+  html += `</tbody></table></div></div>`;
+
+  // Purchase status
+  html += `<div class="card" style="margin-top:10px;background:linear-gradient(135deg,#fff9f0,#fff)">
+    <div class="card-body">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:32px;font-weight:800;color:#ff9500">¥${fmtMoney(purStats.inProgressAmount)}</div>
+          <div style="font-size:12px;color:#ff9500;margin-top:2px">采购中金额（含转运费）</div>
+        </div>
+        <div style="display:flex;gap:16px">
+          <div style="text-align:center">
+            <div style="font-size:24px;font-weight:700;color:#ff9500">${purStats.count}</div>
+            <div style="font-size:11px;color:#8e8e93">采购中(件)</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:24px;font-weight:700;color:#1c1c1e">${purStats.pendingCount}</div>
+            <div style="font-size:11px;color:#8e8e93">待转运(件)</div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:16px;margin-top:8px;font-size:12px;color:#8e8e93">
+        <span>累计采购 <b style="color:#ff9500">¥${fmtMoney(purStats.purchaseAmount)}</b></span>
+        <span>累计转运 <b style="color:#5ac8fa">¥${fmtMoney(purStats.transferAmount)}</b></span>
+      </div>
+    </div>
+  </div>`;
+
+  // Inventory & profit overview
+  html += `<div class="card" style="margin-top:10px">
+    <div class="card-body" style="padding:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <div style="background:#fff;border-radius:10px;padding:10px;text-align:center;border:1px solid #e5e5ea">
+          <div style="font-size:11px;color:#8e8e93">库存总货值</div>
+          <div style="font-size:20px;font-weight:800;color:#007aff">¥${fmtMoney(invValue)}</div>
+          <div style="font-size:11px;color:#8e8e93">${invCount}件</div>
+        </div>
+        <div style="background:#fff;border-radius:10px;padding:10px;text-align:center;border:1px solid #e5e5ea">
+          <div style="font-size:11px;color:#8e8e93">短线货值</div>
+          <div style="font-size:20px;font-weight:800;color:#af52de">¥${fmtMoney(invValue-ltValue)}</div>
+          <div style="font-size:11px;color:#8e8e93">${invCount-ltCount}件</div>
+        </div>
+        <div style="background:#fff;border-radius:10px;padding:10px;text-align:center;border:1px solid #e5e5ea">
+          <div style="font-size:11px;color:#8e8e93">总实盈利润</div>
+          <div style="font-size:20px;font-weight:800;${totalActualProfit>=0?'color:#34c759':'color:#ff3b30'}">¥${fmtMoney(totalActualProfit)}</div>
+          <div style="font-size:11px;color:#8e8e93">率${fmt(totalProfitMargin*100,1)}%</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  // Alipay calculator
+  const alipay = calcAlipayBalance();
+  html += `<div class="card" style="margin-top:10px">
+    <div class="card-header">
+      <div class="card-title">💙 支付宝余额计算器</div>
+    </div>
+    <div class="card-body">
+      <div class="calc-grid">
+        <div class="calc-item">
+          <label>挖财总负债</label>
+          <input type="number" id="calc-debt" value="${APP.calc.debt}" oninput="updateCalc('debt',this.value)">
+        </div>
+        <div class="calc-item">
+          <label>借贷余额（自动）</label>
+          <div style="font-size:16px;font-weight:600;padding-top:4px">${fmtMoney(APP.data.finance.loans.reduce((sum,l)=>{
+            if(l.type==='borrow') return sum+toNum(l.amount);
+            if(l.type==='lend') return sum-toNum(l.amount); // lend=还款/归还
+            return sum;
+          },0))}</div>
+        </div>
+        <div class="calc-item">
+          <label>公共支出（自动）</label>
+          <div style="font-size:16px;font-weight:600;padding-top:4px">${fmtMoney(APP.data.finance.records.filter(r=>r.type==='expense').reduce((s,r)=>s+toNum(r.amount),0))}</div>
+        </div>
+        <div class="calc-item">
+          <label>未确认交易</label>
+          <input type="number" id="calc-unconfirmed" value="${APP.calc.unconfirmed}" oninput="updateCalc('unconfirmed',this.value)">
+        </div>
+        <div class="calc-item">
+          <label>Payton余额宝（自动）</label>
+          <div style="font-size:16px;font-weight:600;padding-top:4px">${fmtMoney(toNum(APP.data.payton.accounts.yeb?.balance))}</div>
+        </div>
+      </div>
+      <div class="calc-result">
+        <div class="calc-result-label">应有支付宝余额</div>
+        <div class="calc-result-val" id="alipay-result">¥${fmtMoney(alipay)}</div>
+      </div>
+    </div>
+  </div>`;
+
+  // Search
+  html += `<div class="card" style="margin-top:10px">
+    <div class="card-header"><div class="card-title">🔍 商品查询器</div></div>
+    <div class="card-body" style="padding:10px 14px">
+      <input class="search-input" type="text" placeholder="输入SID/名称/品牌搜索" value="${esc(APP.searchKeyword)}"
+        oninput="updateSearch(this.value)">
+      <div id="search-results" style="margin-top:8px"></div>
+    </div>
+  </div>`;
+
+  // Batch return stats
+  const batchStats = getBatchReturnStats();
+  html += `<div class="card" style="margin-top:10px">
+    <div class="card-header" style="cursor:pointer" onclick="toggleBatchStats()">
+      <div class="card-title">📈 批次回款统计</div>
+      <span class="chevron ${!APP.batchStatsCollapsed?'open':''}">▶</span>
+    </div>`;
+  if (!APP.batchStatsCollapsed) {
+    html += `<div class="table-scroll">
+      <table class="data-table">
+        <thead><tr><th>分类</th><th>批次</th><th class="right">总成本</th><th class="right">回款</th><th class="right">回款率</th></tr></thead>
+        <tbody>`;
+    batchStats.forEach(row => {
+      const rateClass = row.rate>=100?'rate-high':row.rate>=50?'rate-mid':'rate-low';
+      const rowClass = row.isSummary?'summary-row':row.isCategory?'category-row':'';
+      html += `<tr class="${rowClass}">
+        <td>${esc(row.category)}</td>
+        <td>${esc(row.batch||'')}</td>
+        <td class="right">¥${fmtMoney(row.totalCost)}</td>
+        <td class="right">¥${fmtMoney(row.revenue)}</td>
+        <td class="right ${rateClass}">${fmt(row.rate,2)}%</td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+  }
+  html += `</div>`;
+
+  document.getElementById('home-content').innerHTML = html;
+
+  // render search if keyword exists
+  if (APP.searchKeyword) renderSearchResults();
+}
+
+function updateCalc(field, val) {
+  APP.calc[field] = toNum(val);
+  const alipay = calcAlipayBalance();
+  const el = document.getElementById('alipay-result');
+  if (el) el.textContent = '¥' + fmtMoney(alipay);
+}
+
+function updateSearch(kw) {
+  APP.searchKeyword = kw;
+  renderSearchResults();
+}
+
+function renderSearchResults() {
+  const el = document.getElementById('search-results');
+  if (!el) return;
+  if (!APP.searchKeyword) { el.innerHTML = ''; return; }
+  const results = searchItems(APP.searchKeyword);
+  const totalCount = results.reduce((s,i)=>s+Number(i._groupCount||1),0);
+  if (results.length === 0) { el.innerHTML = '<div style="color:#8e8e93;font-size:13px;padding:8px 0">无匹配结果</div>'; return; }
+
+  let html = `<div style="font-size:12px;color:#8e8e93;margin-bottom:6px">找到 ${totalCount} 条（合并后 ${results.length} 组）</div>`;
+  results.forEach(item => {
+    const statusLabel = statusText(item.status);
+    const statusColor = item.status==='sold'?'#007aff':item.status==='inventory'?'#34c759':'#ff9500';
+    html += `<div class="search-result-item" onclick="showSearchDetail(${JSON.stringify(item.id)})">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:500">${esc(item.name)}</div>
+          <div style="font-size:11px;color:#8e8e93">${esc(item.sid||'')} · ${esc(item.brand||'')} · <span style="color:${statusColor}">${statusLabel}</span></div>
+          ${item._groupCount>1?`<div style="font-size:11px;color:#8e8e93">×${item._groupCount}件 合计¥${fmtMoney(item._groupTotalCost)}</div>`:''}
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:14px;font-weight:600">¥${fmtMoney(item.cost)}</div>
+        </div>
+      </div>
+      <div class="search-match-tags">
+        ${(item._searchMatchTypes||[]).map(t=>`<span class="match-tag">${esc(t)}</span>`).join('')}
+      </div>
+    </div>`;
+  });
+  el.innerHTML = html;
+}
+
+// 通用商品详情弹窗 - 支持从任意页面调用
+function openItemDetail(itemId) {
+  // 先从搜索结果中找（支持合并组），再从原始数据中找
+  let item = null;
+  let groupItems = null;
+
+  if (APP.searchKeyword) {
+    const results = searchItems(APP.searchKeyword);
+    const found = results.find(i => i.id === itemId || (i._isMerged && i._groupItems && i._groupItems.some(gi => gi.id === itemId)));
+    if (found) {
+      item = found._isMerged ? found._groupItems[0] : found;
+      groupItems = found._isMerged ? found._groupItems : null;
+    }
+  }
+  if (!item) {
+    item = APP.data.items.find(i => i.id === itemId);
+  }
+  if (!item) return;
+
+  const displayItems = groupItems || [item];
+  const isMerged = groupItems && groupItems.length > 1;
+
+  let html = `<div style="margin-bottom:12px">
+    <div style="font-size:17px;font-weight:700">${esc(item.name)}</div>
+    <div style="font-size:12px;color:#8e8e93;margin-top:3px">${esc(item.sid||'')} · ${esc(item.brand||'')} · ${esc(item.category||'')} · ${esc(item.batch||'')}</div>
+    <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">`;
+  if (item.isLongTerm) html += `<span class="tag longterm">长线</span>`;
+  if (item.isDefect) html += `<span class="tag defect">残次</span>`;
+  html += `</div></div>`;
+
+  // 合并组信息
+  if (isMerged) {
+    html += `<div style="background:#eef2ff;border-radius:10px;padding:10px;margin-bottom:10px;border:1px solid #c7d2fe">
+      <div style="font-size:12px;font-weight:600;color:#4f46e5;margin-bottom:6px">合并组信息 · 共 ${displayItems.length} 条 · 合计¥${fmtMoney(displayItems.reduce((s,i)=>s+toNum(i.cost),0))}</div>`;
+    displayItems.forEach((gi, gidx) => {
+      html += `<div style="font-size:11px;color:#6b7280;padding:3px 0;border-bottom:1px solid #e0e7ff">#${gidx+1} · ID:${gi.id} · 成本¥${fmtMoney(gi.cost)} · 转运批次:${gi.purchaseDetails?.transferBatch||'-'}</div>`;
+    });
+    html += `</div>`;
+  }
+
+  displayItems.forEach((it, idx) => {
+    const pd = it.purchaseDetails || {};
+    const sd = it.saleDetails || {};
+    html += `<div style="background:#f9f9f9;border-radius:10px;padding:10px;margin-bottom:8px">`;
+    if (isMerged) html += `<div style="font-size:12px;font-weight:600;color:#8e8e93;margin-bottom:6px">记录 ${idx+1} · ${statusText(it.status)}</div>`;
+    else html += `<div style="font-size:12px;font-weight:600;color:#8e8e93;margin-bottom:6px">${statusText(it.status)}</div>`;
+    html += `<div class="label-val"><span class="label">成本</span><span class="val">¥${fmtMoney(it.cost)}</span></div>`;
+
+    // 销售信息
+    if (it.status === 'sold' && sd) {
+      html += `<div style="background:#f0fdf4;border-radius:8px;padding:8px;margin-top:6px;border:1px solid #bbf7d0">
+        <div style="font-size:11px;font-weight:600;color:#16a34a;margin-bottom:4px">销售信息</div>`;
+      if (sd.date) html += `<div class="label-val"><span class="label">销售日期</span><span class="val">${esc(sd.date)}</span></div>`;
+      html += `<div class="label-val"><span class="label">售价</span><span class="val">¥${fmtMoney(sd.price)}</span></div>`;
+      if (toNum(sd.express) > 0) html += `<div class="label-val"><span class="label">运费</span><span class="val">¥${fmtMoney(sd.express)}</span></div>`;
+      if (toNum(sd.feeRate) > 0) html += `<div class="label-val"><span class="label">费率</span><span class="val">${fmt(toNum(sd.feeRate)*100,1)}%</span></div>`;
+      if (toNum(sd.deduction) > 0) html += `<div class="label-val"><span class="label">扣款</span><span class="val">¥${fmtMoney(sd.deduction)}</span></div>`;
+      html += `<div class="label-val"><span class="label">利润</span><span class="val ${profitClass(sd.profit)}">${fmtProfit(sd.profit)}</span></div>`;
+      html += `</div>`;
+    }
+
+    // 采购信息
+    if (pd && (pd.date || pd.website || pd.originalPrice || pd.preTransferCost)) {
+      html += `<div style="background:#eff6ff;border-radius:8px;padding:8px;margin-top:6px;border:1px solid #bfdbfe">
+        <div style="font-size:11px;font-weight:600;color:#1d4ed8;margin-bottom:4px">采购信息</div>`;
+      if (pd.date) html += `<div class="label-val"><span class="label">采购日期</span><span class="val">${esc(pd.date)}</span></div>`;
+      if (pd.website) html += `<div class="label-val"><span class="label">官网</span><span class="val">${esc(pd.website)}</span></div>`;
+      if (pd.websiteAccount) html += `<div class="label-val"><span class="label">官网账号</span><span class="val">${esc(pd.websiteAccount)}</span></div>`;
+      if (pd.originalPrice) html += `<div class="label-val"><span class="label">官网原价</span><span class="val">${fmtMoney(pd.originalPrice)}</span></div>`;
+      if (pd.domesticShipping) html += `<div class="label-val"><span class="label">国内运费</span><span class="val">¥${fmtMoney(pd.domesticShipping)}</span></div>`;
+      if (pd.fee) html += `<div class="label-val"><span class="label">手续费</span><span class="val">¥${fmtMoney(pd.fee)}</span></div>`;
+      if (pd.exchangeRate) html += `<div class="label-val"><span class="label">汇率</span><span class="val">${Number(pd.exchangeRate).toFixed(4)}</span></div>`;
+      if (pd.preTransferCost) html += `<div class="label-val"><span class="label">转运前成本</span><span class="val">¥${fmtMoney(pd.preTransferCost)}</span></div>`;
+      if (toNum(pd.transferCost) > 0) html += `<div class="label-val"><span class="label">转运费</span><span class="val">¥${fmtMoney(pd.transferCost)}</span></div>`;
+      if (pd.transferBatch) html += `<div class="label-val"><span class="label">转运批次</span><span class="val">${esc(pd.transferBatch)}</span></div>`;
+      if (pd.transferStatus) html += `<div class="label-val"><span class="label">转运状态</span><span class="val">${pd.transferStatus==='pending'?'待转运':'已转运'}</span></div>`;
+      if (pd.totalRMB) html += `<div class="label-val"><span class="label">总人民币</span><span class="val" style="color:#ea580c;font-weight:700">¥${fmtMoney(pd.totalRMB)}</span></div>`;
+      if (pd.paymentAccount) html += `<div class="label-val"><span class="label">付款账号</span><span class="val">${esc(pd.paymentAccount)}</span></div>`;
+      if (pd.paymentBatch) html += `<div class="label-val"><span class="label">付款批次</span><span class="val">${esc(pd.paymentBatch)}</span></div>`;
+      if (pd.discount) html += `<div class="label-val"><span class="label">折扣</span><span class="val">${esc(pd.discount)}</span></div>`;
+      html += `</div>`;
+    }
+
+    html += `</div>`;
+  });
+
+  document.getElementById('detail-modal-body').innerHTML = html;
+  document.getElementById('detail-modal').classList.add('open');
+}
+
+// 保持向后兼容
+function showSearchDetail(itemId) { openItemDetail(itemId); }
+
+function toggleBatchStats() {
+  APP.batchStatsCollapsed = !APP.batchStatsCollapsed;
+  renderHome();
+}
+</script>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="detail-modal" onclick="if(event.target===this)closeDetailModal()">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <button class="modal-close" onclick="closeDetailModal()">×</button>
+      <div class="modal-title">商品详情</div>
+    </div>
+    <div class="modal-body" id="detail-modal-body"></div>
+  </div>
+</div>
+<script>
+function closeDetailModal() {
+  document.getElementById('detail-modal').classList.remove('open');
+}
+</script>
+
+</body>
+</html>
