@@ -65,12 +65,6 @@ export const state = reactive({
   paytonRecords: [],
   paytonInventory: [],
   version: APP_VERSION,
-  webdavSettings: {
-    url: '',
-    username: '',
-    password: '',
-    enabled: false,
-  },
   cloudSettings: {
     ...DEFAULT_CLOUD_SETTINGS,
   },
@@ -316,7 +310,6 @@ export function clearOperationLogs() {
 
 export function saveUiStateToLocalStorage() {
   const payload = {
-    webdavSettings: { ...state.webdavSettings },
     cloudSettings: { ...state.cloudSettings },
     cloudSession: {
       ...state.cloudSession,
@@ -333,9 +326,6 @@ export function loadUiStateFromLocalStorage() {
   if (!raw) return
 
   const parsed = JSON.parse(raw)
-  if (parsed?.webdavSettings && typeof parsed.webdavSettings === 'object') {
-    Object.assign(state.webdavSettings, parsed.webdavSettings)
-  }
 
   if (parsed?.cloudSettings && typeof parsed.cloudSettings === 'object') {
     Object.assign(state.cloudSettings, normalizeCloudSettings(parsed.cloudSettings))

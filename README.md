@@ -1,6 +1,6 @@
 # YSP App (Vue + Vite)
 
-YSP 玩具管理系统，支持本地存储、WebDAV 备份、Supabase 云端同步。
+YSP 玩具管理系统，支持本地存储快照与 Supabase 云端同步。
 
 ## 开发
 
