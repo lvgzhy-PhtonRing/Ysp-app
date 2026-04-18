@@ -31,7 +31,10 @@ jobs:
         run: npm install
 
       - name: Build
-        run: npm run build
+        run: npm run build  
+
+      - name: Copy public files
+        run: cp -r public/* dist/ || true
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
