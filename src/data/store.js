@@ -2,7 +2,7 @@
 
 import { reactive } from 'vue'
 
-const APP_VERSION = '3.0.0'
+const APP_VERSION = '3.0.1'
 const CLOUD_SYNC_DEBOUNCE_MS = 800
 const MAX_UNDO_STEPS = 20
 const HISTORY_META_EXPIRE_MS = 3000
