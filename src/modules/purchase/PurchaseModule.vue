@@ -96,6 +96,7 @@ const editGroupCalculatedTotalRMB = computed(() => {
 function createGroupedLine(items) {
   const representative = items[0]
   const { brand, name, originalPrice, domesticShipping, fee, transferCoefficient, transferStatus } = representative
+  const inventoryQty = items.filter((line) => line?.status === 'inventory').length
   return {
     sid: representative.sid,
     brand,
@@ -106,6 +107,7 @@ function createGroupedLine(items) {
     transferCoefficient,
     transferStatus,
     qty: items.length,
+    inventoryQty,
     items,
     id: representative.id || representative.sid || getNextEditGroupTempKey(),
   }
@@ -601,6 +603,7 @@ function createEditGroupLine(item) {
   return {
     id: item.id,
     sid: item?.sid || '',
+    status: item?.status || 'purchase',
     name: item.name || '',
     brand: item.brand || 'Hotwheels',
     originalPrice: Number(item?.purchaseDetails?.originalPrice || 0),
@@ -618,6 +621,7 @@ function addEditGroupLine() {
   editGroupForm.items.push({
     id: null,
     sid: getNextEditGroupTempKey(),
+    status: 'purchase',
     name: '',
     brand: 'Hotwheels',
     originalPrice: 0,
@@ -630,6 +634,92 @@ function addEditGroupLine() {
     transferId: '',
   })
   buildEditGroupItemsBySid()
+}
+
+function getEditGroupInventoryQtyBySid(sid) {
+  const key = String(sid || '').trim()
+  if (!key) return 0
+  return (editGroupForm.items || []).filter(
+    (line) => String(line?.sid || '').trim() === key && line?.status === 'inventory',
+  ).length
+}
+
+function createDraftEditLineForSid(sid, template) {
+  const key = String(sid || '').trim() || getNextEditGroupTempKey()
+  const isDomestic = editGroupForm.category === '国内'
+  const originalPrice = Number(template?.originalPrice || 0)
+  const domesticShipping = isDomestic ? 0 : Number(template?.domesticShipping || 0)
+  const fee = isDomestic ? 0 : Number(template?.fee || 0)
+  const transferCoefficient = isDomestic ? 1 : Number(template?.transferCoefficient || 1)
+  const preTransferCost = isDomestic
+    ? originalPrice
+    : calcPreTransferCost(originalPrice, Number(editGroupRate.value || 0), domesticShipping, fee)
+
+  return {
+    id: null,
+    sid: key,
+    status: 'purchase',
+    name: String(template?.name || '').trim(),
+    brand: template?.brand || 'Hotwheels',
+    originalPrice,
+    domesticShipping,
+    fee,
+    transferCoefficient,
+    _originalTransferCoefficient: transferCoefficient,
+    preTransferCost,
+    transferStatus: 'pending',
+    transferId: '',
+  }
+}
+
+function adjustEditGroupQtyBySid(sid, targetQty, options = {}) {
+  const key = String(sid || '').trim()
+  if (!key) return
+
+  const currentLines = (editGroupForm.items || []).filter((line) => String(line?.sid || '').trim() === key)
+  if (currentLines.length === 0) return
+
+  const inventoryQty = getEditGroupInventoryQtyBySid(key)
+  const parsedTarget = Number(targetQty)
+  const fallbackTarget = currentLines.length
+  const safeTarget = Number.isFinite(parsedTarget) ? Math.floor(parsedTarget) : fallbackTarget
+  const allowZero = options?.allowZero === true
+  const minQty = allowZero && inventoryQty === 0 ? 0 : Math.max(1, inventoryQty)
+  const nextQty = Math.max(minQty, safeTarget)
+
+  if (nextQty === currentLines.length) return
+
+  if (nextQty < currentLines.length) {
+    let removeCount = currentLines.length - nextQty
+    const nextLines = []
+    ;(editGroupForm.items || []).forEach((line) => {
+      const lineSid = String(line?.sid || '').trim()
+      if (lineSid === key && line?.status !== 'inventory' && removeCount > 0) {
+        removeCount -= 1
+        return
+      }
+      nextLines.push(line)
+    })
+    editGroupForm.items = nextLines
+    if (removeCount > 0 && inventoryQty > 0) {
+      alert(`该SID含${inventoryQty}件已入库商品，不能继续减少。`)
+    }
+  } else {
+    const template =
+      currentLines.find((line) => line?.status === 'purchase') ||
+      currentLines.find((line) => line?.status === 'inventory') ||
+      currentLines[0]
+    const addCount = nextQty - currentLines.length
+    for (let i = 0; i < addCount; i += 1) {
+      editGroupForm.items.push(createDraftEditLineForSid(key, template))
+    }
+  }
+
+  buildEditGroupItemsBySid()
+}
+
+function updateEditGroupQty(group, targetQty) {
+  adjustEditGroupQtyBySid(group?.sid, targetQty)
 }
 
 function syncLineField(sourceLine, field) {
@@ -720,8 +810,7 @@ function buildEditGroupItemsBySid() {
 function removeEditGroupSid(sid) {
   const key = String(sid || '').trim()
   if (!key) return
-  editGroupForm.items = (editGroupForm.items || []).filter((line) => String(line.sid || '').trim() !== key)
-  buildEditGroupItemsBySid()
+  adjustEditGroupQtyBySid(key, 0, { allowZero: true })
 }
 
 const editGroupRate = computed(() => {
@@ -1111,6 +1200,7 @@ function submitEditPurchaseGroup() {
         synchronizeSameSidLines(line, null, originalById)
       } else {
         addPurchaseItem({
+          sid: line.sid,
           name: line.name,
           brand: line.brand,
           category: editGroupForm.category,
@@ -1950,8 +2040,15 @@ watch(purchaseViewCategory, () => {
                   </template>
 
                   <div>
-                    <label class="block text-xs text-gray-500 mb-1">库存数</label>
-                    <div class="h-9 flex items-center text-sm text-gray-600">x{{ group.qty }}</div>
+                    <label class="block text-xs text-gray-500 mb-1">数量</label>
+                    <input
+                      type="number"
+                      class="apple-input text-sm"
+                      :min="group.inventoryQty > 0 ? group.inventoryQty : 1"
+                      :value="group.qty"
+                      @change="updateEditGroupQty(group, $event.target.value)"
+                    />
+                    <div v-if="group.inventoryQty > 0" class="text-[11px] text-gray-400 mt-1">含已入库 {{ group.inventoryQty }} 件，最少保留 {{ group.inventoryQty }} 件</div>
                   </div>
                   <div>
                     <label class="block text-xs text-gray-500 mb-1">状态</label>
