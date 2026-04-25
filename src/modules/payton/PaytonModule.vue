@@ -197,8 +197,34 @@ const stats = computed(() =>
   getPaytonStats(store.paytonAccounts, store.paytonRecords, store.paytonInventory),
 )
 
+function getSafeDateTs(value) {
+  const text = String(value || '').trim()
+  if (!text) return 0
+  const ts = new Date(text).getTime()
+  return Number.isFinite(ts) ? ts : 0
+}
+
+function getPaytonRecordOrderTs(record) {
+  const createdAt = Number(record?.createdAt || 0)
+  if (Number.isFinite(createdAt) && createdAt > 0) return createdAt
+  const idTs = Number(record?.id || 0)
+  return Number.isFinite(idTs) && idTs > 0 ? idTs : 0
+}
+
+function comparePaytonRecordDesc(a, b) {
+  const da = getSafeDateTs(a?.date)
+  const db = getSafeDateTs(b?.date)
+  if (db !== da) return db - da
+
+  const oa = getPaytonRecordOrderTs(a)
+  const ob = getPaytonRecordOrderTs(b)
+  if (ob !== oa) return ob - oa
+
+  return Number(b?.id || 0) - Number(a?.id || 0)
+}
+
 const sortedRecords = computed(() =>
-  [...store.paytonRecords].sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))),
+  [...store.paytonRecords].sort(comparePaytonRecordDesc),
 )
 
 const groupedRecordsByMonth = computed(() => {

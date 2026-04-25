@@ -157,16 +157,46 @@ const addPreviewProfit = computed(() => {
   )
 })
 
+function getSafeDateTs(value) {
+  const text = String(value || '').trim()
+  if (!text) return 0
+  const ts = new Date(text).getTime()
+  return Number.isFinite(ts) ? ts : 0
+}
+
+function getSaleOrderTs(item) {
+  const soldAt = Number(item?.saleDetails?.soldAt || 0)
+  if (Number.isFinite(soldAt) && soldAt > 0) return soldAt
+  const idTs = Number(item?.id || 0)
+  return Number.isFinite(idTs) && idTs > 0 ? idTs : 0
+}
+
+function compareSoldItemsDesc(a, b) {
+  const da = getSafeDateTs(a?.saleDetails?.date)
+  const db = getSafeDateTs(b?.saleDetails?.date)
+  if (db !== da) return db - da
+
+  const oa = getSaleOrderTs(a)
+  const ob = getSaleOrderTs(b)
+  if (ob !== oa) return ob - oa
+
+  return Number(b?.id || 0) - Number(a?.id || 0)
+}
+
+function compareGroupsByLatestSaleDesc(a, b) {
+  const ai = a?.items?.[0]
+  const bi = b?.items?.[0]
+  if (ai && bi) {
+    const cmp = compareSoldItemsDesc(ai, bi)
+    if (cmp !== 0) return cmp
+  }
+  if (ai && !bi) return -1
+  if (!ai && bi) return 1
+  return String(a?.key || '').localeCompare(String(b?.key || ''), 'zh-CN')
+}
+
 const groupedSalesList = computed(() => {
   const map = new Map()
-  const getItemTs = (item) => {
-    const d = item?.saleDetails?.date
-    if (!d) return 0
-    const t = new Date(d).getTime()
-    return Number.isFinite(t) ? t : 0
-  }
-
-  const getGroupLatestTs = (group) => Math.max(...(group?.items || []).map(getItemTs), 0)
 
   filteredSoldItems.value.forEach((item) => {
     let key = '全部'
@@ -189,25 +219,11 @@ const groupedSalesList = computed(() => {
 
   const list = Array.from(map.values())
   list.forEach((g) => {
-    g.items.sort((a, b) => getItemTs(b) - getItemTs(a))
-  })
-
-  // 各分组统一：最新条目在最上（先按成交日期，再按id兜底）
-  list.forEach((g) => {
-    g.items.sort((a, b) => {
-      const ta = getItemTs(a)
-      const tb = getItemTs(b)
-      if (tb !== ta) return tb - ta
-      return Number(b?.id || 0) - Number(a?.id || 0)
-    })
+    g.items.sort(compareSoldItemsDesc)
   })
 
   if (salesViewMode.value === 'all') {
-    return list.sort((a, b) => {
-      const da = a.items?.[0]?.saleDetails?.date || ''
-      const db = b.items?.[0]?.saleDetails?.date || ''
-      return String(db).localeCompare(String(da))
-    })
+    return list.sort(compareGroupsByLatestSaleDesc)
   }
   if (salesViewMode.value === 'month') {
     return list.sort((a, b) => String(b.key).localeCompare(String(a.key)))
@@ -242,9 +258,8 @@ const groupedSalesList = computed(() => {
     })
   }
   return list.sort((a, b) => {
-    const ta = getGroupLatestTs(a)
-    const tb = getGroupLatestTs(b)
-    if (ta !== tb) return tb - ta
+    const cmp = compareGroupsByLatestSaleDesc(a, b)
+    if (cmp !== 0) return cmp
     return String(a.key).localeCompare(String(b.key), 'zh-CN')
   })
 })
