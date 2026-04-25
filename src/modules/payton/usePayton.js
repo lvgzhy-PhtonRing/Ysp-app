@@ -7,6 +7,21 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(n) ? n : fallback
 }
 
+let paytonRecordOrderSeed = 0
+
+function nextOrderedTimestamp() {
+  paytonRecordOrderSeed = (paytonRecordOrderSeed + 1) % 1000
+  return Date.now() * 1000 + paytonRecordOrderSeed
+}
+
+function toPositiveTimestamp(value, fallback = nextOrderedTimestamp()) {
+  const n = Number(value)
+  if (Number.isFinite(n) && n > 0) return n
+  const fb = Number(fallback)
+  if (Number.isFinite(fb) && fb > 0) return fb
+  return nextOrderedTimestamp()
+}
+
 function valueForCompare(value) {
   if (value === undefined) return '__ysp_undefined__'
   try {
@@ -131,6 +146,7 @@ function rollbackBalance(accountKey, type, amount) {
 export function addPaytonRecord(recordData = {}) {
   const record = {
     id: genId(),
+    createdAt: toPositiveTimestamp(recordData.createdAt),
     type: recordData.type,
     category: recordData.category || '',
     account: recordData.account || '',

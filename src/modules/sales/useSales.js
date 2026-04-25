@@ -8,6 +8,21 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(n) ? n : fallback
 }
 
+let saleOrderSeed = 0
+
+function nextOrderedTimestamp() {
+  saleOrderSeed = (saleOrderSeed + 1) % 1000
+  return Date.now() * 1000 + saleOrderSeed
+}
+
+function toPositiveTimestamp(value, fallback = nextOrderedTimestamp()) {
+  const n = Number(value)
+  if (Number.isFinite(n) && n > 0) return n
+  const fb = Number(fallback)
+  if (Number.isFinite(fb) && fb > 0) return fb
+  return nextOrderedTimestamp()
+}
+
 function valueForCompare(value) {
   if (value === undefined) return '__ysp_undefined__'
   try {
@@ -26,6 +41,7 @@ export function submitSell(itemId, saleData = {}, options = {}) {
   const feeRate = toNumber(saleData.feeRate)
   const deduction = toNumber(saleData.deduction)
   const date = saleData.date || ''
+  const soldAt = toPositiveTimestamp(saleData.soldAt)
 
   const profit = calcProfit(price, express, feeRate, deduction, toNumber(item.cost))
 
@@ -37,6 +53,7 @@ export function submitSell(itemId, saleData = {}, options = {}) {
     feeRate,
     deduction,
     date,
+    soldAt,
     profit,
   }
 
@@ -76,6 +93,7 @@ export function editSaleRecord(itemId, newSaleData = {}) {
   const express = toNumber(merged.express)
   const feeRate = toNumber(merged.feeRate)
   const deduction = toNumber(merged.deduction)
+  const soldAt = toPositiveTimestamp(merged.soldAt, Number(item?.saleDetails?.soldAt || item?.id || 0))
 
   const beforeSaleDetails = {
     ...(item.saleDetails || {}),
@@ -87,6 +105,7 @@ export function editSaleRecord(itemId, newSaleData = {}) {
     express,
     feeRate,
     deduction,
+    soldAt,
     profit: calcProfit(price, express, feeRate, deduction, toNumber(item.cost)),
   }
 
