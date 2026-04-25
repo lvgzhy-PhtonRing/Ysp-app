@@ -22,6 +22,36 @@ const iconMap = {
   sales: 'fa-solid fa-cash-register',
   purchase: 'fa-solid fa-truck',
   finance: 'fa-solid fa-wallet',
+  rushcar: 'fa-solid fa-car-side',
+}
+
+function isTabDisabled(tab) {
+  return Boolean(tab?.disabled)
+}
+
+function getTabStyle(tab, currentTab) {
+  if (isTabDisabled(tab)) {
+    return 'color:#9ca3af;background:#f8fafc;cursor:not-allowed;'
+  }
+
+  if (currentTab === tab.id) {
+    return tab.id === 'payton'
+      ? 'background:#dbeafe;color:#1d4ed8;'
+      : tab.id === 'rushcar'
+        ? 'background:#ecfeff;color:#0f766e;'
+        : 'background:#eff6ff;color:#0066cc;'
+  }
+
+  return tab.id === 'payton'
+    ? 'color:#2563eb;'
+    : tab.id === 'rushcar'
+      ? 'color:#0f766e;'
+      : 'color:#4b5563;'
+}
+
+function handleSelect(tab) {
+  if (isTabDisabled(tab)) return
+  emit('select', tab.id)
 }
 </script>
 
@@ -38,16 +68,9 @@ const iconMap = {
           v-for="tab in tabs"
           :key="tab.id"
           class="w-full text-left px-4 py-3 rounded-xl transition-all text-base font-bold flex items-center gap-3"
-          :style="
-            currentTab === tab.id
-              ? tab.id === 'payton'
-                ? 'background:#dbeafe;color:#1d4ed8;'
-                : 'background:#eff6ff;color:#0066cc;'
-              : tab.id === 'payton'
-              ? 'color:#2563eb;'
-              : 'color:#4b5563;'
-          "
-          @click="emit('select', tab.id)"
+          :style="getTabStyle(tab, currentTab)"
+          :disabled="isTabDisabled(tab)"
+          @click="handleSelect(tab)"
         >
           <i v-if="tab.id !== 'payton'" :class="(iconMap[tab.id] || 'fa-solid fa-circle') + ' w-5 text-center'" />
           {{ tab.name }}
