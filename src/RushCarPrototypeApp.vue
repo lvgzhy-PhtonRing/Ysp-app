@@ -22,10 +22,15 @@ const banner = ref({
 })
 
 async function loadSeedData() {
-  const candidates = ['/a.json', '/Ysp-app/a.json']
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '')
+  const candidates = [
+    `${base}/a.json`,
+    './a.json',
+    '/a.json',
+  ]
   for (const url of candidates) {
     try {
-      const res = await fetch(`${url}?t=${Date.now()}`, { cache: 'no-store' })
+      const res = await fetch(url + '?t=' + Date.now(), { cache: 'no-store' })
       if (!res.ok) continue
       const json = await res.json()
       sourceData.value = {
@@ -34,17 +39,17 @@ async function loadSeedData() {
       }
       banner.value = {
         type: 'success',
-        text: `测试数据加载成功：${url}`,
+        text: '测试数据加载成功：' + url,
       }
       return
-    } catch (_) {
-      // ignore and try next
+    } catch {
+      // continue to next candidate
     }
   }
 
   banner.value = {
     type: 'error',
-    text: '未读取到 a.json，页面仍可预览结构。建议确认 public/a.json 是否存在。',
+    text: '未读取到 a.json，页面仍可预览结构。请确保 public/a.json 存在。',
   }
 }
 
