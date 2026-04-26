@@ -124,11 +124,12 @@ function buildUsPurchaseGroups(items = []) {
     const paymentBatch = String(pd.paymentBatch || '').trim()
     const website = String(pd.website || '').trim()
     const key = purchaseGroupId || `${date}__${website}__${paymentBatch}`
-    if (!key) return
+    const finalKey = String(key).trim() || `no-group__${String(item.id || '').trim()}`
+    if (!finalKey || finalKey === 'no-group__') return
 
-    if (!map.has(key)) {
-      map.set(key, {
-        key,
+    if (!map.has(finalKey)) {
+      map.set(finalKey, {
+        key: finalKey,
         purchaseGroupId: purchaseGroupId || '-',
         paymentBatch: paymentBatch || '-',
         date,
@@ -139,7 +140,7 @@ function buildUsPurchaseGroups(items = []) {
       })
     }
 
-    const row = map.get(key)
+    const row = map.get(finalKey)
     const sid = String(item?.sid || '').trim() || String(item?.id || '')
     const lineKey = `${sid}__${String(item?.name || '').trim()}`
     let line = row.lines.find((x) => x.lineKey === lineKey)
