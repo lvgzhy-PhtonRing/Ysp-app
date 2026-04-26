@@ -1,8 +1,17 @@
-import { computed, reactive, toRef } from 'vue'
+import { computed, isRef, reactive } from 'vue'
 
 function toNum(value, fallback = 0) {
   const n = Number(value)
   return Number.isFinite(n) ? n : fallback
+}
+
+function normalizeWebsite(website, purchaseGroupId) {
+  const w = String(website || '').trim()
+  if (!w) return ''
+  const lower = w.toLowerCase()
+  if (lower === 'mattel') return 'creations.mattel.com'
+  if (lower.includes('mattel')) return 'creations.mattel.com'
+  return w
 }
 
 function parseDateTs(value) {
@@ -194,14 +203,14 @@ function buildUsPurchaseGroups(items = []) {
 }
 
 export function useRushCarPrototype(rawSeedData = {}) {
-  const seedRef = toRef(rawSeedData, 'value')
-  const seed = seedRef.value || rawSeedData
+  const isSeedRef = isRef(rawSeedData)
+  const seedData = isSeedRef ? rawSeedData.value : rawSeedData
 
-  const state = createInitialState(seed)
+  const state = createInitialState(seedData)
 
   const usPurchaseGroups = computed(() => {
-    const resolvedSeed = seedRef.value || seed || {}
-    return buildUsPurchaseGroups(resolvedSeed.items || [])
+    const resolved = isSeedRef ? (rawSeedData.value || {}) : (seedData || {})
+    return buildUsPurchaseGroups(resolved.items || [])
   })
 
   const selectedGroup = computed(() =>
@@ -255,7 +264,7 @@ export function useRushCarPrototype(rawSeedData = {}) {
     }
     return {
       date: g.date,
-      website: g.website,
+      website: normalizeWebsite(g.website, g.purchaseGroupId),
       websiteAccount: g.websiteAccount,
       totalUSD: toNum(g.totalUSD),
       lines: g.lines,
