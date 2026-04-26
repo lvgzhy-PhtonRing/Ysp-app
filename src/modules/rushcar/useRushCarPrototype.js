@@ -1,4 +1,4 @@
-import { computed, reactive } from 'vue'
+import { computed, reactive, toRef } from 'vue'
 
 function toNum(value, fallback = 0) {
   const n = Number(value)
@@ -173,11 +173,16 @@ function buildUsPurchaseGroups(items = []) {
     .sort((a, b) => parseDateTs(b.date) - parseDateTs(a.date))
 }
 
-export function useRushCarPrototype(seedData = {}) {
-  const _seed = seedData?.items ? seedData : (seedData?.value || seedData || {})
-  const state = createInitialState(_seed)
+export function useRushCarPrototype(rawSeedData = {}) {
+  const seedRef = toRef(rawSeedData, 'value')
+  const seed = seedRef.value || rawSeedData
 
-  const usPurchaseGroups = computed(() => buildUsPurchaseGroups(_seed?.items || []))
+  const state = createInitialState(seed)
+
+  const usPurchaseGroups = computed(() => {
+    const resolvedSeed = seedRef.value || seed || {}
+    return buildUsPurchaseGroups(resolvedSeed.items || [])
+  })
 
   const selectedGroup = computed(() =>
     usPurchaseGroups.value.find((g) => g.key === state.selectedGroupKey) || null,
