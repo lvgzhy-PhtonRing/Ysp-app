@@ -1,5 +1,5 @@
 <script setup>
-import { computed, watch } from 'vue'
+import { computed, toRef, watch } from 'vue'
 import { useRushCarPrototype } from './useRushCarPrototype'
 
 const props = defineProps({
@@ -33,7 +33,7 @@ const {
   addPaymentCard,
   removeEntry,
   submitEntry,
-} = useRushCarPrototype(props.sourceData)
+} = useRushCarPrototype(toRef(props, 'sourceData'))
 
 const browserOptions = ['AdsPower', 'HubStudio', 'BitBrowser', 'Chrome有痕', 'Chrome无痕', 'Edge有痕', 'Edge无痕', '设备自带浏览器']
 const deviceOptions = ['台式机NT', '妈妈电脑P53', '爸爸小电脑ROG13', 'iPad', '妈妈手机Huawei', '爸爸手机Oppo']
