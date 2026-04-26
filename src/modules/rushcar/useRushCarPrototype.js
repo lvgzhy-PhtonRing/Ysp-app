@@ -174,9 +174,10 @@ function buildUsPurchaseGroups(items = []) {
 }
 
 export function useRushCarPrototype(seedData = {}) {
-  const state = createInitialState(seedData)
+  const _seed = seedData?.items ? seedData : (seedData?.value || seedData || {})
+  const state = createInitialState(_seed)
 
-  const usPurchaseGroups = computed(() => buildUsPurchaseGroups(seedData?.items || []))
+  const usPurchaseGroups = computed(() => buildUsPurchaseGroups(_seed?.items || []))
 
   const selectedGroup = computed(() =>
     usPurchaseGroups.value.find((g) => g.key === state.selectedGroupKey) || null,
