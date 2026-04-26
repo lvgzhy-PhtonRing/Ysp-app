@@ -73,6 +73,26 @@ function createInitialState(seed = {}) {
             forwarderCAccount: 'nina_us_03',
             forwarderCPassword: '***',
           },
+          {
+            ...createMasterRow(),
+            username: 'll_gg@yeah.net',
+            password: '***',
+            recipientA: 'Lvy',
+            recipientB: 'Payton',
+            forwarderA: 'US-Forward-1',
+            forwarderAAccount: 'lvy_us_01',
+            forwarderAPassword: '***',
+          },
+          {
+            ...createMasterRow(),
+            username: 'Payton-pi@zohomail.com',
+            password: '***',
+            recipientA: 'Payton',
+            recipientB: 'Nina',
+            forwarderB: 'US-Forward-2',
+            forwarderBAccount: 'payton_us_02',
+            forwarderBPassword: '***',
+          },
         ],
     paymentCards: Array.isArray(seed.paymentCards) && seed.paymentCards.length
       ? seed.paymentCards
@@ -118,7 +138,7 @@ function buildUsPurchaseGroups(items = []) {
     const pd = item?.purchaseDetails || {}
     const date = safeDate(pd.date)
     const dateTs = parseDateTs(date)
-    if (!date || dateTs <= 0 || dateTs < monthAgoTs) return
+    if (date && dateTs > 0 && dateTs < monthAgoTs) return
 
     const purchaseGroupId = String(pd.purchaseGroupId || '').trim()
     const paymentBatch = String(pd.paymentBatch || '').trim()
