@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import AppSidebar from './components/AppSidebar.vue'
 import RushCarPrototypeModule from './modules/rushcar/RushCarPrototypeModule.vue'
 
@@ -20,6 +20,8 @@ const banner = ref({
   type: 'loading',
   text: '正在加载原型测试数据...',
 })
+
+let refreshTimer = null
 
 async function loadSeedData() {
   const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '')
@@ -55,6 +57,13 @@ async function loadSeedData() {
 
 onMounted(() => {
   loadSeedData()
+  refreshTimer = setInterval(() => {
+    loadSeedData()
+  }, 60000)
+})
+
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
 })
 </script>
 

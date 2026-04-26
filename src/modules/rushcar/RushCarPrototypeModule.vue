@@ -21,19 +21,26 @@ const {
   filteredEntries,
   filterUsernameOptions,
   filterRecipientOptions,
+  filterWebsiteOptions,
+  filterForwarderOptions,
+  selectedRecipientForwarder,
   selectGroup,
   applyMasterRecipientDefault,
   addMasterAccount,
   removeMasterAccount,
+  addWebsiteMapping,
+  removeWebsiteMapping,
   addPaymentCard,
   removeEntry,
   submitEntry,
 } = useRushCarPrototype(props.sourceData)
 
-const browserOptions = ['Chrome', 'AdsPower', 'HubStudio', 'BitBrowser', 'Edge', 'Safari']
-const deviceOptions = ['Windows台式机', 'Windows笔记本', 'MacBook', 'iPad', 'iPhone', 'Android']
-const networkOptions = ['家庭宽带', '手机热点', '办公网络', '共享WiFi']
-const vpnNodeOptions = ['美国-洛杉矶', '美国-纽约', '美国-西雅图', '美国-芝加哥']
+const browserOptions = ['AdsPower', 'HubStudio', 'BitBrowser', 'Chrome有痕', 'Chrome无痕', 'Edge有痕', 'Edge无痕', '设备自带浏览器']
+const deviceOptions = ['台式机NT', '妈妈电脑P53', '爸爸小电脑ROG13', 'iPad', '妈妈手机Huawei', '爸爸手机Oppo']
+const networkOptions = ['虹口家网', '宝山家网', '电信移动数据', '联通移动数据', '移动移动数据']
+const vpnNodeOptions = ['美国', '日本', '香港', '马来西亚', '新加坡']
+const bankOptions = ['工商', '招商', '中行', '贝宝']
+const cardTypeOptions = ['Visa', 'Visa数字', 'Master', 'JCB', 'AE', '银联', 'Paypal']
 
 const cardFilterOptions = computed(() => {
   const ids = new Set(filteredEntries.value.map((row) => row.cardId).filter(Boolean))
@@ -61,6 +68,14 @@ watch(
   { immediate: true },
 )
 
+watch(
+  () => entrySnapshot.value.totalUSD,
+  (value) => {
+    state.form.actualChargeUSD = value ? String(Number(value)) : ''
+  },
+  { immediate: true },
+)
+
 function submit() {
   const res = submitEntry()
   if (!res.ok) {
@@ -72,6 +87,12 @@ function submit() {
 
 function fmtUsd(value) {
   return Number(value || 0).toFixed(2)
+}
+
+function fmtDiff(value) {
+  const n = Number(value || 0)
+  const sign = n > 0 ? '+' : ''
+  return `${sign}${n.toFixed(2)}`
 }
 </script>
 
@@ -219,6 +240,20 @@ function fmtUsd(value) {
             </select>
           </div>
         </div>
+        <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-gray-600">
+          <div>
+            <label class="block text-[11px] text-gray-500 mb-1">转运公司（收件人映射）</label>
+            <input class="apple-input bg-gray-100" :value="selectedRecipientForwarder.company || '-'" disabled />
+          </div>
+          <div>
+            <label class="block text-[11px] text-gray-500 mb-1">转运账号</label>
+            <input class="apple-input bg-gray-100" :value="selectedRecipientForwarder.account || '-'" disabled />
+          </div>
+          <div>
+            <label class="block text-[11px] text-gray-500 mb-1">地址别名</label>
+            <input class="apple-input bg-gray-100" :value="selectedRecipientForwarder.addressAlias || '-'" disabled />
+          </div>
+        </div>
       </div>
 
       <div class="apple-card">
@@ -251,6 +286,17 @@ function fmtUsd(value) {
           </div>
         </div>
 
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">实际扣款金额(USD)</label>
+            <input v-model="state.form.actualChargeUSD" type="number" step="0.01" class="apple-input" placeholder="默认等于消费金额" />
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">备注</label>
+            <input v-model="state.form.note" class="apple-input" placeholder="记录支付特殊情况" />
+          </div>
+        </div>
+
         <div class="mt-4 border-t border-gray-100 pt-3">
           <div class="text-xs text-gray-500 mb-2">按规范新增卡片</div>
           <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
@@ -258,12 +304,12 @@ function fmtUsd(value) {
               <option>PT</option>
               <option>NT</option>
             </select>
-            <input v-model="state.addCardForm.bank" class="apple-input" placeholder="银行" />
-            <input v-model="state.addCardForm.tailNo" class="apple-input" placeholder="尾号" />
+            <select v-model="state.addCardForm.bank" class="apple-select">
+              <option v-for="b in bankOptions" :key="b" :value="b">{{ b }}</option>
+            </select>
+            <input v-model="state.addCardForm.identifier" class="apple-input" placeholder="尾号4位或PayPal用户名" />
             <select v-model="state.addCardForm.cardType" class="apple-select">
-              <option>信用卡</option>
-              <option>借记卡</option>
-              <option>虚拟卡</option>
+              <option v-for="t in cardTypeOptions" :key="t" :value="t">{{ t }}</option>
             </select>
             <button class="btn btn-outline" @click="addPaymentCard()">新增卡片</button>
           </div>
@@ -275,8 +321,8 @@ function fmtUsd(value) {
       </div>
 
       <div class="apple-card">
-        <div class="text-sm font-semibold text-gray-700 mb-3">历史记录过滤（用户名 / 支付卡 / 收件人）</div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+        <div class="text-sm font-semibold text-gray-700 mb-3">历史记录过滤（用户名 / 支付卡 / 收件人 / 网站 / 转运公司）</div>
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-3 mb-3">
           <div>
             <label class="block text-xs text-gray-500 mb-1">用户名</label>
             <select v-model="state.filters.username" class="apple-select">
@@ -298,19 +344,37 @@ function fmtUsd(value) {
               <option v-for="r in filterRecipientOptions" :key="r" :value="r">{{ r }}</option>
             </select>
           </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">购买网站</label>
+            <select v-model="state.filters.website" class="apple-select">
+              <option value="">全部</option>
+              <option v-for="w in filterWebsiteOptions" :key="w" :value="w">{{ w }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">转运公司</label>
+            <select v-model="state.filters.forwarder" class="apple-select">
+              <option value="">全部</option>
+              <option v-for="f in filterForwarderOptions" :key="f" :value="f">{{ f }}</option>
+            </select>
+          </div>
         </div>
 
         <div class="overflow-x-auto border border-gray-100 rounded-lg">
-          <table class="apple-table min-w-[980px]">
+          <table class="apple-table min-w-[1360px]">
             <thead>
               <tr>
                 <th>创建时间</th>
                 <th>购买日期</th>
                 <th>购买组</th>
+                <th>购买网站</th>
                 <th>用户名</th>
                 <th>收件人</th>
+                <th>转运公司</th>
                 <th>卡片</th>
-                <th class="text-right">消费USD</th>
+                <th class="text-right">订单USD</th>
+                <th class="text-right">实扣USD</th>
+                <th class="text-right">差额USD</th>
                 <th></th>
               </tr>
             </thead>
@@ -319,14 +383,18 @@ function fmtUsd(value) {
                 <td>{{ new Date(row.createdAt).toLocaleString() }}</td>
                 <td>{{ row.purchaseDate }}</td>
                 <td>{{ row.purchaseGroupId }} / {{ row.paymentBatch }}</td>
+                <td>{{ row.website }}</td>
                 <td>{{ row.username }}</td>
                 <td>{{ row.recipient }}</td>
+                <td>{{ row.forwarderCompany || '-' }}</td>
                 <td>{{ row.cardLabel }}</td>
                 <td class="text-right">{{ fmtUsd(row.consumeUSD) }}</td>
+                <td class="text-right">{{ fmtUsd(row.actualChargeUSD) }}</td>
+                <td class="text-right" :class="Number(row.chargeDiffUSD || 0) === 0 ? 'text-gray-500' : Number(row.chargeDiffUSD || 0) > 0 ? 'text-red-600' : 'text-green-600'">{{ fmtDiff(row.chargeDiffUSD) }}</td>
                 <td class="text-right"><button class="btn btn-outline btn-sm" @click="removeEntry(row.id)">删除</button></td>
               </tr>
               <tr v-if="filteredEntries.length === 0">
-                <td colspan="8" class="text-center text-gray-400 py-4">暂无记录</td>
+                <td colspan="12" class="text-center text-gray-400 py-4">暂无记录</td>
               </tr>
             </tbody>
           </table>
@@ -365,19 +433,19 @@ function fmtUsd(value) {
             <tbody>
               <tr v-for="row in state.masterAccounts" :key="row.id">
                 <td><input v-model="row.username" class="apple-input" placeholder="用户名邮箱" /></td>
-                <td><input v-model="row.password" class="apple-input" placeholder="密码" /></td>
+                <td><input v-model="row.password" type="password" class="apple-input" placeholder="密码" /></td>
                 <td><input v-model="row.recipientA" class="apple-input" /></td>
                 <td><input v-model="row.recipientB" class="apple-input" /></td>
                 <td><input v-model="row.recipientC" class="apple-input" /></td>
                 <td><input v-model="row.forwarderA" class="apple-input" /></td>
                 <td><input v-model="row.forwarderAAccount" class="apple-input" /></td>
-                <td><input v-model="row.forwarderAPassword" class="apple-input" /></td>
+                <td><input v-model="row.forwarderAPassword" type="password" class="apple-input" /></td>
                 <td><input v-model="row.forwarderB" class="apple-input" /></td>
                 <td><input v-model="row.forwarderBAccount" class="apple-input" /></td>
-                <td><input v-model="row.forwarderBPassword" class="apple-input" /></td>
+                <td><input v-model="row.forwarderBPassword" type="password" class="apple-input" /></td>
                 <td><input v-model="row.forwarderC" class="apple-input" /></td>
                 <td><input v-model="row.forwarderCAccount" class="apple-input" /></td>
-                <td><input v-model="row.forwarderCPassword" class="apple-input" /></td>
+                <td><input v-model="row.forwarderCPassword" type="password" class="apple-input" /></td>
                 <td class="text-right"><button class="btn btn-outline btn-sm" @click="removeMasterAccount(row.id)">删除</button></td>
               </tr>
             </tbody>
@@ -385,7 +453,35 @@ function fmtUsd(value) {
         </div>
 
         <div class="text-xs text-gray-500 mt-3">
-          页面2的点选项会实时联动页面1，不写入采购源数据。
+          页面2的点选项会实时联动页面1，不写入采购源数据；密码字段建议仅填脱敏值。
+        </div>
+      </div>
+
+      <div class="apple-card">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-sm font-semibold text-gray-700">网站映射规则（自动化）</div>
+          <button class="btn btn-outline btn-sm" @click="addWebsiteMapping">新增映射</button>
+        </div>
+        <div class="overflow-x-auto border border-gray-100 rounded-lg">
+          <table class="apple-table min-w-[720px]">
+            <thead>
+              <tr>
+                <th>匹配关键词</th>
+                <th>映射域名</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in state.websiteMappings" :key="row.id">
+                <td><input v-model="row.match" class="apple-input" placeholder="如：mattel" /></td>
+                <td><input v-model="row.target" class="apple-input" placeholder="如：creations.mattel.com" /></td>
+                <td class="text-right"><button class="btn btn-outline btn-sm" @click="removeWebsiteMapping(row.id)">删除</button></td>
+              </tr>
+              <tr v-if="state.websiteMappings.length === 0">
+                <td colspan="3" class="text-center text-gray-400 py-4">暂无映射规则</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </template>
