@@ -5,13 +5,26 @@ function toNum(value, fallback = 0) {
   return Number.isFinite(n) ? n : fallback
 }
 
-function normalizeWebsite(website, purchaseGroupId) {
-  const w = String(website || '').trim()
-  if (!w) return ''
-  const lower = w.toLowerCase()
-  if (lower === 'mattel') return 'creations.mattel.com'
-  if (lower.includes('mattel')) return 'creations.mattel.com'
-  return w
+function normalizeWebsite(website, purchaseGroupId, mappings = []) {
+  const rawWebsite = String(website || '').trim()
+  const rawGroup = String(purchaseGroupId || '').trim()
+  const websiteLower = rawWebsite.toLowerCase()
+  const groupLower = rawGroup.toLowerCase()
+
+  for (const row of mappings || []) {
+    const match = String(row?.match || '').trim().toLowerCase()
+    const target = String(row?.target || '').trim()
+    if (!match || !target) continue
+    if (websiteLower.includes(match) || groupLower.includes(match)) {
+      return target
+    }
+  }
+
+  if (websiteLower === 'mattel' || websiteLower.includes('mattel') || groupLower.includes('mattel')) {
+    return 'creations.mattel.com'
+  }
+
+  return rawWebsite
 }
 
 function parseDateTs(value) {
@@ -25,6 +38,54 @@ function safeDate(value) {
   const text = String(value || '').trim()
   if (!text) return ''
   return text.slice(0, 10)
+}
+
+function buildCardLabel(holder, bank, identifier, cardType) {
+  return `${holder}${bank}${identifier}${cardType}`
+}
+
+function getRecipientForwarderMeta(row, recipient) {
+  if (!row || !recipient) {
+    return {
+      company: '',
+      account: '',
+      passwordMasked: '',
+      addressAlias: '',
+    }
+  }
+
+  const r = String(recipient || '').trim()
+  if (r && r === String(row.recipientA || '').trim()) {
+    return {
+      company: String(row.forwarderA || '').trim(),
+      account: String(row.forwarderAAccount || '').trim(),
+      passwordMasked: String(row.forwarderAPassword || '').trim(),
+      addressAlias: `A:${r}`,
+    }
+  }
+  if (r && r === String(row.recipientB || '').trim()) {
+    return {
+      company: String(row.forwarderB || '').trim(),
+      account: String(row.forwarderBAccount || '').trim(),
+      passwordMasked: String(row.forwarderBPassword || '').trim(),
+      addressAlias: `B:${r}`,
+    }
+  }
+  if (r && r === String(row.recipientC || '').trim()) {
+    return {
+      company: String(row.forwarderC || '').trim(),
+      account: String(row.forwarderCAccount || '').trim(),
+      passwordMasked: String(row.forwarderCPassword || '').trim(),
+      addressAlias: `C:${r}`,
+    }
+  }
+
+  return {
+    company: '',
+    account: '',
+    passwordMasked: '',
+    addressAlias: '',
+  }
 }
 
 function createMasterRow() {
@@ -47,12 +108,21 @@ function createMasterRow() {
   }
 }
 
+function createWebsiteMappingRow() {
+  return {
+    id: `wm_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    match: '',
+    target: '',
+  }
+}
+
 function createCardOption(label, holder, bank, tailNo, cardType) {
   return {
     id: `card_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
     label,
     holder,
     bank,
+    identifier: tailNo,
     tailNo,
     cardType,
   }
@@ -69,9 +139,9 @@ function createInitialState(seed = {}) {
             ...createMasterRow(),
             username: 'zhylvg@gmail.com',
             password: '***',
-            recipientA: 'Lvy',
-            recipientB: 'Payton',
-            recipientC: 'Nina',
+            recipientA: 'Lu 003',
+            recipientB: '004',
+            recipientC: '',
             forwarderA: 'US-Forward-1',
             forwarderAAccount: 'lvy_us_01',
             forwarderAPassword: '***',
@@ -86,19 +156,30 @@ function createInitialState(seed = {}) {
             ...createMasterRow(),
             username: 'll_gg@yeah.net',
             password: '***',
-            recipientA: 'Lvy',
-            recipientB: 'Payton',
+            recipientA: 'Lu Gang',
+            recipientB: 'LvGang',
+            recipientC: 'MVCXJ lvg-pi',
             forwarderA: 'US-Forward-1',
             forwarderAAccount: 'lvy_us_01',
             forwarderAPassword: '***',
+            forwarderB: 'US-Forward-2',
+            forwarderBAccount: 'lvg_us_02',
+            forwarderBPassword: '***',
+            forwarderC: 'US-Forward-3',
+            forwarderCAccount: 'mvcxj_us_03',
+            forwarderCPassword: '***',
           },
           {
             ...createMasterRow(),
             username: 'Payton-pi@zohomail.com',
             password: '***',
-            recipientA: 'Payton',
-            recipientB: 'Nina',
-            forwarderB: 'US-Forward-2',
+            recipientA: '001',
+            recipientB: '005i',
+            recipientC: '',
+            forwarderA: 'US-Forward-2',
+            forwarderAAccount: 'payton_us_01',
+            forwarderAPassword: '***',
+            forwarderB: 'US-Forward-3',
             forwarderBAccount: 'payton_us_02',
             forwarderBPassword: '***',
           },
@@ -106,14 +187,14 @@ function createInitialState(seed = {}) {
     paymentCards: Array.isArray(seed.paymentCards) && seed.paymentCards.length
       ? seed.paymentCards
       : [
-          createCardOption('PT-招商-1123-信用卡', 'PT', '招商', '1123', '信用卡'),
-          createCardOption('NT-中行-8871-借记卡', 'NT', '中行', '8871', '借记卡'),
+          createCardOption('PT招商0940Visa数字', 'PT', '招商', '0940', 'Visa数字'),
+          createCardOption('NT贝宝Babey@163.comPaypal', 'NT', '贝宝', 'Babey@163.com', 'Paypal'),
         ],
     addCardForm: {
       holder: 'PT',
-      bank: '',
-      tailNo: '',
-      cardType: '信用卡',
+      bank: '招商',
+      identifier: '',
+      cardType: 'Visa数字',
     },
     activePage: 'entry',
     selectedGroupKey: '',
@@ -127,27 +208,38 @@ function createInitialState(seed = {}) {
       holder: 'PT',
       cardId: '',
       shopQuickPay: '否',
+      note: '',
+      actualChargeUSD: '',
     },
     filters: {
       username: '',
       cardId: '',
       recipient: '',
+      website: '',
+      forwarder: '',
     },
+    websiteMappings: Array.isArray(seed.websiteMappings) && seed.websiteMappings.length
+      ? seed.websiteMappings
+      : [{ id: 'wm_mattel', match: 'mattel', target: 'creations.mattel.com' }],
     sourceLoadedFrom: seed.sourceLoadedFrom || 'public/a.json',
     loadedAt: now,
   })
 }
 
 function buildUsPurchaseGroups(items = []) {
-  const monthAgoTs = Date.now() - 30 * 24 * 60 * 60 * 1000
+  const usItems = (items || []).filter((item) => String(item?.category || '') === '美淘')
+  const allDateTs = usItems
+    .map((item) => parseDateTs(safeDate(item?.purchaseDetails?.date)))
+    .filter((ts) => ts > 0)
+  const latestTs = allDateTs.length ? Math.max(...allDateTs) : 0
+  const monthAgoTs = latestTs ? latestTs - 30 * 24 * 60 * 60 * 1000 : 0
   const map = new Map()
 
-  items.forEach((item) => {
-    if (String(item?.category || '') !== '美淘') return
+  usItems.forEach((item) => {
     const pd = item?.purchaseDetails || {}
     const date = safeDate(pd.date)
     const dateTs = parseDateTs(date)
-    if (date && dateTs > 0 && dateTs < monthAgoTs) return
+    if (latestTs && (!dateTs || dateTs < monthAgoTs || dateTs > latestTs)) return
 
     const purchaseGroupId = String(pd.purchaseGroupId || '').trim()
     const paymentBatch = String(pd.paymentBatch || '').trim()
@@ -245,6 +337,12 @@ export function useRushCarPrototype(rawSeedData = {}) {
     state.paymentCards.filter((c) => String(c.holder || '') === String(state.form.holder || '')),
   )
 
+  const selectedMasterAccount = computed(() => masterByUsername.value.get(state.form.username) || null)
+
+  const selectedRecipientForwarder = computed(() =>
+    getRecipientForwarderMeta(selectedMasterAccount.value, state.form.recipient),
+  )
+
   const selectedCard = computed(() =>
     state.paymentCards.find((c) => c.id === state.form.cardId) || null,
   )
@@ -264,7 +362,7 @@ export function useRushCarPrototype(rawSeedData = {}) {
     }
     return {
       date: g.date,
-      website: normalizeWebsite(g.website, g.purchaseGroupId),
+      website: normalizeWebsite(g.website, g.purchaseGroupId, state.websiteMappings),
       websiteAccount: g.websiteAccount,
       totalUSD: toNum(g.totalUSD),
       lines: g.lines,
@@ -279,6 +377,8 @@ export function useRushCarPrototype(rawSeedData = {}) {
         if (state.filters.username && row.username !== state.filters.username) return false
         if (state.filters.cardId && row.cardId !== state.filters.cardId) return false
         if (state.filters.recipient && row.recipient !== state.filters.recipient) return false
+        if (state.filters.website && row.website !== state.filters.website) return false
+        if (state.filters.forwarder && row.forwarderCompany !== state.filters.forwarder) return false
         return true
       })
       .sort((a, b) => toNum(b.createdAt) - toNum(a.createdAt))
@@ -296,6 +396,24 @@ export function useRushCarPrototype(rawSeedData = {}) {
     const set = new Set()
     state.entries.forEach((row) => {
       if (row?.recipient) set.add(row.recipient)
+    })
+    return Array.from(set)
+  })
+
+  const filterWebsiteOptions = computed(() => {
+    const set = new Set()
+    state.entries.forEach((row) => {
+      const value = String(row?.website || '').trim()
+      if (value) set.add(value)
+    })
+    return Array.from(set)
+  })
+
+  const filterForwarderOptions = computed(() => {
+    const set = new Set()
+    state.entries.forEach((row) => {
+      const value = String(row?.forwarderCompany || '').trim()
+      if (value) set.add(value)
     })
     return Array.from(set)
   })
@@ -328,18 +446,27 @@ export function useRushCarPrototype(rawSeedData = {}) {
     }
   }
 
+  function addWebsiteMapping() {
+    state.websiteMappings.push(createWebsiteMappingRow())
+  }
+
+  function removeWebsiteMapping(id) {
+    const idx = state.websiteMappings.findIndex((row) => row.id === id)
+    if (idx >= 0) state.websiteMappings.splice(idx, 1)
+  }
+
   function addPaymentCard() {
     const holder = String(state.addCardForm.holder || '').trim()
     const bank = String(state.addCardForm.bank || '').trim()
-    const tailNo = String(state.addCardForm.tailNo || '').trim()
-    const cardType = String(state.addCardForm.cardType || '').trim() || '信用卡'
-    if (!holder || !bank || !tailNo || tailNo.length < 2) return false
+    const identifier = String(state.addCardForm.identifier || '').trim()
+    const cardType = String(state.addCardForm.cardType || '').trim() || 'Visa数字'
+    if (!holder || !bank || !identifier || identifier.length < 2) return false
 
-    const label = `${holder}-${bank}-${tailNo}-${cardType}`
-    state.paymentCards.unshift(createCardOption(label, holder, bank, tailNo, cardType))
-    state.addCardForm.bank = ''
-    state.addCardForm.tailNo = ''
-    state.addCardForm.cardType = '信用卡'
+    const label = buildCardLabel(holder, bank, identifier, cardType)
+    state.paymentCards.unshift(createCardOption(label, holder, bank, identifier, cardType))
+    state.addCardForm.bank = '招商'
+    state.addCardForm.identifier = ''
+    state.addCardForm.cardType = 'Visa数字'
     return true
   }
 
@@ -360,6 +487,20 @@ export function useRushCarPrototype(rawSeedData = {}) {
       return { ok: false, message: '请填写付款信息' }
     }
 
+    const actualChargeUSD =
+      state.form.actualChargeUSD === '' || state.form.actualChargeUSD === null
+        ? toNum(entrySnapshot.value.totalUSD)
+        : toNum(state.form.actualChargeUSD)
+    const chargeDiffUSD = Number((actualChargeUSD - toNum(entrySnapshot.value.totalUSD)).toFixed(2))
+    const selectedCardLabel =
+      String(selectedCard.value.label || '').trim() ||
+      buildCardLabel(
+        selectedCard.value.holder,
+        selectedCard.value.bank,
+        selectedCard.value.identifier || selectedCard.value.tailNo || '',
+        selectedCard.value.cardType,
+      )
+
     const now = Date.now()
     const row = {
       id: `entry_${now}_${Math.floor(Math.random() * 1000)}`,
@@ -372,17 +513,24 @@ export function useRushCarPrototype(rawSeedData = {}) {
       websiteAccount: entrySnapshot.value.websiteAccount,
       lines: JSON.parse(JSON.stringify(entrySnapshot.value.lines)),
       totalUSD: toNum(entrySnapshot.value.totalUSD),
+      sourceWebsiteRaw: String(selectedGroup.value.website || '').trim(),
       purchaseDevice: state.form.purchaseDevice,
       networkEnv: state.form.networkEnv,
       vpnNode: state.form.vpnNode,
       browser: state.form.browser,
       username: state.form.username,
       recipient: state.form.recipient,
+      forwarderCompany: selectedRecipientForwarder.value.company,
+      forwarderAccount: selectedRecipientForwarder.value.account,
+      forwarderAddressAlias: selectedRecipientForwarder.value.addressAlias,
       holder: state.form.holder,
       cardId: selectedCard.value.id,
-      cardLabel: selectedCard.value.label,
+      cardLabel: selectedCardLabel,
       shopQuickPay: state.form.shopQuickPay,
+      note: String(state.form.note || '').trim(),
       consumeUSD: toNum(entrySnapshot.value.totalUSD),
+      actualChargeUSD,
+      chargeDiffUSD,
     }
 
     state.entries.unshift(row)
@@ -401,10 +549,15 @@ export function useRushCarPrototype(rawSeedData = {}) {
     filteredEntries,
     filterUsernameOptions,
     filterRecipientOptions,
+    filterWebsiteOptions,
+    filterForwarderOptions,
+    selectedRecipientForwarder,
     selectGroup,
     applyMasterRecipientDefault,
     addMasterAccount,
     removeMasterAccount,
+    addWebsiteMapping,
+    removeWebsiteMapping,
     addPaymentCard,
     removeEntry,
     submitEntry,
