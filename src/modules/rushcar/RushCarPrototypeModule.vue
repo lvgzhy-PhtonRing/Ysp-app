@@ -94,6 +94,14 @@ function fmtDiff(value) {
   const sign = n > 0 ? '+' : ''
   return `${sign}${n.toFixed(2)}`
 }
+
+function getGroupProductName(group) {
+  const lines = Array.isArray(group?.lines) ? group.lines : []
+  if (lines.length === 0) return '-'
+  const firstName = String(lines[0]?.name || '').trim() || '-'
+  if (lines.length === 1) return firstName
+  return `${firstName} +${lines.length - 1}`
+}
 </script>
 
 <template>
@@ -139,7 +147,7 @@ function fmtDiff(value) {
             <select class="apple-select" :value="state.selectedGroupKey" @change="selectGroup($event.target.value)">
               <option value="">请选择购买组</option>
               <option v-for="g in usPurchaseGroups" :key="g.key" :value="g.key">
-                {{ g.date }} / {{ g.purchaseGroupId }} / {{ g.website }} / {{ g.paymentBatch }}
+                {{ g.date || '-' }} / {{ getGroupProductName(g) }} / {{ g.paymentBatch || '-' }}
               </option>
             </select>
           </div>
