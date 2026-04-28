@@ -460,9 +460,6 @@ export function useRushCarPrototype(rawSeedData = {}) {
     if (existing) {
       return { ok: false, message: '该购买组已存在美淘记录，避免覆盖，请先删除或修改现有记录' }
     }
-    if (!state.form.purchaseDevice || !state.form.networkEnv || !state.form.vpnNode || !state.form.browser) {
-      return { ok: false, message: '请完整填写操作环境信息' }
-    }
     if (!entrySnapshot.value.username || !state.form.recipientId || !selectedRecipientForwarder.value) {
       return { ok: false, message: '请选择收件人' }
     }
