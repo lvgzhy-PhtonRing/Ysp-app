@@ -310,7 +310,11 @@ export function useRushCarPrototype(rawSeedData = {}) {
         if (state.filters.recipient && row.recipient !== state.filters.recipient) return false
         return true
       })
-      .sort((a, b) => toNum(b.createdAt) - toNum(a.createdAt))
+      .sort((a, b) => {
+        const purchaseDiff = parseDateTs(b.purchaseDate) - parseDateTs(a.purchaseDate)
+        if (purchaseDiff !== 0) return purchaseDiff
+        return toNum(b.createdAt) - toNum(a.createdAt)
+      })
   })
 
   const filterUsernameOptions = computed(() => {
