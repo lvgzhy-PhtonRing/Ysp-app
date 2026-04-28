@@ -159,7 +159,7 @@ function fmtUsd(value) {
 
 function getEntryStatus(row) {
   if (row?.refundStatus === '已退款') return { label: '已退款', cls: 'bg-emerald-100 text-emerald-700' }
-  if (row?.purchaseStatus === 'failed') return { label: '购买失败', cls: 'bg-orange-100 text-orange-700' }
+  if (row?.purchaseStatus === 'failed') return { label: '失败', cls: 'bg-orange-100 text-orange-700' }
   return { label: '购买成功', cls: 'bg-blue-100 text-blue-700' }
 }
 
@@ -581,6 +581,7 @@ function confirmRemovePaymentCard(id) {
                 <th>收件人</th>
                 <th>转运公司</th>
                 <th>卡片</th>
+                <th>Shop快捷支付</th>
                 <th class="text-right">订单USD</th>
                 <th>状态</th>
                 <th></th>
@@ -594,18 +595,19 @@ function confirmRemovePaymentCard(id) {
                 <td>{{ row.recipient }}</td>
                 <td>{{ row.forwarderCompany || '-' }}</td>
                 <td>{{ row.cardLabel }}</td>
+                <td>{{ row.shopQuickPay || '-' }}</td>
                 <td class="text-right">{{ fmtUsd(row.consumeUSD) }}</td>
                 <td>
                   <span class="inline-flex px-2 py-0.5 rounded text-xs" :class="getEntryStatus(row).cls">{{ getEntryStatus(row).label }}</span>
                 </td>
                 <td class="text-right whitespace-nowrap">
-                  <button class="btn btn-outline btn-sm" @click="viewEntryDetail(row)">网络</button>
-                  <button class="btn btn-sm ml-1 border border-orange-200 bg-orange-100 text-orange-700 hover:bg-orange-200" @click="openFailureDialog(row)">购买失败</button>
+                  <button class="btn btn-outline btn-sm" @click="viewEntryDetail(row)">网络信息</button>
+                  <button class="btn btn-sm ml-1 border border-orange-200 bg-orange-100 text-orange-700 hover:bg-orange-200" @click="openFailureDialog(row)">失败</button>
                   <button class="btn btn-outline btn-sm ml-1" @click="removeEntry(row.id)">删除</button>
                 </td>
               </tr>
               <tr v-if="filteredEntries.length === 0">
-                <td colspan="9" class="text-center text-gray-400 py-4">暂无记录</td>
+                <td colspan="10" class="text-center text-gray-400 py-4">暂无记录</td>
               </tr>
             </tbody>
           </table>
