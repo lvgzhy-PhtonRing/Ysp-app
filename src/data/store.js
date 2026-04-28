@@ -15,6 +15,13 @@ const DEFAULT_CALC = {
   fund: 0,
 }
 
+const DEFAULT_RUSHCAR = {
+  entries: [],
+  forwarderInfos: [],
+  mattelSiteInfos: [],
+  paymentCards: [],
+}
+
 const DEFAULT_CLOUD_SETTINGS = {
   supabaseUrl: '',
   supabaseAnonKey: '',
@@ -56,6 +63,16 @@ function replaceObject(target, source) {
   Object.assign(target, clone(source || {}))
 }
 
+function normalizeRushCarData(input = {}) {
+  const data = input && typeof input === 'object' ? input : {}
+  return {
+    entries: Array.isArray(data.entries) ? clone(data.entries) : [],
+    forwarderInfos: Array.isArray(data.forwarderInfos) ? clone(data.forwarderInfos) : [],
+    mattelSiteInfos: Array.isArray(data.mattelSiteInfos) ? clone(data.mattelSiteInfos) : [],
+    paymentCards: Array.isArray(data.paymentCards) ? clone(data.paymentCards) : [],
+  }
+}
+
 export const state = reactive({
   // 字段名与 a.json 对应映射后的 store 结构保持一致
   items: [],
@@ -66,6 +83,7 @@ export const state = reactive({
   paytonAccounts: {},
   paytonRecords: [],
   paytonInventory: [],
+  rushcar: clone(DEFAULT_RUSHCAR),
   version: APP_VERSION,
   cloudSettings: {
     ...DEFAULT_CLOUD_SETTINGS,
@@ -282,6 +300,8 @@ export function loadData(jsonObject = {}) {
   replaceArray(state.paytonRecords, data.payton?.records)
   replaceArray(state.paytonInventory, data.payton?.inventory)
 
+  replaceObject(state.rushcar, normalizeRushCarData(data.rushcar))
+
   // 侧边栏版本固定显示程序版本，不受导入 JSON 中 version 字段影响
   state.version = APP_VERSION
 }
@@ -300,6 +320,7 @@ export function exportData() {
       records: clone(state.paytonRecords),
       inventory: clone(state.paytonInventory),
     },
+    rushcar: normalizeRushCarData(state.rushcar),
     version: state.version,
   }
 }

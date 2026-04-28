@@ -45,6 +45,8 @@ const domesticReceiverOptions = ['吕', '郑', '爷']
 const transferCompanyOptions = ['转运中国', '铭瑄海淘']
 const mattelAccountOptions = ['zhylvg@gmail.com', 'll_gg@yeah.net', 'Payton-pi@zohomail.com']
 
+const isIntegratedMode = computed(() => Boolean(props?.sourceData?.rushcar))
+
 const showForwarderPassword = reactive({})
 const showMattelPassword = reactive({})
 
@@ -619,7 +621,7 @@ function toggleSiteForwarder(siteRow, forwarderId, event) {
       </div>
     </template>
 
-    <div class="apple-card border-yellow-100 bg-yellow-50 text-sm text-yellow-800">
+    <div v-if="!isIntegratedMode" class="apple-card border-yellow-100 bg-yellow-50 text-sm text-yellow-800">
       <span class="font-semibold">当前为原型沙盒：</span>
       侧边栏保留完整结构，但 ysp-app 其他模块已禁用点击；本页删除/保存仅作用于原型内存，不影响采购管理源数据。
     </div>
