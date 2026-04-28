@@ -164,6 +164,7 @@ function buildNetworkDetailLines(row) {
     `付款编号: ${row.paymentBatch || '-'}`,
     `订单USD: ${fmtUsd(row.consumeUSD)}`,
     `购买设备: ${row.purchaseDevice || '-'}`,
+    `虚拟机: ${row.virtualMachine ? '是' : '否'}`,
     `网络环境: ${row.networkEnv || '-'}`,
     `VPN节点: ${row.vpnNode || '-'}`,
     `网页浏览器: ${row.browser || '-'}`,
@@ -412,6 +413,12 @@ function confirmRemovePaymentCard(id) {
               <option value="">请选择</option>
               <option v-for="v in deviceOptions" :key="v" :value="v">{{ v }}</option>
             </select>
+          </div>
+          <div class="flex items-end">
+            <label class="inline-flex items-center gap-2 text-sm text-gray-700 h-10 px-3 border border-gray-200 rounded-lg bg-white">
+              <input v-model="state.form.virtualMachine" type="checkbox" class="rounded border-gray-300" />
+              <span>虚拟机</span>
+            </label>
           </div>
           <div>
             <label class="block text-xs text-gray-500 mb-1">网络环境</label>

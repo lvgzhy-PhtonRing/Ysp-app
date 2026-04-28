@@ -101,6 +101,7 @@ function createInitialState(seed = {}) {
     selectedGroupKey: '',
     form: {
       purchaseDevice: '',
+      virtualMachine: false,
       networkEnv: '',
       vpnNode: '',
       browser: '',
@@ -498,6 +499,7 @@ export function useRushCarPrototype(rawSeedData = {}) {
       totalUSD: toNum(entrySnapshot.value.totalUSD),
       sourceWebsiteRaw: String(selectedGroup.value.website || '').trim(),
       purchaseDevice: state.form.purchaseDevice,
+      virtualMachine: Boolean(state.form.virtualMachine),
       networkEnv: state.form.networkEnv,
       vpnNode: state.form.vpnNode,
       browser: state.form.browser,
