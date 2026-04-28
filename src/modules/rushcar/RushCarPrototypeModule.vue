@@ -48,7 +48,7 @@ const cardFilterOptions = computed(() => {
 })
 
 watch(
-  () => state.form.username,
+  () => entrySnapshot.value.username,
   () => {
     applyMasterRecipientDefault()
   },
@@ -231,35 +231,28 @@ function getGroupProductName(group) {
       </div>
 
       <div class="apple-card">
-        <div class="text-sm font-semibold text-gray-700 mb-3">第三组：网站登录信息（用户名联动收件人）</div>
+        <div class="text-sm font-semibold text-gray-700 mb-3">第三组：网站登录信息</div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs text-gray-500 mb-1">网站用户名</label>
-            <select v-model="state.form.username" class="apple-select">
-              <option value="">请选择用户名</option>
-              <option v-for="u in usernameOptions" :key="u" :value="u">{{ u }}</option>
-            </select>
+            <label class="block text-xs text-gray-500 mb-1">网站用户名（自动带入）</label>
+            <input class="apple-input bg-gray-100" :value="entrySnapshot.username || '-'" disabled />
           </div>
           <div>
-            <label class="block text-xs text-gray-500 mb-1">收件人（联动）</label>
+            <label class="block text-xs text-gray-500 mb-1">收件人（联动转运）</label>
             <select v-model="state.form.recipient" class="apple-select">
               <option value="">请选择收件人</option>
               <option v-for="r in recipientOptions" :key="r" :value="r">{{ r }}</option>
             </select>
           </div>
         </div>
-        <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-gray-600">
+        <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-gray-600">
           <div>
-            <label class="block text-[11px] text-gray-500 mb-1">转运公司（收件人映射）</label>
+            <label class="block text-[11px] text-gray-500 mb-1">转运公司</label>
             <input class="apple-input bg-gray-100" :value="selectedRecipientForwarder.company || '-'" disabled />
           </div>
           <div>
             <label class="block text-[11px] text-gray-500 mb-1">转运账号</label>
             <input class="apple-input bg-gray-100" :value="selectedRecipientForwarder.account || '-'" disabled />
-          </div>
-          <div>
-            <label class="block text-[11px] text-gray-500 mb-1">地址别名</label>
-            <input class="apple-input bg-gray-100" :value="selectedRecipientForwarder.addressAlias || '-'" disabled />
           </div>
         </div>
       </div>
