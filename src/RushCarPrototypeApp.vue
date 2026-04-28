@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
 import AppSidebar from './components/AppSidebar.vue'
 import RushCarPrototypeModule from './modules/rushcar/RushCarPrototypeModule.vue'
@@ -10,7 +10,7 @@ const tabs = [
   { id: 'purchase', name: '采购管理', disabled: true },
   { id: 'finance', name: '公共收支', disabled: true },
   { id: 'payton', name: "Payton's基金", disabled: true },
-  { id: 'rushcar', name: '美泰记录' },
+  { id: 'rushcar', name: '美淘记录' },
 ]
 
 const currentTab = ref('rushcar')
@@ -25,11 +25,8 @@ let refreshTimer = null
 
 async function loadSeedData() {
   const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '')
-  const candidates = [
-    `${base}/a.json`,
-    './a.json',
-    '/a.json',
-  ]
+  const candidates = [`${base}/a.json`, './a.json', '/a.json']
+
   for (const url of candidates) {
     try {
       const res = await fetch(url + '?t=' + Date.now(), { cache: 'no-store' })
