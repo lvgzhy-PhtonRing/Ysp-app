@@ -50,7 +50,6 @@ function getRecipientForwarderMeta(row, recipient) {
       company: '',
       account: '',
       passwordMasked: '',
-      addressAlias: '',
     }
   }
 
@@ -60,7 +59,6 @@ function getRecipientForwarderMeta(row, recipient) {
       company: String(row.forwarderA || '').trim(),
       account: String(row.forwarderAAccount || '').trim(),
       passwordMasked: String(row.forwarderAPassword || '').trim(),
-      addressAlias: `A:${r}`,
     }
   }
   if (r && r === String(row.recipientB || '').trim()) {
@@ -68,7 +66,6 @@ function getRecipientForwarderMeta(row, recipient) {
       company: String(row.forwarderB || '').trim(),
       account: String(row.forwarderBAccount || '').trim(),
       passwordMasked: String(row.forwarderBPassword || '').trim(),
-      addressAlias: `B:${r}`,
     }
   }
   if (r && r === String(row.recipientC || '').trim()) {
@@ -76,7 +73,6 @@ function getRecipientForwarderMeta(row, recipient) {
       company: String(row.forwarderC || '').trim(),
       account: String(row.forwarderCAccount || '').trim(),
       passwordMasked: String(row.forwarderCPassword || '').trim(),
-      addressAlias: `C:${r}`,
     }
   }
 
@@ -156,18 +152,15 @@ function createInitialState(seed = {}) {
             ...createMasterRow(),
             username: 'll_gg@yeah.net',
             password: '***',
-            recipientA: 'Lu Gang',
-            recipientB: 'LvGang',
-            recipientC: 'MVCXJ lvg-pi',
-            forwarderA: 'US-Forward-1',
-            forwarderAAccount: 'lvy_us_01',
+            recipientA: 'Lu Gang LvGang',
+            recipientB: 'MVCXJ lvg-pi',
+            recipientC: '',
+            forwarderA: '转运中国',
+            forwarderAAccount: 'll_gg@yeah.net',
             forwarderAPassword: '***',
-            forwarderB: 'US-Forward-2',
-            forwarderBAccount: 'lvg_us_02',
+            forwarderB: '铭瑄海淘',
+            forwarderBAccount: 'll_gg',
             forwarderBPassword: '***',
-            forwarderC: 'US-Forward-3',
-            forwarderCAccount: 'mvcxj_us_03',
-            forwarderCPassword: '***',
           },
           {
             ...createMasterRow(),
@@ -327,7 +320,9 @@ export function useRushCarPrototype(rawSeedData = {}) {
   )
 
   const recipientOptions = computed(() => {
-    const row = masterByUsername.value.get(state.form.username)
+    const autoUsername = String(entrySnapshot.value.username || '').trim()
+    if (!autoUsername) return []
+    const row = masterByUsername.value.get(autoUsername) || null
     if (!row) return []
     return [row.recipientA, row.recipientB, row.recipientC]
       .map((v) => String(v || '').trim())
@@ -338,7 +333,11 @@ export function useRushCarPrototype(rawSeedData = {}) {
     state.paymentCards.filter((c) => String(c.holder || '') === String(state.form.holder || '')),
   )
 
-  const selectedMasterAccount = computed(() => masterByUsername.value.get(state.form.username) || null)
+  const selectedMasterAccount = computed(() => {
+    const autoUsername = String(entrySnapshot.value.username || '').trim()
+    if (!autoUsername) return null
+    return masterByUsername.value.get(autoUsername) || null
+  })
 
   const selectedRecipientForwarder = computed(() =>
     getRecipientForwarderMeta(selectedMasterAccount.value, state.form.recipient),
@@ -369,6 +368,7 @@ export function useRushCarPrototype(rawSeedData = {}) {
       lines: g.lines,
       purchaseGroupId: g.purchaseGroupId,
       paymentBatch: g.paymentBatch,
+      username: g.websiteAccount,
     }
   })
 
@@ -481,8 +481,8 @@ export function useRushCarPrototype(rawSeedData = {}) {
     if (!state.form.purchaseDevice || !state.form.networkEnv || !state.form.vpnNode || !state.form.browser) {
       return { ok: false, message: '请完整填写操作环境信息' }
     }
-    if (!state.form.username || !state.form.recipient) {
-      return { ok: false, message: '请填写网站登录信息' }
+    if (!entrySnapshot.value.username || !state.form.recipient) {
+      return { ok: false, message: '请选择收件人' }
     }
     if (!state.form.holder || !selectedCard.value) {
       return { ok: false, message: '请填写付款信息' }
@@ -519,11 +519,10 @@ export function useRushCarPrototype(rawSeedData = {}) {
       networkEnv: state.form.networkEnv,
       vpnNode: state.form.vpnNode,
       browser: state.form.browser,
-      username: state.form.username,
+      username: entrySnapshot.value.username,
       recipient: state.form.recipient,
       forwarderCompany: selectedRecipientForwarder.value.company,
       forwarderAccount: selectedRecipientForwarder.value.account,
-      forwarderAddressAlias: selectedRecipientForwarder.value.addressAlias,
       holder: state.form.holder,
       cardId: selectedCard.value.id,
       cardLabel: selectedCardLabel,
