@@ -9,8 +9,8 @@ const tabs = [
   { id: 'sales', name: '销售记账', disabled: true },
   { id: 'purchase', name: '采购管理', disabled: true },
   { id: 'finance', name: '公共收支', disabled: true },
-  { id: 'payton', name: "Payton's基金", disabled: true },
   { id: 'rushcar', name: '美淘记录' },
+  { id: 'payton', name: "Payton's基金", disabled: true },
 ]
 
 const currentTab = ref('rushcar')

@@ -40,6 +40,7 @@ const vpnNodeOptions = ['美国', '日本', '香港', '马来西亚', '新加坡
 const bankOptions = ['工商', '招商', '中行', '贝宝']
 const cardTypeOptions = ['Visa', 'Visa数字', 'Master', 'JCB', 'AE', '银联', 'Paypal']
 const domesticReceiverOptions = ['吕', '郑', '爷']
+const mattelAccountOptions = ['zhylvg@gmail.com', 'll_gg@yeah.net', 'Payton-pi@zohomail.com']
 
 const cardFilterOptions = computed(() => {
   const ids = new Set(filteredEntries.value.map((row) => row.cardId).filter(Boolean))
@@ -96,6 +97,12 @@ function submit() {
 
 function fmtUsd(value) {
   return Number(value || 0).toFixed(2)
+}
+
+function getEntryStatus(row) {
+  if (row?.refundStatus === '已退款') return { label: '已退款', cls: 'bg-emerald-100 text-emerald-700' }
+  if (row?.purchaseStatus === 'failed') return { label: '购买失败', cls: 'bg-orange-100 text-orange-700' }
+  return { label: '购买成功', cls: 'bg-blue-100 text-blue-700' }
 }
 
 function getGroupProductName(group) {
@@ -404,6 +411,7 @@ function toggleSiteForwarder(siteRow, forwarderId, event) {
                 <th>转运公司</th>
                 <th>卡片</th>
                 <th class="text-right">订单USD</th>
+                <th>状态</th>
                 <th></th>
               </tr>
             </thead>
@@ -416,6 +424,9 @@ function toggleSiteForwarder(siteRow, forwarderId, event) {
                 <td>{{ row.forwarderCompany || '-' }}</td>
                 <td>{{ row.cardLabel }}</td>
                 <td class="text-right">{{ fmtUsd(row.consumeUSD) }}</td>
+                <td>
+                  <span class="inline-flex px-2 py-0.5 rounded text-xs" :class="getEntryStatus(row).cls">{{ getEntryStatus(row).label }}</span>
+                </td>
                 <td class="text-right whitespace-nowrap">
                   <button class="btn btn-outline btn-sm" @click="viewEntryDetail(row)">网络</button>
                   <button class="btn btn-sm ml-1 border border-orange-200 bg-orange-100 text-orange-700 hover:bg-orange-200" @click="openFailureDialog(row)">购买失败</button>
@@ -423,7 +434,7 @@ function toggleSiteForwarder(siteRow, forwarderId, event) {
                 </td>
               </tr>
               <tr v-if="filteredEntries.length === 0">
-                <td colspan="8" class="text-center text-gray-400 py-4">暂无记录</td>
+                <td colspan="9" class="text-center text-gray-400 py-4">暂无记录</td>
               </tr>
             </tbody>
           </table>
@@ -490,7 +501,11 @@ function toggleSiteForwarder(siteRow, forwarderId, event) {
             </thead>
             <tbody>
               <tr v-for="row in state.mattelSiteInfos" :key="row.id">
-                <td><input v-model="row.loginUsername" class="apple-input" placeholder="登录用户名" /></td>
+                <td>
+                  <select v-model="row.loginUsername" class="apple-select">
+                    <option v-for="acc in mattelAccountOptions" :key="acc" :value="acc">{{ acc }}</option>
+                  </select>
+                </td>
                 <td><input v-model="row.passwordPrefix" class="apple-input" placeholder="密码前三位" /></td>
                 <td>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-2 min-w-[420px]">

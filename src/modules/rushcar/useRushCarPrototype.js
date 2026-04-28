@@ -46,7 +46,7 @@ function createForwarderInfo(partial = {}) {
 function createMattelSiteInfo(partial = {}) {
   return {
     id: partial.id || `ms_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-    loginUsername: partial.loginUsername || '',
+    loginUsername: partial.loginUsername || 'zhylvg@gmail.com',
     passwordPrefix: partial.passwordPrefix || '',
     forwarderIds: Array.isArray(partial.forwarderIds) ? [...partial.forwarderIds] : [],
     mattelDisplayName: partial.mattelDisplayName || '',
@@ -66,101 +66,19 @@ function createCardOption(label, holder, bank, identifier, cardType, remark = ''
   }
 }
 
-function createDefaultForwarders() {
-  return [
-    createForwarderInfo({
-      id: 'fw_ll_1',
-      companyName: '转运中国',
-      loginUsername: 'll_gg@yeah.net',
-      passwordPrefix: '***',
-      recipientName: 'Lu Gang LvGang',
-      domesticReceiver: '吕',
-    }),
-    createForwarderInfo({
-      id: 'fw_ll_2',
-      companyName: '铭瑄海淘',
-      loginUsername: 'll_gg',
-      passwordPrefix: '***',
-      recipientName: 'MVCXJ lvg-pi',
-      domesticReceiver: '郑',
-    }),
-    createForwarderInfo({
-      id: 'fw_zh_1',
-      companyName: '转运中国',
-      loginUsername: 'zhylvg@gmail.com',
-      passwordPrefix: '***',
-      recipientName: 'Lu 003',
-      domesticReceiver: '吕',
-    }),
-    createForwarderInfo({
-      id: 'fw_zh_2',
-      companyName: '转运中国',
-      loginUsername: 'zhylvg@gmail.com',
-      passwordPrefix: '***',
-      recipientName: '004',
-      domesticReceiver: '爷',
-    }),
-    createForwarderInfo({
-      id: 'fw_py_1',
-      companyName: '铭瑄海淘',
-      loginUsername: 'Payton-pi@zohomail.com',
-      passwordPrefix: '***',
-      recipientName: '001',
-      domesticReceiver: '郑',
-    }),
-    createForwarderInfo({
-      id: 'fw_py_2',
-      companyName: '铭瑄海淘',
-      loginUsername: 'Payton-pi@zohomail.com',
-      passwordPrefix: '***',
-      recipientName: '005i',
-      domesticReceiver: '爷',
-    }),
-  ]
-}
-
-function createDefaultMattelSites() {
-  return [
-    createMattelSiteInfo({
-      id: 'ms_ll_1',
-      loginUsername: 'll_gg@yeah.net',
-      passwordPrefix: '***',
-      forwarderIds: ['fw_ll_1', 'fw_ll_2'],
-      mattelDisplayName: 'll_gg',
-    }),
-    createMattelSiteInfo({
-      id: 'ms_zh_1',
-      loginUsername: 'zhylvg@gmail.com',
-      passwordPrefix: '***',
-      forwarderIds: ['fw_zh_1', 'fw_zh_2'],
-      mattelDisplayName: 'zhylvg',
-    }),
-    createMattelSiteInfo({
-      id: 'ms_py_1',
-      loginUsername: 'Payton-pi@zohomail.com',
-      passwordPrefix: '***',
-      forwarderIds: ['fw_py_1', 'fw_py_2'],
-      mattelDisplayName: 'Payton-pi',
-    }),
-  ]
-}
-
 function createInitialState(seed = {}) {
   const now = new Date().toISOString().slice(0, 10)
   return reactive({
     entries: Array.isArray(seed.entries) ? seed.entries : [],
     forwarderInfos: Array.isArray(seed.forwarderInfos) && seed.forwarderInfos.length
       ? seed.forwarderInfos.map((x) => createForwarderInfo(x))
-      : createDefaultForwarders(),
+      : [],
     mattelSiteInfos: Array.isArray(seed.mattelSiteInfos) && seed.mattelSiteInfos.length
       ? seed.mattelSiteInfos.map((x) => createMattelSiteInfo(x))
-      : createDefaultMattelSites(),
+      : [],
     paymentCards: Array.isArray(seed.paymentCards) && seed.paymentCards.length
       ? seed.paymentCards
-      : [
-          createCardOption('PT招商0940Visa数字', 'PT', '招商', '0940', 'Visa数字'),
-          createCardOption('NT贝宝Babey@163.comPaypal', 'NT', '贝宝', 'Babey@163.com', 'Paypal', '贝宝请填写密码前三位和默认扣卡'),
-        ],
+      : [],
     addCardForm: {
       holder: 'PT',
       bank: '招商',
