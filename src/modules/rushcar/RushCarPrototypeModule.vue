@@ -169,6 +169,14 @@ function getGroupProductName(group) {
   return `${firstName} +${lines.length - 1}`
 }
 
+function getEntryProductName(row) {
+  const lines = Array.isArray(row?.lines) ? row.lines : []
+  if (lines.length === 0) return '-'
+  const firstName = String(lines[0]?.name || '').trim() || '-'
+  if (lines.length === 1) return firstName
+  return `${firstName} +${lines.length - 1}`
+}
+
 function buildNetworkDetailLines(row) {
   return [
     `购买日期: ${row.purchaseDate || '-'}`,
@@ -559,7 +567,7 @@ function confirmRemovePaymentCard(id) {
             <thead>
               <tr>
                 <th>购买日期</th>
-                <th>付款编号</th>
+                <th>商品名称</th>
                 <th>用户名</th>
                 <th>收件人</th>
                 <th>转运公司</th>
@@ -572,7 +580,7 @@ function confirmRemovePaymentCard(id) {
             <tbody>
               <tr v-for="row in filteredEntries" :key="row.id">
                 <td>{{ row.purchaseDate }}</td>
-                <td>{{ row.paymentBatch || '-' }}</td>
+                <td>{{ getEntryProductName(row) }}</td>
                 <td>{{ row.username }}</td>
                 <td>{{ row.recipient }}</td>
                 <td>{{ row.forwarderCompany || '-' }}</td>
