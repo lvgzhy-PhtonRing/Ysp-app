@@ -69,6 +69,8 @@ const cardFilterOptions = computed(() => {
   return state.paymentCards.filter((c) => ids.has(c.id))
 })
 
+const existingGroupKeys = computed(() => new Set(state.entries.map((row) => row.sourceGroupKey).filter(Boolean)))
+
 const failureDialog = reactive({
   open: false,
   entryId: '',
@@ -167,6 +169,10 @@ function getGroupProductName(group) {
   const firstName = String(lines[0]?.name || '').trim() || '-'
   if (lines.length === 1) return firstName
   return `${firstName} +${lines.length - 1}`
+}
+
+function isGroupRecorded(groupKey) {
+  return existingGroupKeys.value.has(String(groupKey || ''))
 }
 
 function getEntryProductName(row) {
@@ -374,9 +380,12 @@ function confirmRemovePaymentCard(id) {
             <select class="apple-select" :value="state.selectedGroupKey" @change="selectGroup($event.target.value)">
               <option value="">请选择购买组</option>
               <option v-for="g in usPurchaseGroups" :key="g.key" :value="g.key">
-                {{ g.date || '-' }} / {{ getGroupProductName(g) }} / {{ g.paymentBatch || '-' }}
+                {{ isGroupRecorded(g.key) ? '【已录入】' : '' }}{{ g.date || '-' }} / {{ getGroupProductName(g) }} / {{ g.paymentBatch || '-' }}
               </option>
             </select>
+            <div v-if="state.selectedGroupKey && isGroupRecorded(state.selectedGroupKey)" class="mt-1 text-[11px] text-amber-700">
+              当前购买组已录入历史记录，若需更新请先删除原记录再重建。
+            </div>
           </div>
           <div class="col-span-6 md:col-span-2">
             <label class="block text-xs text-gray-500 mb-1">购买日期</label>
