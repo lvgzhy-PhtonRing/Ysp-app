@@ -25,6 +25,7 @@ const {
   addForwarderInfo,
   removeForwarderInfo,
   addMattelSiteInfo,
+  removeMattelSiteInfo,
   toggleMattelForwarder,
   addPaymentCard,
   startEditPaymentCard,
@@ -49,6 +50,8 @@ const isIntegratedMode = computed(() => Boolean(props?.sourceData?.rushcar))
 
 const showForwarderPassword = reactive({})
 const showMattelPassword = reactive({})
+const forwarderEditableMap = reactive({})
+const mattelEditableMap = reactive({})
 
 const cardFilterOptions = computed(() => {
   const ids = new Set(filteredEntries.value.map((row) => row.cardId).filter(Boolean))
@@ -90,6 +93,40 @@ watch(
   () => entrySnapshot.value.totalUSD,
   (value) => {
     state.form.actualChargeUSD = value ? String(Number(value)) : ''
+  },
+  { immediate: true },
+)
+
+watch(
+  () => state.forwarderInfos.map((row) => row.id),
+  (ids) => {
+    const idSet = new Set(ids)
+    Object.keys(forwarderEditableMap).forEach((id) => {
+      if (!idSet.has(id)) delete forwarderEditableMap[id]
+    })
+    ids.forEach((id) => {
+      if (!(id in forwarderEditableMap)) {
+        const row = state.forwarderInfos.find((x) => x.id === id)
+        forwarderEditableMap[id] = !isForwarderFilled(row)
+      }
+    })
+  },
+  { immediate: true },
+)
+
+watch(
+  () => state.mattelSiteInfos.map((row) => row.id),
+  (ids) => {
+    const idSet = new Set(ids)
+    Object.keys(mattelEditableMap).forEach((id) => {
+      if (!idSet.has(id)) delete mattelEditableMap[id]
+    })
+    ids.forEach((id) => {
+      if (!(id in mattelEditableMap)) {
+        const row = state.mattelSiteInfos.find((x) => x.id === id)
+        mattelEditableMap[id] = !isMattelFilled(row)
+      }
+    })
   },
   { immediate: true },
 )
@@ -188,6 +225,89 @@ function toggleMattelPassword(id) {
 
 function toggleSiteForwarder(siteRow, forwarderId, event) {
   toggleMattelForwarder(siteRow.id, forwarderId, event.target.checked)
+}
+
+function isForwarderFilled(row) {
+  if (!row) return false
+  return Boolean(
+    String(row.companyName || '').trim() &&
+    String(row.loginUsername || '').trim() &&
+    String(row.passwordPrefix || '').trim() &&
+    String(row.recipientName || '').trim() &&
+    String(row.domesticReceiver || '').trim(),
+  )
+}
+
+function isMattelFilled(row) {
+  if (!row) return false
+  return Boolean(
+    String(row.loginUsername || '').trim() &&
+    String(row.passwordPrefix || '').trim() &&
+    String(row.mattelDisplayName || '').trim(),
+  )
+}
+
+function isForwarderEditable(id) {
+  return !!forwarderEditableMap[id]
+}
+
+function isMattelEditable(id) {
+  return !!mattelEditableMap[id]
+}
+
+function clampPasswordPrefix(row, field) {
+  const value = String(row?.[field] || '')
+  row[field] = value.slice(0, 3)
+}
+
+function saveForwarderRow(row) {
+  clampPasswordPrefix(row, 'passwordPrefix')
+  if (String(row.passwordPrefix || '').trim().length !== 3) {
+    alert('密码前三位必须填写3位')
+    return
+  }
+  forwarderEditableMap[row.id] = false
+}
+
+function editForwarderRow(id) {
+  forwarderEditableMap[id] = true
+}
+
+function saveMattelRow(row) {
+  clampPasswordPrefix(row, 'passwordPrefix')
+  if (String(row.passwordPrefix || '').trim().length !== 3) {
+    alert('密码前三位必须填写3位')
+    return
+  }
+  mattelEditableMap[row.id] = false
+}
+
+function editMattelRow(id) {
+  mattelEditableMap[id] = true
+}
+
+function getLockBadge(editable) {
+  return editable
+    ? { label: '编辑中', cls: 'bg-amber-100 text-amber-700' }
+    : { label: '已保存', cls: 'bg-emerald-100 text-emerald-700' }
+}
+
+function confirmRemoveForwarder(id) {
+  const ok = confirm('删除后将同步清除美泰网站信息中的关联收件人，确认删除吗？')
+  if (!ok) return
+  removeForwarderInfo(id)
+}
+
+function confirmRemoveMattel(id) {
+  const ok = confirm('确认删除这条美泰网站信息吗？')
+  if (!ok) return
+  removeMattelSiteInfo(id)
+}
+
+function confirmRemovePaymentCard(id) {
+  const ok = confirm('确认删除这张银行卡/账号信息吗？')
+  if (!ok) return
+  removePaymentCard(id)
 }
 </script>
 
@@ -466,7 +586,7 @@ function toggleSiteForwarder(siteRow, forwarderId, event) {
           <button class="btn btn-outline btn-sm" @click="addForwarderInfo">新增转运公司信息</button>
         </div>
         <div class="overflow-x-auto border border-gray-100 rounded-lg">
-          <table class="apple-table min-w-[1180px]">
+          <table class="apple-table min-w-[1260px]">
             <thead>
               <tr>
                 <th>转运公司名称</th>
@@ -474,34 +594,53 @@ function toggleSiteForwarder(siteRow, forwarderId, event) {
                 <th>密码前三位</th>
                 <th>收件人名称</th>
                 <th>国内收件人</th>
+                <th>状态</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in state.forwarderInfos" :key="row.id">
+              <tr v-for="row in state.forwarderInfos" :key="row.id" :class="isForwarderEditable(row.id) ? '' : 'bg-gray-50'">
                 <td>
-                  <select v-model="row.companyName" class="apple-select">
+                  <select v-model="row.companyName" class="apple-select" :disabled="!isForwarderEditable(row.id)" :class="!isForwarderEditable(row.id) ? 'bg-gray-100' : ''">
                     <option value="">请选择</option>
                     <option v-for="x in transferCompanyOptions" :key="x" :value="x">{{ x }}</option>
                   </select>
                 </td>
-                <td><input v-model="row.loginUsername" class="apple-input" placeholder="登录用户名" /></td>
+                <td><input v-model="row.loginUsername" class="apple-input" :disabled="!isForwarderEditable(row.id)" :class="!isForwarderEditable(row.id) ? 'bg-gray-100' : ''" placeholder="登录用户名" /></td>
                 <td>
                   <div class="flex gap-2">
-                    <input :type="showForwarderPassword[row.id] ? 'text' : 'password'" v-model="row.passwordPrefix" class="apple-input" placeholder="密码前三位" />
+                    <input
+                      :type="showForwarderPassword[row.id] ? 'text' : 'password'"
+                      v-model="row.passwordPrefix"
+                      class="apple-input w-24"
+                      maxlength="3"
+                      :disabled="!isForwarderEditable(row.id)"
+                      :class="!isForwarderEditable(row.id) ? 'bg-gray-100' : ''"
+                      placeholder="前三位"
+                      @input="clampPasswordPrefix(row, 'passwordPrefix')"
+                    />
                     <button class="btn btn-outline btn-sm" @click="toggleForwarderPassword(row.id)">{{ showForwarderPassword[row.id] ? '隐藏' : '显示' }}</button>
                   </div>
                 </td>
-                <td><input v-model="row.recipientName" class="apple-input" placeholder="收件人名称" /></td>
+                <td><input v-model="row.recipientName" class="apple-input" :disabled="!isForwarderEditable(row.id)" :class="!isForwarderEditable(row.id) ? 'bg-gray-100' : ''" placeholder="收件人名称" /></td>
                 <td>
-                  <select v-model="row.domesticReceiver" class="apple-select">
+                  <select v-model="row.domesticReceiver" class="apple-select" :disabled="!isForwarderEditable(row.id)" :class="!isForwarderEditable(row.id) ? 'bg-gray-100' : ''">
                     <option v-for="v in domesticReceiverOptions" :key="v" :value="v">{{ v }}</option>
                   </select>
                 </td>
-                <td class="text-right"><button class="btn btn-outline btn-sm" @click="removeForwarderInfo(row.id)">删除</button></td>
+                <td>
+                  <span class="inline-flex px-2 py-0.5 rounded text-xs" :class="getLockBadge(isForwarderEditable(row.id)).cls">
+                    {{ getLockBadge(isForwarderEditable(row.id)).label }}
+                  </span>
+                </td>
+                <td class="text-right whitespace-nowrap">
+                  <button v-if="isForwarderEditable(row.id)" class="btn btn-sm" style="background:#06b6d4;color:white" @click="saveForwarderRow(row)">保存</button>
+                  <button v-else class="btn btn-outline btn-sm" @click="editForwarderRow(row.id)">编辑</button>
+                  <button class="btn btn-outline btn-sm ml-1" @click="confirmRemoveForwarder(row.id)">删除</button>
+                </td>
               </tr>
               <tr v-if="state.forwarderInfos.length === 0">
-                <td colspan="6" class="text-center text-gray-400 py-4">暂无转运公司信息</td>
+                <td colspan="7" class="text-center text-gray-400 py-4">暂无转运公司信息</td>
               </tr>
             </tbody>
           </table>
@@ -518,25 +657,36 @@ function toggleSiteForwarder(siteRow, forwarderId, event) {
           <button class="btn btn-outline btn-sm" @click="addMattelSiteInfo">新增美泰网站信息</button>
         </div>
         <div class="overflow-x-auto border border-gray-100 rounded-lg">
-          <table class="apple-table min-w-[1220px]">
+          <table class="apple-table min-w-[1300px]">
             <thead>
               <tr>
                 <th>登录用户名</th>
                 <th>密码前三位</th>
                 <th>收件人名称（可多选）</th>
                 <th>美泰网站显示称呼</th>
+                <th>状态</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in state.mattelSiteInfos" :key="row.id">
+              <tr v-for="row in state.mattelSiteInfos" :key="row.id" :class="isMattelEditable(row.id) ? '' : 'bg-gray-50'">
                 <td>
-                  <select v-model="row.loginUsername" class="apple-select">
+                  <select v-model="row.loginUsername" class="apple-select" :disabled="!isMattelEditable(row.id)" :class="!isMattelEditable(row.id) ? 'bg-gray-100' : ''">
                     <option v-for="acc in mattelAccountOptions" :key="acc" :value="acc">{{ acc }}</option>
                   </select>
                 </td>
                 <td>
                   <div class="flex gap-2">
-                    <input :type="showMattelPassword[row.id] ? 'text' : 'password'" v-model="row.passwordPrefix" class="apple-input" placeholder="密码前三位" />
+                    <input
+                      :type="showMattelPassword[row.id] ? 'text' : 'password'"
+                      v-model="row.passwordPrefix"
+                      class="apple-input w-24"
+                      maxlength="3"
+                      :disabled="!isMattelEditable(row.id)"
+                      :class="!isMattelEditable(row.id) ? 'bg-gray-100' : ''"
+                      placeholder="前三位"
+                      @input="clampPasswordPrefix(row, 'passwordPrefix')"
+                    />
                     <button class="btn btn-outline btn-sm" @click="toggleMattelPassword(row.id)">{{ showMattelPassword[row.id] ? '隐藏' : '显示' }}</button>
                   </div>
                 </td>
@@ -547,16 +697,27 @@ function toggleSiteForwarder(siteRow, forwarderId, event) {
                         type="checkbox"
                         class="rounded border-gray-300"
                         :checked="(row.forwarderIds || []).includes(fw.id)"
+                        :disabled="!isMattelEditable(row.id)"
                         @change="toggleSiteForwarder(row, fw.id, $event)"
                       />
                       <span>{{ fw.recipientName || '-' }}（{{ fw.companyName || '-' }}）</span>
                     </label>
                   </div>
                 </td>
-                <td><input v-model="row.mattelDisplayName" class="apple-input" placeholder="美泰网站显示的称呼" /></td>
+                <td><input v-model="row.mattelDisplayName" class="apple-input" :disabled="!isMattelEditable(row.id)" :class="!isMattelEditable(row.id) ? 'bg-gray-100' : ''" placeholder="美泰网站显示的称呼" /></td>
+                <td>
+                  <span class="inline-flex px-2 py-0.5 rounded text-xs" :class="getLockBadge(isMattelEditable(row.id)).cls">
+                    {{ getLockBadge(isMattelEditable(row.id)).label }}
+                  </span>
+                </td>
+                <td class="text-right whitespace-nowrap">
+                  <button v-if="isMattelEditable(row.id)" class="btn btn-sm" style="background:#06b6d4;color:white" @click="saveMattelRow(row)">保存</button>
+                  <button v-else class="btn btn-outline btn-sm" @click="editMattelRow(row.id)">编辑</button>
+                  <button class="btn btn-outline btn-sm ml-1" @click="confirmRemoveMattel(row.id)">删除</button>
+                </td>
               </tr>
               <tr v-if="state.mattelSiteInfos.length === 0">
-                <td colspan="4" class="text-center text-gray-400 py-4">暂无美泰网站信息</td>
+                <td colspan="6" class="text-center text-gray-400 py-4">暂无美泰网站信息</td>
               </tr>
             </tbody>
           </table>
@@ -609,7 +770,7 @@ function toggleSiteForwarder(siteRow, forwarderId, event) {
                 <td>{{ card.remark || '-' }}</td>
                 <td class="text-right whitespace-nowrap">
                   <button class="btn btn-outline btn-sm" @click="startEditPaymentCard(card.id)">编辑</button>
-                  <button class="btn btn-outline btn-sm ml-1" @click="removePaymentCard(card.id)">删除</button>
+                  <button class="btn btn-outline btn-sm ml-1" @click="confirmRemovePaymentCard(card.id)">删除</button>
                 </td>
               </tr>
               <tr v-if="state.paymentCards.length === 0">
