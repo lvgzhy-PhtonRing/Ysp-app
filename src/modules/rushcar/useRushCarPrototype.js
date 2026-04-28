@@ -232,14 +232,15 @@ function buildUsPurchaseGroups(items = []) {
     .map((item) => parseDateTs(safeDate(item?.purchaseDetails?.date)))
     .filter((ts) => ts > 0)
   const latestTs = allDateTs.length ? Math.max(...allDateTs) : 0
-  const monthAgoTs = latestTs ? latestTs - 30 * 24 * 60 * 60 * 1000 : 0
+  const monthAgoTs = Date.now() - 30 * 24 * 60 * 60 * 1000
   const map = new Map()
 
   usItems.forEach((item) => {
     const pd = item?.purchaseDetails || {}
     const date = safeDate(pd.date)
     const dateTs = parseDateTs(date)
-    if (latestTs && (!dateTs || dateTs < monthAgoTs || dateTs > latestTs)) return
+    // include all US items (disable date filter to see more data)
+    // if (dateTs > 0 && dateTs < monthAgoTs) return
 
     const purchaseGroupId = String(pd.purchaseGroupId || '').trim()
     const paymentBatch = String(pd.paymentBatch || '').trim()
