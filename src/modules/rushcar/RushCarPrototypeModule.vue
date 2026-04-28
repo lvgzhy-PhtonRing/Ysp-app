@@ -44,7 +44,18 @@ const bankOptions = ['工商', '招商', '中行', '贝宝']
 const cardTypeOptions = ['Visa', 'Visa数字', 'Master', 'JCB', 'AE', '银联', 'Paypal']
 const domesticReceiverOptions = ['吕', '郑', '爷']
 const transferCompanyOptions = ['转运中国', '铭瑄海淘']
-const mattelAccountOptions = ['zhylvg@gmail.com', 'll_gg@yeah.net', 'Payton-pi@zohomail.com']
+const baseMattelAccountOptions = ['zhylvg@gmail.com', 'll_gg@yeah.net', 'Payton-pi@zohomail.com']
+const mattelAccountOptions = computed(() => {
+  const options = [...baseMattelAccountOptions]
+  unknownWebsiteUsernames.value.forEach((username) => {
+    if (!options.includes(username)) options.push(username)
+  })
+  state.mattelSiteInfos.forEach((row) => {
+    const username = String(row?.loginUsername || '').trim()
+    if (username && !options.includes(username)) options.push(username)
+  })
+  return options
+})
 
 const isIntegratedMode = computed(() => Boolean(props?.sourceData?.rushcar))
 
@@ -406,7 +417,7 @@ function confirmRemovePaymentCard(id) {
 
       <div class="apple-card">
         <div class="text-sm font-semibold text-gray-700 mb-3">第二组：操作环境信息（全点选）</div>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
           <div>
             <label class="block text-xs text-gray-500 mb-1">购买设备</label>
             <select v-model="state.form.purchaseDevice" class="apple-select">

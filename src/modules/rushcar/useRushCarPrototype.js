@@ -172,7 +172,7 @@ function buildUsPurchaseGroups(items = []) {
   return Array.from(map.values())
     .map((g) => {
       const itemTotal = g.lines.reduce((sum, line) => {
-        return sum + toNum(line.originalPrice) * toNum(line.qty) + toNum(line.shipping)
+        return sum + (toNum(line.originalPrice) + toNum(line.shipping)) * toNum(line.qty)
       }, 0)
       return {
         ...g,
