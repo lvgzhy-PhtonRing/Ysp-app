@@ -1,5 +1,5 @@
-<script setup>
-import { computed, toRef, watch } from 'vue'
+﻿<script setup>
+import { computed, reactive, toRef, watch } from 'vue'
 import { useRushCarPrototype } from './useRushCarPrototype'
 
 const props = defineProps({
@@ -12,26 +12,24 @@ const props = defineProps({
 const {
   state,
   usPurchaseGroups,
-  selectedGroup,
   entrySnapshot,
-  usernameOptions,
   recipientOptions,
+  selectedRecipientForwarder,
   filteredCardsByHolder,
-  selectedCard,
   filteredEntries,
   filterUsernameOptions,
   filterRecipientOptions,
-  filterWebsiteOptions,
-  filterForwarderOptions,
-  selectedRecipientForwarder,
   selectGroup,
   applyMasterRecipientDefault,
-  addMasterAccount,
-  removeMasterAccount,
-  addWebsiteMapping,
-  removeWebsiteMapping,
+  addForwarderInfo,
+  removeForwarderInfo,
+  addMattelSiteInfo,
+  removeMattelSiteInfo,
+  toggleMattelForwarder,
   addPaymentCard,
+  removePaymentCard,
   removeEntry,
+  markEntryFailure,
   submitEntry,
 } = useRushCarPrototype(toRef(props, 'sourceData'))
 
@@ -41,10 +39,21 @@ const networkOptions = ['虹口家网', '宝山家网', '电信移动数据', '�
 const vpnNodeOptions = ['美国', '日本', '香港', '马来西亚', '新加坡']
 const bankOptions = ['工商', '招商', '中行', '贝宝']
 const cardTypeOptions = ['Visa', 'Visa数字', 'Master', 'JCB', 'AE', '银联', 'Paypal']
+const domesticReceiverOptions = ['吕', '郑', '爷']
 
 const cardFilterOptions = computed(() => {
   const ids = new Set(filteredEntries.value.map((row) => row.cardId).filter(Boolean))
   return state.paymentCards.filter((c) => ids.has(c.id))
+})
+
+const failureDialog = reactive({
+  open: false,
+  entryId: '',
+  notifiedAt: '',
+  reason: '',
+  refundStatus: '未退款',
+  refundTime: '',
+  detailLines: [],
 })
 
 watch(
@@ -89,12 +98,6 @@ function fmtUsd(value) {
   return Number(value || 0).toFixed(2)
 }
 
-function fmtDiff(value) {
-  const n = Number(value || 0)
-  const sign = n > 0 ? '+' : ''
-  return `${sign}${n.toFixed(2)}`
-}
-
 function getGroupProductName(group) {
   const lines = Array.isArray(group?.lines) ? group.lines : []
   if (lines.length === 0) return '-'
@@ -103,8 +106,8 @@ function getGroupProductName(group) {
   return `${firstName} +${lines.length - 1}`
 }
 
-function viewEntryDetail(row) {
-  const details = [
+function buildNetworkDetailLines(row) {
+  return [
     `购买日期: ${row.purchaseDate || '-'}`,
     `付款编号: ${row.paymentBatch || '-'}`,
     `订单USD: ${fmtUsd(row.consumeUSD)}`,
@@ -112,15 +115,56 @@ function viewEntryDetail(row) {
     `网络环境: ${row.networkEnv || '-'}`,
     `VPN节点: ${row.vpnNode || '-'}`,
     `网页浏览器: ${row.browser || '-'}`,
+    `用户名: ${row.username || '-'}`,
     `收件人: ${row.recipient || '-'}`,
     `转运公司: ${row.forwarderCompany || '-'}`,
     `转运账号: ${row.forwarderAccount || '-'}`,
     `持有人: ${row.holder || '-'}`,
     `银行卡: ${row.cardLabel || '-'}`,
+    `银行卡备注: ${row.cardRemark || '-'}`,
     `Shop快捷支付: ${row.shopQuickPay || '-'}`,
     `备注: ${row.note || '-'}`,
   ]
-  alert(details.join('\n'))
+}
+
+function viewEntryDetail(row) {
+  alert(buildNetworkDetailLines(row).join('\n'))
+}
+
+function openFailureDialog(row) {
+  failureDialog.entryId = row.id
+  failureDialog.notifiedAt = row.failureNotifiedAt || ''
+  failureDialog.reason = row.failureReason || ''
+  failureDialog.refundStatus = row.refundStatus || '未退款'
+  failureDialog.refundTime = row.refundTime || ''
+  failureDialog.detailLines = buildNetworkDetailLines(row)
+  failureDialog.open = true
+}
+
+function closeFailureDialog() {
+  failureDialog.open = false
+  failureDialog.entryId = ''
+  failureDialog.notifiedAt = ''
+  failureDialog.reason = ''
+  failureDialog.refundStatus = '未退款'
+  failureDialog.refundTime = ''
+  failureDialog.detailLines = []
+}
+
+function saveFailureDialog() {
+  if (!failureDialog.entryId) return
+  markEntryFailure(failureDialog.entryId, {
+    notifiedAt: failureDialog.notifiedAt,
+    reason: failureDialog.reason,
+    refundStatus: failureDialog.refundStatus,
+    refundTime: failureDialog.refundTime,
+  })
+  closeFailureDialog()
+  alert('已更新购买失败信息')
+}
+
+function toggleSiteForwarder(siteRow, forwarderId, event) {
+  toggleMattelForwarder(siteRow.id, forwarderId, event.target.checked)
 }
 </script>
 
@@ -129,7 +173,7 @@ function viewEntryDetail(row) {
     <div class="apple-card bg-gradient-to-r from-cyan-50 to-white border-cyan-100">
       <div class="flex items-center justify-between gap-4">
         <div>
-          <h2 class="text-xl font-bold text-gray-800">美泰记录（独立原型）</h2>
+          <h2 class="text-xl font-bold text-gray-800">美淘记录（独立原型）</h2>
           <p class="text-sm text-gray-500 mt-1">只读引用采购数据，记录独立保存，不影响 ysp-app 源数据。</p>
         </div>
         <div class="text-right text-xs text-gray-500">
@@ -153,7 +197,7 @@ function viewEntryDetail(row) {
           :class="state.activePage === 'master' ? 'bg-cyan-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
           @click="state.activePage = 'master'"
         >
-          账号与转运管理
+          帐号与卡片管理
         </button>
       </div>
     </div>
@@ -163,7 +207,7 @@ function viewEntryDetail(row) {
         <div class="text-sm font-semibold text-gray-700 mb-3">第一组：订单基本信息（只读带入）</div>
         <div class="grid grid-cols-12 gap-3">
           <div class="col-span-12 md:col-span-5">
-            <label class="block text-xs text-gray-500 mb-1">购买组点选（美淘近30天）</label>
+            <label class="block text-xs text-gray-500 mb-1">购买组点选（美淘）</label>
             <select class="apple-select" :value="state.selectedGroupKey" @change="selectGroup($event.target.value)">
               <option value="">请选择购买组</option>
               <option v-for="g in usPurchaseGroups" :key="g.key" :value="g.key">
@@ -259,20 +303,20 @@ function viewEntryDetail(row) {
           </div>
           <div>
             <label class="block text-xs text-gray-500 mb-1">收件人（联动转运）</label>
-            <select v-model="state.form.recipient" class="apple-select">
+            <select v-model="state.form.recipientId" class="apple-select">
               <option value="">请选择收件人</option>
-              <option v-for="r in recipientOptions" :key="r" :value="r">{{ r }}</option>
+              <option v-for="r in recipientOptions" :key="r.id" :value="r.id">{{ r.label }}</option>
             </select>
           </div>
         </div>
         <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-gray-600">
           <div>
             <label class="block text-[11px] text-gray-500 mb-1">转运公司</label>
-            <input class="apple-input bg-gray-100" :value="selectedRecipientForwarder.company || '-'" disabled />
+            <input class="apple-input bg-gray-100" :value="selectedRecipientForwarder?.companyName || '-'" disabled />
           </div>
           <div>
             <label class="block text-[11px] text-gray-500 mb-1">转运账号</label>
-            <input class="apple-input bg-gray-100" :value="selectedRecipientForwarder.account || '-'" disabled />
+            <input class="apple-input bg-gray-100" :value="selectedRecipientForwarder?.account || '-'" disabled />
           </div>
         </div>
       </div>
@@ -318,26 +362,8 @@ function viewEntryDetail(row) {
           </div>
         </div>
 
-        <div class="mt-4 border-t border-gray-100 pt-3">
-          <div class="text-xs text-gray-500 mb-2">按规范新增卡片</div>
-          <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
-            <select v-model="state.addCardForm.holder" class="apple-select">
-              <option>PT</option>
-              <option>NT</option>
-            </select>
-            <select v-model="state.addCardForm.bank" class="apple-select">
-              <option v-for="b in bankOptions" :key="b" :value="b">{{ b }}</option>
-            </select>
-            <input v-model="state.addCardForm.identifier" class="apple-input" placeholder="尾号4位或PayPal用户名" />
-            <select v-model="state.addCardForm.cardType" class="apple-select">
-              <option v-for="t in cardTypeOptions" :key="t" :value="t">{{ t }}</option>
-            </select>
-            <button class="btn btn-outline" @click="addPaymentCard()">新增卡片</button>
-          </div>
-        </div>
-
         <div class="mt-4 flex justify-end">
-          <button class="btn btn-primary" @click="submit">保存美泰记录</button>
+          <button class="btn btn-primary" @click="submit">保存美淘记录</button>
         </div>
       </div>
 
@@ -368,7 +394,7 @@ function viewEntryDetail(row) {
         </div>
 
         <div class="overflow-x-auto border border-gray-100 rounded-lg">
-          <table class="apple-table min-w-[960px]">
+          <table class="apple-table min-w-[1040px]">
             <thead>
               <tr>
                 <th>购买日期</th>
@@ -390,8 +416,9 @@ function viewEntryDetail(row) {
                 <td>{{ row.forwarderCompany || '-' }}</td>
                 <td>{{ row.cardLabel }}</td>
                 <td class="text-right">{{ fmtUsd(row.consumeUSD) }}</td>
-                <td class="text-right">
+                <td class="text-right whitespace-nowrap">
                   <button class="btn btn-outline btn-sm" @click="viewEntryDetail(row)">网络</button>
+                  <button class="btn btn-sm ml-1 border border-orange-200 bg-orange-100 text-orange-700 hover:bg-orange-200" @click="openFailureDialog(row)">购买失败</button>
                   <button class="btn btn-outline btn-sm ml-1" @click="removeEntry(row.id)">删除</button>
                 </td>
               </tr>
@@ -406,81 +433,134 @@ function viewEntryDetail(row) {
 
     <template v-else>
       <div class="apple-card">
-        <div class="flex items-center justify-between mb-3">
-          <div class="text-sm font-semibold text-gray-700">账号与转运管理（Excel风格）</div>
-          <button class="btn btn-outline btn-sm" @click="addMasterAccount">新增一行</button>
+        <div class="text-sm font-semibold text-gray-700 mb-3">A 转运公司信息</div>
+        <div class="mb-3 text-xs text-gray-500">字段：转运公司名称、登录用户名、密码前三位、收件人名称、国内收件人（吕/郑/爷）</div>
+        <div class="flex justify-end mb-3">
+          <button class="btn btn-outline btn-sm" @click="addForwarderInfo">新增转运公司信息</button>
         </div>
-
         <div class="overflow-x-auto border border-gray-100 rounded-lg">
-          <table class="apple-table min-w-[1600px]">
+          <table class="apple-table min-w-[1100px]">
             <thead>
               <tr>
-                <th>网站用户名</th>
-                <th>密码</th>
-                <th>收件人A</th>
-                <th>收件人B</th>
-                <th>收件人C</th>
-                <th>转运A</th>
-                <th>A账号</th>
-                <th>A密码</th>
-                <th>转运B</th>
-                <th>B账号</th>
-                <th>B密码</th>
-                <th>转运C</th>
-                <th>C账号</th>
-                <th>C密码</th>
+                <th>转运公司名称</th>
+                <th>登录用户名</th>
+                <th>密码前三位</th>
+                <th>收件人名称</th>
+                <th>国内收件人</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in state.masterAccounts" :key="row.id">
-                <td><input v-model="row.username" class="apple-input" placeholder="用户名邮箱" /></td>
-                <td><input v-model="row.password" type="password" class="apple-input" placeholder="密码" /></td>
-                <td><input v-model="row.recipientA" class="apple-input" /></td>
-                <td><input v-model="row.recipientB" class="apple-input" /></td>
-                <td><input v-model="row.recipientC" class="apple-input" /></td>
-                <td><input v-model="row.forwarderA" class="apple-input" /></td>
-                <td><input v-model="row.forwarderAAccount" class="apple-input" /></td>
-                <td><input v-model="row.forwarderAPassword" type="password" class="apple-input" /></td>
-                <td><input v-model="row.forwarderB" class="apple-input" /></td>
-                <td><input v-model="row.forwarderBAccount" class="apple-input" /></td>
-                <td><input v-model="row.forwarderBPassword" type="password" class="apple-input" /></td>
-                <td><input v-model="row.forwarderC" class="apple-input" /></td>
-                <td><input v-model="row.forwarderCAccount" class="apple-input" /></td>
-                <td><input v-model="row.forwarderCPassword" type="password" class="apple-input" /></td>
-                <td class="text-right"><button class="btn btn-outline btn-sm" @click="removeMasterAccount(row.id)">删除</button></td>
+              <tr v-for="row in state.forwarderInfos" :key="row.id">
+                <td><input v-model="row.companyName" class="apple-input" placeholder="转运公司" /></td>
+                <td><input v-model="row.loginUsername" class="apple-input" placeholder="登录用户名" /></td>
+                <td><input v-model="row.passwordPrefix" class="apple-input" placeholder="密码前三位" /></td>
+                <td><input v-model="row.recipientName" class="apple-input" placeholder="收件人名称" /></td>
+                <td>
+                  <select v-model="row.domesticReceiver" class="apple-select">
+                    <option v-for="v in domesticReceiverOptions" :key="v" :value="v">{{ v }}</option>
+                  </select>
+                </td>
+                <td class="text-right"><button class="btn btn-outline btn-sm" @click="removeForwarderInfo(row.id)">删除</button></td>
+              </tr>
+              <tr v-if="state.forwarderInfos.length === 0">
+                <td colspan="6" class="text-center text-gray-400 py-4">暂无转运公司信息</td>
               </tr>
             </tbody>
           </table>
         </div>
-
-        <div class="text-xs text-gray-500 mt-3">
-          页面2的点选项会实时联动页面1，不写入采购源数据；密码字段建议仅填脱敏值。
-        </div>
       </div>
 
       <div class="apple-card">
-        <div class="flex items-center justify-between mb-3">
-          <div class="text-sm font-semibold text-gray-700">网站映射规则（自动化）</div>
-          <button class="btn btn-outline btn-sm" @click="addWebsiteMapping">新增映射</button>
+        <div class="text-sm font-semibold text-gray-700 mb-3">B 美泰网站信息</div>
+        <div class="mb-3 text-xs text-gray-500">字段：登录用户名、密码前三位、收件人名称（从转运公司信息多选）、美泰网站显示的称呼</div>
+        <div class="flex justify-end mb-3">
+          <button class="btn btn-outline btn-sm" @click="addMattelSiteInfo">新增美泰网站信息</button>
         </div>
         <div class="overflow-x-auto border border-gray-100 rounded-lg">
-          <table class="apple-table min-w-[720px]">
+          <table class="apple-table min-w-[1280px]">
             <thead>
               <tr>
-                <th>匹配关键词</th>
-                <th>映射域名</th>
+                <th>登录用户名</th>
+                <th>密码前三位</th>
+                <th>收件人名称（可多选）</th>
+                <th>美泰网站显示称呼</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in state.websiteMappings" :key="row.id">
-                <td><input v-model="row.match" class="apple-input" placeholder="如：mattel" /></td>
-                <td><input v-model="row.target" class="apple-input" placeholder="如：creations.mattel.com" /></td>
-                <td class="text-right"><button class="btn btn-outline btn-sm" @click="removeWebsiteMapping(row.id)">删除</button></td>
+              <tr v-for="row in state.mattelSiteInfos" :key="row.id">
+                <td><input v-model="row.loginUsername" class="apple-input" placeholder="登录用户名" /></td>
+                <td><input v-model="row.passwordPrefix" class="apple-input" placeholder="密码前三位" /></td>
+                <td>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-2 min-w-[420px]">
+                    <label v-for="fw in state.forwarderInfos" :key="fw.id" class="inline-flex items-center gap-2 text-xs text-gray-600">
+                      <input
+                        type="checkbox"
+                        class="rounded border-gray-300"
+                        :checked="(row.forwarderIds || []).includes(fw.id)"
+                        @change="toggleSiteForwarder(row, fw.id, $event)"
+                      />
+                      <span>{{ fw.recipientName || '-' }}（{{ fw.companyName || '-' }}）</span>
+                    </label>
+                  </div>
+                </td>
+                <td><input v-model="row.mattelDisplayName" class="apple-input" placeholder="美泰网站显示的称呼" /></td>
+                <td class="text-right"><button class="btn btn-outline btn-sm" @click="removeMattelSiteInfo(row.id)">删除</button></td>
               </tr>
-              <tr v-if="state.websiteMappings.length === 0">
-                <td colspan="3" class="text-center text-gray-400 py-4">暂无映射规则</td>
+              <tr v-if="state.mattelSiteInfos.length === 0">
+                <td colspan="5" class="text-center text-gray-400 py-4">暂无美泰网站信息</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="apple-card">
+        <div class="text-sm font-semibold text-gray-700 mb-3">C 银行卡信息</div>
+        <div class="text-xs text-gray-500 mb-3">按规范新增卡片；如是贝宝请填写密码前三位和默认扣卡（写在备注栏）。</div>
+
+        <div class="grid grid-cols-2 md:grid-cols-6 gap-2 mb-4">
+          <select v-model="state.addCardForm.holder" class="apple-select">
+            <option>PT</option>
+            <option>NT</option>
+          </select>
+          <select v-model="state.addCardForm.bank" class="apple-select">
+            <option v-for="b in bankOptions" :key="b" :value="b">{{ b }}</option>
+          </select>
+          <input v-model="state.addCardForm.identifier" class="apple-input" placeholder="尾号4位或PayPal用户名" />
+          <select v-model="state.addCardForm.cardType" class="apple-select">
+            <option v-for="t in cardTypeOptions" :key="t" :value="t">{{ t }}</option>
+          </select>
+          <input v-model="state.addCardForm.remark" class="apple-input" placeholder="备注（贝宝写密码前三位+默认扣卡）" />
+          <button class="btn btn-outline" @click="addPaymentCard()">新增卡片</button>
+        </div>
+
+        <div class="overflow-x-auto border border-gray-100 rounded-lg">
+          <table class="apple-table min-w-[1080px]">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>持有人</th>
+                <th>银行</th>
+                <th>识别信息</th>
+                <th>卡类型</th>
+                <th>备注</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="card in state.paymentCards" :key="card.id">
+                <td>{{ card.label }}</td>
+                <td>{{ card.holder }}</td>
+                <td>{{ card.bank }}</td>
+                <td>{{ card.identifier || card.tailNo }}</td>
+                <td>{{ card.cardType }}</td>
+                <td>{{ card.remark || '-' }}</td>
+                <td class="text-right"><button class="btn btn-outline btn-sm" @click="removePaymentCard(card.id)">删除</button></td>
+              </tr>
+              <tr v-if="state.paymentCards.length === 0">
+                <td colspan="7" class="text-center text-gray-400 py-4">暂无银行卡信息</td>
               </tr>
             </tbody>
           </table>
@@ -491,6 +571,51 @@ function viewEntryDetail(row) {
     <div class="apple-card border-yellow-100 bg-yellow-50 text-sm text-yellow-800">
       <span class="font-semibold">当前为原型沙盒：</span>
       侧边栏保留完整结构，但 ysp-app 其他模块已禁用点击；本页删除/保存仅作用于原型内存，不影响采购管理源数据。
+    </div>
+
+    <div v-if="failureDialog.open" class="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl p-4 space-y-4">
+        <div class="flex items-center justify-between">
+          <h3 class="text-base font-semibold text-gray-800">购买失败信息</h3>
+          <button class="btn btn-outline btn-sm" @click="closeFailureDialog">关闭</button>
+        </div>
+
+        <div class="border border-gray-100 rounded-lg p-3 bg-gray-50">
+          <div class="text-xs text-gray-500 mb-2">网络信息（只读）</div>
+          <div class="space-y-1 text-sm text-gray-700">
+            <div v-for="line in failureDialog.detailLines" :key="line">{{ line }}</div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">A 通知购买失败时间</label>
+            <input v-model="failureDialog.notifiedAt" class="apple-input" placeholder="填写多少分钟后或具体日期" />
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">C 是否退款</label>
+            <select v-model="failureDialog.refundStatus" class="apple-select">
+              <option>未退款</option>
+              <option>已退款</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">B 失败原因</label>
+          <input v-model="failureDialog.reason" class="apple-input" placeholder="填写缺货或Cancel邮件里的理由" />
+        </div>
+
+        <div v-if="failureDialog.refundStatus === '已退款'">
+          <label class="block text-xs text-gray-500 mb-1">退款时间</label>
+          <input v-model="failureDialog.refundTime" class="apple-input" placeholder="填写退款时间" />
+        </div>
+
+        <div class="flex justify-end gap-2">
+          <button class="btn btn-outline" @click="closeFailureDialog">取消</button>
+          <button class="btn" style="background:#fb923c;color:#7c2d12" @click="saveFailureDialog">保存购买失败信息</button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
