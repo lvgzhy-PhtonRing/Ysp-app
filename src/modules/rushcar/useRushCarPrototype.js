@@ -478,6 +478,11 @@ export function useRushCarPrototype(rawSeedData = {}) {
 
   function submitEntry() {
     if (!selectedGroup.value) return { ok: false, message: '请先选择购买组' }
+    const key = selectedGroup.value.key
+    const existing = state.entries.find((e) => e.sourceGroupKey === key)
+    if (existing) {
+      return { ok: false, message: '该购买组已存在抢车记录，请先删除或修改现有记录' }
+    }
     if (!state.form.purchaseDevice || !state.form.networkEnv || !state.form.vpnNode || !state.form.browser) {
       return { ok: false, message: '请完整填写操作环境信息' }
     }

@@ -10,7 +10,7 @@ const tabs = [
   { id: 'purchase', name: '采购管理', disabled: true },
   { id: 'finance', name: '公共收支', disabled: true },
   { id: 'payton', name: "Payton's基金", disabled: true },
-  { id: 'rushcar', name: '抢车记录' },
+  { id: 'rushcar', name: '美泰记录' },
 ]
 
 const currentTab = ref('rushcar')
