@@ -572,17 +572,17 @@ function confirmRemovePaymentCard(id) {
         </div>
 
         <div class="overflow-x-auto border border-gray-100 rounded-lg">
-          <table class="apple-table min-w-[1040px]">
+          <table class="apple-table min-w-[980px]">
             <thead>
               <tr>
-                <th>购买日期</th>
-                <th>商品名称</th>
-                <th>用户名</th>
-                <th>收件人</th>
-                <th>转运公司</th>
-                <th>卡片</th>
-                <th>Shop快捷支付</th>
-                <th class="text-right">订单USD</th>
+                <th class="w-[96px]">购买日期</th>
+                <th class="w-[180px]">商品名称</th>
+                <th class="w-[150px]">用户名</th>
+                <th class="w-[90px]">收件人</th>
+                <th class="w-[120px]">转运公司</th>
+                <th class="w-[170px]">卡片</th>
+                <th class="w-[84px]">SHOP快捷</th>
+                <th class="text-right w-[92px]">订单USD</th>
                 <th>状态</th>
                 <th></th>
               </tr>
@@ -590,13 +590,13 @@ function confirmRemovePaymentCard(id) {
             <tbody>
               <tr v-for="row in filteredEntries" :key="row.id">
                 <td>{{ row.purchaseDate }}</td>
-                <td>{{ getEntryProductName(row) }}</td>
-                <td>{{ row.username }}</td>
+                <td><span class="block max-w-[180px] leading-5 break-words max-h-10 overflow-hidden">{{ getEntryProductName(row) }}</span></td>
+                <td><span class="block max-w-[150px] truncate">{{ row.username }}</span></td>
                 <td>{{ row.recipient }}</td>
-                <td>{{ row.forwarderCompany || '-' }}</td>
-                <td>{{ row.cardLabel }}</td>
-                <td>{{ row.shopQuickPay || '-' }}</td>
-                <td class="text-right">{{ fmtUsd(row.consumeUSD) }}</td>
+                <td><span class="block max-w-[120px] leading-5 break-words max-h-10 overflow-hidden">{{ row.forwarderCompany || '-' }}</span></td>
+                <td><span class="block max-w-[170px] truncate">{{ row.cardLabel }}</span></td>
+                <td class="text-center">{{ row.shopQuickPay || '-' }}</td>
+                <td class="text-right tabular-nums">{{ fmtUsd(row.consumeUSD) }}</td>
                 <td>
                   <span class="inline-flex px-2 py-0.5 rounded text-xs" :class="getEntryStatus(row).cls">{{ getEntryStatus(row).label }}</span>
                 </td>
