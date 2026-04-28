@@ -1,4 +1,6 @@
-﻿import { computed, isRef, reactive } from 'vue'
+import { computed, isRef, reactive } from 'vue'
+
+const PRESET_MATTEL_USERNAMES = ['zhylvg@gmail.com', 'll_gg@yeah.net', 'Payton-pi@zohomail.com']
 
 function toNum(value, fallback = 0) {
   const n = Number(value)
@@ -86,6 +88,7 @@ function createInitialState(seed = {}) {
       cardType: 'Visa数字',
       remark: '',
     },
+    cardEditId: '',
     activePage: 'entry',
     selectedGroupKey: '',
     form: {
@@ -234,6 +237,17 @@ export function useRushCarPrototype(rawSeedData = {}) {
       .filter((x) => x.label && x.label !== '-')
   })
 
+  const unknownWebsiteUsernames = computed(() => {
+    const known = new Set(PRESET_MATTEL_USERNAMES)
+    const set = new Set()
+    usPurchaseGroups.value.forEach((g) => {
+      const username = String(g?.websiteAccount || '').trim()
+      if (!username || username === '-') return
+      if (!known.has(username)) set.add(username)
+    })
+    return Array.from(set)
+  })
+
   const selectedRecipientForwarder = computed(() =>
     recipientOptions.value.find((x) => x.id === state.form.recipientId) || null,
   )
@@ -331,12 +345,46 @@ export function useRushCarPrototype(rawSeedData = {}) {
     if (!holder || !bank || !identifier || identifier.length < 2) return false
 
     const label = buildCardLabel(holder, bank, identifier, cardType)
-    state.paymentCards.unshift(createCardOption(label, holder, bank, identifier, cardType, remark))
+    if (state.cardEditId) {
+      const row = state.paymentCards.find((x) => x.id === state.cardEditId)
+      if (row) {
+        row.label = label
+        row.holder = holder
+        row.bank = bank
+        row.identifier = identifier
+        row.tailNo = identifier
+        row.cardType = cardType
+        row.remark = remark
+      }
+      state.cardEditId = ''
+    } else {
+      state.paymentCards.unshift(createCardOption(label, holder, bank, identifier, cardType, remark))
+    }
     state.addCardForm.bank = '招商'
     state.addCardForm.identifier = ''
     state.addCardForm.cardType = 'Visa数字'
     state.addCardForm.remark = ''
     return true
+  }
+
+  function startEditPaymentCard(id) {
+    const row = state.paymentCards.find((x) => x.id === id)
+    if (!row) return
+    state.cardEditId = id
+    state.addCardForm.holder = row.holder || 'PT'
+    state.addCardForm.bank = row.bank || '招商'
+    state.addCardForm.identifier = row.identifier || row.tailNo || ''
+    state.addCardForm.cardType = row.cardType || 'Visa数字'
+    state.addCardForm.remark = row.remark || ''
+  }
+
+  function cancelEditPaymentCard() {
+    state.cardEditId = ''
+    state.addCardForm.holder = 'PT'
+    state.addCardForm.bank = '招商'
+    state.addCardForm.identifier = ''
+    state.addCardForm.cardType = 'Visa数字'
+    state.addCardForm.remark = ''
   }
 
   function removePaymentCard(id) {
@@ -443,6 +491,7 @@ export function useRushCarPrototype(rawSeedData = {}) {
     selectedGroup,
     entrySnapshot,
     recipientOptions,
+    unknownWebsiteUsernames,
     selectedRecipientForwarder,
     filteredCardsByHolder,
     selectedCard,
@@ -457,6 +506,8 @@ export function useRushCarPrototype(rawSeedData = {}) {
     removeMattelSiteInfo,
     toggleMattelForwarder,
     addPaymentCard,
+    startEditPaymentCard,
+    cancelEditPaymentCard,
     removePaymentCard,
     removeEntry,
     markEntryFailure,
