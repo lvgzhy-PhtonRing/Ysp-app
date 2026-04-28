@@ -14,6 +14,7 @@ const {
   usPurchaseGroups,
   entrySnapshot,
   recipientOptions,
+  unknownWebsiteUsernames,
   selectedRecipientForwarder,
   filteredCardsByHolder,
   filteredEntries,
@@ -24,9 +25,10 @@ const {
   addForwarderInfo,
   removeForwarderInfo,
   addMattelSiteInfo,
-  removeMattelSiteInfo,
   toggleMattelForwarder,
   addPaymentCard,
+  startEditPaymentCard,
+  cancelEditPaymentCard,
   removePaymentCard,
   removeEntry,
   markEntryFailure,
@@ -40,7 +42,11 @@ const vpnNodeOptions = ['美国', '日本', '香港', '马来西亚', '新加坡
 const bankOptions = ['工商', '招商', '中行', '贝宝']
 const cardTypeOptions = ['Visa', 'Visa数字', 'Master', 'JCB', 'AE', '银联', 'Paypal']
 const domesticReceiverOptions = ['吕', '郑', '爷']
+const transferCompanyOptions = ['转运中国', '铭瑄海淘']
 const mattelAccountOptions = ['zhylvg@gmail.com', 'll_gg@yeah.net', 'Payton-pi@zohomail.com']
+
+const showForwarderPassword = reactive({})
+const showMattelPassword = reactive({})
 
 const cardFilterOptions = computed(() => {
   const ids = new Set(filteredEntries.value.map((row) => row.cardId).filter(Boolean))
@@ -168,6 +174,14 @@ function saveFailureDialog() {
   })
   closeFailureDialog()
   alert('已更新购买失败信息')
+}
+
+function toggleForwarderPassword(id) {
+  showForwarderPassword[id] = !showForwarderPassword[id]
+}
+
+function toggleMattelPassword(id) {
+  showMattelPassword[id] = !showMattelPassword[id]
 }
 
 function toggleSiteForwarder(siteRow, forwarderId, event) {
@@ -450,7 +464,7 @@ function toggleSiteForwarder(siteRow, forwarderId, event) {
           <button class="btn btn-outline btn-sm" @click="addForwarderInfo">新增转运公司信息</button>
         </div>
         <div class="overflow-x-auto border border-gray-100 rounded-lg">
-          <table class="apple-table min-w-[1100px]">
+          <table class="apple-table min-w-[1180px]">
             <thead>
               <tr>
                 <th>转运公司名称</th>
@@ -463,9 +477,19 @@ function toggleSiteForwarder(siteRow, forwarderId, event) {
             </thead>
             <tbody>
               <tr v-for="row in state.forwarderInfos" :key="row.id">
-                <td><input v-model="row.companyName" class="apple-input" placeholder="转运公司" /></td>
+                <td>
+                  <select v-model="row.companyName" class="apple-select">
+                    <option value="">请选择</option>
+                    <option v-for="x in transferCompanyOptions" :key="x" :value="x">{{ x }}</option>
+                  </select>
+                </td>
                 <td><input v-model="row.loginUsername" class="apple-input" placeholder="登录用户名" /></td>
-                <td><input v-model="row.passwordPrefix" class="apple-input" placeholder="密码前三位" /></td>
+                <td>
+                  <div class="flex gap-2">
+                    <input :type="showForwarderPassword[row.id] ? 'text' : 'password'" v-model="row.passwordPrefix" class="apple-input" placeholder="密码前三位" />
+                    <button class="btn btn-outline btn-sm" @click="toggleForwarderPassword(row.id)">{{ showForwarderPassword[row.id] ? '隐藏' : '显示' }}</button>
+                  </div>
+                </td>
                 <td><input v-model="row.recipientName" class="apple-input" placeholder="收件人名称" /></td>
                 <td>
                   <select v-model="row.domesticReceiver" class="apple-select">
@@ -485,18 +509,20 @@ function toggleSiteForwarder(siteRow, forwarderId, event) {
       <div class="apple-card">
         <div class="text-sm font-semibold text-gray-700 mb-3">B 美泰网站信息</div>
         <div class="mb-3 text-xs text-gray-500">字段：登录用户名、密码前三位、收件人名称（从转运公司信息多选）、美泰网站显示的称呼</div>
+        <div v-if="unknownWebsiteUsernames.length > 0" class="mb-3 text-xs text-orange-700 bg-orange-50 border border-orange-100 rounded px-3 py-2">
+          发现购买记录中有新增网站账户未在预置列表：{{ unknownWebsiteUsernames.join('，') }}。请确认后补充映射信息。
+        </div>
         <div class="flex justify-end mb-3">
           <button class="btn btn-outline btn-sm" @click="addMattelSiteInfo">新增美泰网站信息</button>
         </div>
         <div class="overflow-x-auto border border-gray-100 rounded-lg">
-          <table class="apple-table min-w-[1280px]">
+          <table class="apple-table min-w-[1220px]">
             <thead>
               <tr>
                 <th>登录用户名</th>
                 <th>密码前三位</th>
                 <th>收件人名称（可多选）</th>
                 <th>美泰网站显示称呼</th>
-                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -506,7 +532,12 @@ function toggleSiteForwarder(siteRow, forwarderId, event) {
                     <option v-for="acc in mattelAccountOptions" :key="acc" :value="acc">{{ acc }}</option>
                   </select>
                 </td>
-                <td><input v-model="row.passwordPrefix" class="apple-input" placeholder="密码前三位" /></td>
+                <td>
+                  <div class="flex gap-2">
+                    <input :type="showMattelPassword[row.id] ? 'text' : 'password'" v-model="row.passwordPrefix" class="apple-input" placeholder="密码前三位" />
+                    <button class="btn btn-outline btn-sm" @click="toggleMattelPassword(row.id)">{{ showMattelPassword[row.id] ? '隐藏' : '显示' }}</button>
+                  </div>
+                </td>
                 <td>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-2 min-w-[420px]">
                     <label v-for="fw in state.forwarderInfos" :key="fw.id" class="inline-flex items-center gap-2 text-xs text-gray-600">
@@ -521,10 +552,9 @@ function toggleSiteForwarder(siteRow, forwarderId, event) {
                   </div>
                 </td>
                 <td><input v-model="row.mattelDisplayName" class="apple-input" placeholder="美泰网站显示的称呼" /></td>
-                <td class="text-right"><button class="btn btn-outline btn-sm" @click="removeMattelSiteInfo(row.id)">删除</button></td>
               </tr>
               <tr v-if="state.mattelSiteInfos.length === 0">
-                <td colspan="5" class="text-center text-gray-400 py-4">暂无美泰网站信息</td>
+                <td colspan="4" class="text-center text-gray-400 py-4">暂无美泰网站信息</td>
               </tr>
             </tbody>
           </table>
@@ -548,7 +578,10 @@ function toggleSiteForwarder(siteRow, forwarderId, event) {
             <option v-for="t in cardTypeOptions" :key="t" :value="t">{{ t }}</option>
           </select>
           <input v-model="state.addCardForm.remark" class="apple-input" placeholder="备注（贝宝写密码前三位+默认扣卡）" />
-          <button class="btn btn-outline" @click="addPaymentCard()">新增卡片</button>
+          <button class="btn btn-outline" @click="addPaymentCard()">{{ state.cardEditId ? '保存编辑' : '新增卡片' }}</button>
+        </div>
+        <div v-if="state.cardEditId" class="mb-3 text-right">
+          <button class="btn btn-outline btn-sm" @click="cancelEditPaymentCard">取消编辑</button>
         </div>
 
         <div class="overflow-x-auto border border-gray-100 rounded-lg">
@@ -572,7 +605,10 @@ function toggleSiteForwarder(siteRow, forwarderId, event) {
                 <td>{{ card.identifier || card.tailNo }}</td>
                 <td>{{ card.cardType }}</td>
                 <td>{{ card.remark || '-' }}</td>
-                <td class="text-right"><button class="btn btn-outline btn-sm" @click="removePaymentCard(card.id)">删除</button></td>
+                <td class="text-right whitespace-nowrap">
+                  <button class="btn btn-outline btn-sm" @click="startEditPaymentCard(card.id)">编辑</button>
+                  <button class="btn btn-outline btn-sm ml-1" @click="removePaymentCard(card.id)">删除</button>
+                </td>
               </tr>
               <tr v-if="state.paymentCards.length === 0">
                 <td colspan="7" class="text-center text-gray-400 py-4">暂无银行卡信息</td>
