@@ -129,7 +129,7 @@ function viewEntryDetail(row) {
     <div class="apple-card bg-gradient-to-r from-cyan-50 to-white border-cyan-100">
       <div class="flex items-center justify-between gap-4">
         <div>
-          <h2 class="text-xl font-bold text-gray-800">抢车记录（独立原型）</h2>
+          <h2 class="text-xl font-bold text-gray-800">美泰记录（独立原型）</h2>
           <p class="text-sm text-gray-500 mt-1">只读引用采购数据，记录独立保存，不影响 ysp-app 源数据。</p>
         </div>
         <div class="text-right text-xs text-gray-500">
@@ -337,7 +337,7 @@ function viewEntryDetail(row) {
         </div>
 
         <div class="mt-4 flex justify-end">
-          <button class="btn btn-primary" @click="submit">保存抢车记录</button>
+          <button class="btn btn-primary" @click="submit">保存美泰记录</button>
         </div>
       </div>
 
@@ -391,7 +391,7 @@ function viewEntryDetail(row) {
                 <td>{{ row.cardLabel }}</td>
                 <td class="text-right">{{ fmtUsd(row.consumeUSD) }}</td>
                 <td class="text-right">
-                  <button class="btn btn-outline btn-sm" @click="viewEntryDetail(row)">详情</button>
+                  <button class="btn btn-outline btn-sm" @click="viewEntryDetail(row)">网络</button>
                   <button class="btn btn-outline btn-sm ml-1" @click="removeEntry(row.id)">删除</button>
                 </td>
               </tr>
