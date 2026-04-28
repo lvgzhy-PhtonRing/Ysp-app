@@ -38,6 +38,17 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value))
 }
 
+function buildSafeCardLabel(card = {}) {
+  const raw = String(card.label || '').trim()
+  if (raw) return raw
+  return buildCardLabel(
+    String(card.holder || '').trim(),
+    String(card.bank || '').trim(),
+    String(card.identifier || card.tailNo || '').trim(),
+    String(card.cardType || '').trim(),
+  )
+}
+
 function replaceArray(target, source) {
   target.splice(0, target.length, ...clone(Array.isArray(source) ? source : []))
 }
@@ -216,6 +227,20 @@ export function useRushCarPrototype(rawSeedData = {}) {
       host.rushcar.forwarderInfos = clone(state.forwarderInfos)
       host.rushcar.mattelSiteInfos = clone(state.mattelSiteInfos)
       host.rushcar.paymentCards = clone(state.paymentCards)
+    },
+    { deep: true },
+  )
+
+  watch(
+    () => state.paymentCards,
+    (cards) => {
+      const cardMap = new Map((cards || []).map((card) => [card.id, card]))
+      state.entries.forEach((entry) => {
+        const card = cardMap.get(entry.cardId)
+        if (!card) return
+        entry.cardLabel = buildSafeCardLabel(card)
+        entry.cardRemark = String(card.remark || '').trim()
+      })
     },
     { deep: true },
   )
