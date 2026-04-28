@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import AppSidebar from './components/AppSidebar.vue'
 import GlassModal from './components/GlassModal.vue'
 import HomeModule from './modules/home/HomeModule.vue'
@@ -9,6 +9,7 @@ import PurchaseModule from './modules/purchase/PurchaseModule.vue'
 import SalesModule from './modules/sales/SalesModule.vue'
 import FinanceModule from './modules/finance/FinanceModule.vue'
 import PaytonModule from './modules/payton/PaytonModule.vue'
+import RushCarPrototypeModule from './modules/rushcar/RushCarPrototypeModule.vue'
 import {
   addOperationLog,
   clearCloudSession,
@@ -44,6 +45,7 @@ const tabs = [
   { id: 'sales', name: '销售记账' },
   { id: 'purchase', name: '采购管理' },
   { id: 'finance', name: '公共收支' },
+  { id: 'rushcar', name: '美淘记录' },
   { id: 'payton', name: "Payton's基金" },
 ]
 
@@ -497,6 +499,14 @@ onMounted(async () => {
     }
   }
 })
+
+watch(
+  () => store.rushcar,
+  () => {
+    saveToLocalStorage()
+  },
+  { deep: true },
+)
 </script>
 
 <template>
@@ -528,6 +538,7 @@ onMounted(async () => {
         <SalesModule v-else-if="currentTab === 'sales'" />
         <PurchaseModule v-else-if="currentTab === 'purchase'" />
         <FinanceModule v-else-if="currentTab === 'finance'" />
+        <RushCarPrototypeModule v-else-if="currentTab === 'rushcar'" :source-data="store" />
         <PaytonModule v-else-if="currentTab === 'payton'" />
 
         <div

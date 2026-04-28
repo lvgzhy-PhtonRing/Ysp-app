@@ -1,4 +1,4 @@
-import { computed, isRef, reactive } from 'vue'
+import { computed, isRef, reactive, watch } from 'vue'
 
 const PRESET_MATTEL_USERNAMES = ['zhylvg@gmail.com', 'll_gg@yeah.net', 'Payton-pi@zohomail.com']
 
@@ -32,6 +32,14 @@ function safeDate(value) {
 
 function buildCardLabel(holder, bank, identifier, cardType) {
   return `${holder}${bank}${identifier}${cardType}`
+}
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value))
+}
+
+function replaceArray(target, source) {
+  target.splice(0, target.length, ...clone(Array.isArray(source) ? source : []))
 }
 
 function createForwarderInfo(partial = {}) {
@@ -177,6 +185,39 @@ export function useRushCarPrototype(rawSeedData = {}) {
   const isSeedRef = isRef(rawSeedData)
   const seedData = isSeedRef ? rawSeedData.value : rawSeedData
   const state = createInitialState(seedData)
+
+  const storeStateRef = computed(() => {
+    const resolved = isSeedRef ? rawSeedData.value : seedData
+    if (resolved && typeof resolved === 'object' && resolved.rushcar && typeof resolved.rushcar === 'object') {
+      return resolved
+    }
+    return null
+  })
+
+  watch(
+    () => storeStateRef.value?.rushcar,
+    (rushcarData) => {
+      if (!rushcarData || typeof rushcarData !== 'object') return
+      replaceArray(state.entries, rushcarData.entries)
+      replaceArray(state.forwarderInfos, rushcarData.forwarderInfos)
+      replaceArray(state.mattelSiteInfos, rushcarData.mattelSiteInfos)
+      replaceArray(state.paymentCards, rushcarData.paymentCards)
+    },
+    { immediate: true },
+  )
+
+  watch(
+    () => [state.entries, state.forwarderInfos, state.mattelSiteInfos, state.paymentCards],
+    () => {
+      const host = storeStateRef.value
+      if (!host?.rushcar) return
+      host.rushcar.entries = clone(state.entries)
+      host.rushcar.forwarderInfos = clone(state.forwarderInfos)
+      host.rushcar.mattelSiteInfos = clone(state.mattelSiteInfos)
+      host.rushcar.paymentCards = clone(state.paymentCards)
+    },
+    { deep: true },
+  )
 
   const usPurchaseGroups = computed(() => {
     const resolved = isSeedRef ? (rawSeedData.value || {}) : (seedData || {})
