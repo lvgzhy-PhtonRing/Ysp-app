@@ -102,6 +102,26 @@ function getGroupProductName(group) {
   if (lines.length === 1) return firstName
   return `${firstName} +${lines.length - 1}`
 }
+
+function viewEntryDetail(row) {
+  const details = [
+    `购买日期: ${row.purchaseDate || '-'}`,
+    `付款编号: ${row.paymentBatch || '-'}`,
+    `订单USD: ${fmtUsd(row.consumeUSD)}`,
+    `购买设备: ${row.purchaseDevice || '-'}`,
+    `网络环境: ${row.networkEnv || '-'}`,
+    `VPN节点: ${row.vpnNode || '-'}`,
+    `网页浏览器: ${row.browser || '-'}`,
+    `收件人: ${row.recipient || '-'}`,
+    `转运公司: ${row.forwarderCompany || '-'}`,
+    `转运账号: ${row.forwarderAccount || '-'}`,
+    `持有人: ${row.holder || '-'}`,
+    `银行卡: ${row.cardLabel || '-'}`,
+    `Shop快捷支付: ${row.shopQuickPay || '-'}`,
+    `备注: ${row.note || '-'}`,
+  ]
+  alert(details.join('\n'))
+}
 </script>
 
 <template>
@@ -322,8 +342,8 @@ function getGroupProductName(group) {
       </div>
 
       <div class="apple-card">
-        <div class="text-sm font-semibold text-gray-700 mb-3">历史记录过滤（用户名 / 支付卡 / 收件人 / 网站 / 转运公司）</div>
-        <div class="grid grid-cols-1 md:grid-cols-5 gap-3 mb-3">
+        <div class="text-sm font-semibold text-gray-700 mb-3">历史记录过滤（用户名 / 支付卡 / 收件人）</div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
           <div>
             <label class="block text-xs text-gray-500 mb-1">用户名</label>
             <select v-model="state.filters.username" class="apple-select">
@@ -345,57 +365,38 @@ function getGroupProductName(group) {
               <option v-for="r in filterRecipientOptions" :key="r" :value="r">{{ r }}</option>
             </select>
           </div>
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">购买网站</label>
-            <select v-model="state.filters.website" class="apple-select">
-              <option value="">全部</option>
-              <option v-for="w in filterWebsiteOptions" :key="w" :value="w">{{ w }}</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">转运公司</label>
-            <select v-model="state.filters.forwarder" class="apple-select">
-              <option value="">全部</option>
-              <option v-for="f in filterForwarderOptions" :key="f" :value="f">{{ f }}</option>
-            </select>
-          </div>
         </div>
 
         <div class="overflow-x-auto border border-gray-100 rounded-lg">
-          <table class="apple-table min-w-[1360px]">
+          <table class="apple-table min-w-[960px]">
             <thead>
               <tr>
-                <th>创建时间</th>
                 <th>购买日期</th>
-                <th>购买组</th>
-                <th>购买网站</th>
+                <th>付款编号</th>
                 <th>用户名</th>
                 <th>收件人</th>
                 <th>转运公司</th>
                 <th>卡片</th>
                 <th class="text-right">订单USD</th>
-                <th class="text-right">实扣USD</th>
-                <th class="text-right">差额USD</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="row in filteredEntries" :key="row.id">
-                <td>{{ new Date(row.createdAt).toLocaleString() }}</td>
                 <td>{{ row.purchaseDate }}</td>
-                <td>{{ row.purchaseGroupId }} / {{ row.paymentBatch }}</td>
-                <td>{{ row.website }}</td>
+                <td>{{ row.paymentBatch || '-' }}</td>
                 <td>{{ row.username }}</td>
                 <td>{{ row.recipient }}</td>
                 <td>{{ row.forwarderCompany || '-' }}</td>
                 <td>{{ row.cardLabel }}</td>
                 <td class="text-right">{{ fmtUsd(row.consumeUSD) }}</td>
-                <td class="text-right">{{ fmtUsd(row.actualChargeUSD) }}</td>
-                <td class="text-right" :class="Number(row.chargeDiffUSD || 0) === 0 ? 'text-gray-500' : Number(row.chargeDiffUSD || 0) > 0 ? 'text-red-600' : 'text-green-600'">{{ fmtDiff(row.chargeDiffUSD) }}</td>
-                <td class="text-right"><button class="btn btn-outline btn-sm" @click="removeEntry(row.id)">删除</button></td>
+                <td class="text-right">
+                  <button class="btn btn-outline btn-sm" @click="viewEntryDetail(row)">详情</button>
+                  <button class="btn btn-outline btn-sm ml-1" @click="removeEntry(row.id)">删除</button>
+                </td>
               </tr>
               <tr v-if="filteredEntries.length === 0">
-                <td colspan="12" class="text-center text-gray-400 py-4">暂无记录</td>
+                <td colspan="8" class="text-center text-gray-400 py-4">暂无记录</td>
               </tr>
             </tbody>
           </table>
