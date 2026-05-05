@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import {
   addPurchaseItem,
   batchMoveToInventory,
@@ -9,7 +9,7 @@ import {
   generatePurchaseGroupMetadata,
 } from './usePurchase'
 import { calcItemCost, calcPreTransferCost, calcTransferCost } from '../../utils/calc'
-import { addOperationLog, pushUiNav, saveToLocalStorage, state as store } from '../../data/store'
+import { addOperationLog, saveToLocalStorage, state as store } from '../../data/store'
 
 const BRANDS = ['Hotwheels', 'MINIGT', 'Tomica', 'TLV', 'Kyosho', '其它']
 const PURCHASE_TABS = ['日淘', '美淘', '国内']
@@ -516,27 +516,6 @@ function fmtNum(v) {
 
 function toggleGroup(key) {
   collapsedGroups[key] = !collapsedGroups[key]
-}
-
-function jumpToRushcar(group) {
-  pushUiNav({
-    targetTab: 'rushcar',
-    sourceGroupKey: String(group?.key || ''),
-    sourceModule: 'purchase',
-  })
-}
-
-function focusPurchaseGroupByKey(groupKey) {
-  const key = String(groupKey || '').trim()
-  if (!key) return
-  let foundBatchKey = ''
-  groupedByBatch.value.forEach((batch) => {
-    if (foundBatchKey) return
-    if ((batch.purchaseGroups || []).some((g) => String(g.key || '') === key)) {
-      foundBatchKey = String(batch.key || '')
-    }
-  })
-  if (foundBatchKey) collapsedGroups[foundBatchKey] = false
 }
 
 function expandAllPurchaseGroups() {
@@ -1527,19 +1506,6 @@ watch(
 )
 
 watch(
-  () => store.uiNav.ts,
-  async () => {
-    const nav = store.uiNav
-    if (!nav || String(nav.targetTab || '') !== 'purchase') return
-    if (purchaseViewCategory.value !== '美淘') {
-      purchaseViewCategory.value = '美淘'
-      await nextTick()
-    }
-    focusPurchaseGroupByKey(nav.sourceGroupKey)
-  },
-)
-
-watch(
   expandedTransfers,
   (val) => {
     localStorage.setItem(purchaseTransferExpandStorageKey, JSON.stringify(val))
@@ -1633,7 +1599,6 @@ watch(purchaseViewCategory, () => {
                 <div class="col-span-2 text-gray-300 text-xs truncate text-right">{{ group.paymentBatch || '-' }}</div>
                 <div class="col-span-2 font-semibold text-gray-700 text-right"><span class="text-xs font-normal">初始购买金额(不含转运)</span> ¥{{ fmtNum(group.totalRMB) }}</div>
                 <div class="col-span-1 flex gap-1 justify-end">
-                  <button v-if="group.category === '美淘'" @click="jumpToRushcar(group)" class="btn btn-outline btn-xs" title="查看美淘记录"><i class="fa-solid fa-link"></i></button>
                   <button v-if="group.category === '国内' || group.category === '2025JAPAN'" @click="batchMovePurchaseGroup(group)" class="btn btn-success btn-xs" title="入库"><i class="fa-solid fa-box"></i></button>
                   <button @click="openEditPurchaseGroup(group)" class="btn btn-outline btn-xs"><i class="fa-solid fa-pen"></i></button>
                   <button @click="deletePurchaseGroup(group)" class="btn btn-danger btn-xs"><i class="fa-solid fa-trash"></i></button>

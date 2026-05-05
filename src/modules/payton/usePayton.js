@@ -104,75 +104,6 @@ function cleanupInventoryRow(car) {
   if (idx >= 0) store.paytonInventory.splice(idx, 1)
 }
 
-function makeCarKey(name, brand) {
-  return `${normalizeText(name)}__${normalizeText(brand)}`
-}
-
-function applyInventoryDeltaForBuy(payload = {}) {
-  const name = String(payload.name || '').trim()
-  const brand = String(payload.brand || '').trim()
-  const qty = toNumber(payload.qty)
-  const unitPrice = toNumber(payload.unitPrice)
-  if (!name || qty <= 0 || unitPrice < 0) {
-    return { ok: false, message: '车辆信息无效' }
-  }
-  mergePaytonInventory({
-    name,
-    brand,
-    qty,
-    avgPrice: unitPrice,
-    pool: 'sell',
-  })
-  return { ok: true }
-}
-
-function rollbackInventoryDeltaForBuy(payload = {}) {
-  const name = String(payload.name || '').trim()
-  const brand = String(payload.brand || '').trim()
-  const qty = toNumber(payload.qty)
-  const unitPrice = toNumber(payload.unitPrice)
-  if (!name || qty <= 0 || unitPrice < 0) {
-    return { ok: false, message: '车辆信息无效' }
-  }
-  const idx = findInventoryIndex({ name, brand, pool: 'sell' })
-  if (idx < 0) return { ok: false, message: `库存中未找到：${name}` }
-  const row = store.paytonInventory[idx]
-  const oldQty = toNumber(row.qty)
-  const oldAvg = toNumber(row.avgPrice)
-  if (oldQty < qty) {
-    return { ok: false, message: `库存不足，当前 ${name} 仅 ${oldQty} 辆，需回滚 ${qty} 辆` }
-  }
-  const oldTotal = oldQty * oldAvg
-  const rollbackTotal = qty * unitPrice
-  const remainQty = oldQty - qty
-  if (remainQty <= 0) {
-    store.paytonInventory.splice(idx, 1)
-    return { ok: true }
-  }
-  const remainTotal = oldTotal - rollbackTotal
-  if (remainTotal < 0) {
-    return { ok: false, message: `库存回滚后成本为负，已阻止：${name}` }
-  }
-  row.qty = remainQty
-  row.avgPrice = remainQty > 0 ? remainTotal / remainQty : 0
-  row.totalCost = remainQty > 0 ? remainTotal : 0
-  return { ok: true }
-}
-
-function toInventoryLink(input = {}) {
-  const type = String(input.type || '').trim()
-  if (!type) return null
-  return {
-    type,
-    carName: String(input.carName || '').trim(),
-    carBrand: String(input.carBrand || '').trim(),
-    qty: toNumber(input.qty),
-    unitPrice: toNumber(input.unitPrice),
-    totalCost: toNumber(input.totalCost),
-    carKey: makeCarKey(input.carName, input.carBrand),
-  }
-}
-
 function ensurePaytonAccount(accountKey) {
   if (!accountKey) return null
   if (!store.paytonAccounts[accountKey]) {
@@ -213,17 +144,6 @@ function rollbackBalance(accountKey, type, amount) {
 }
 
 export function addPaytonRecord(recordData = {}) {
-  const inventoryLink = toInventoryLink(recordData.inventoryLink)
-  if (inventoryLink?.type === 'buy') {
-    const applied = applyInventoryDeltaForBuy({
-      name: inventoryLink.carName,
-      brand: inventoryLink.carBrand,
-      qty: inventoryLink.qty,
-      unitPrice: inventoryLink.unitPrice,
-    })
-    if (!applied.ok) return null
-  }
-
   const record = {
     id: genId(),
     createdAt: toPositiveTimestamp(recordData.createdAt),
@@ -233,7 +153,6 @@ export function addPaytonRecord(recordData = {}) {
     date: recordData.date || '',
     amount: toNumber(recordData.amount),
     note: ensureCategoryPrefix(recordData.category, recordData.note),
-    inventoryLink,
   }
 
   store.paytonRecords.push(record)
@@ -248,15 +167,6 @@ export function deletePaytonRecord(recordId) {
   if (idx < 0) return false
 
   const record = store.paytonRecords[idx]
-  if (record?.inventoryLink?.type === 'buy') {
-    const rollbackResult = rollbackInventoryDeltaForBuy({
-      name: record.inventoryLink.carName,
-      brand: record.inventoryLink.carBrand,
-      qty: record.inventoryLink.qty,
-      unitPrice: record.inventoryLink.unitPrice,
-    })
-    if (!rollbackResult.ok) return false
-  }
   rollbackBalance(record.account, record.type, record.amount)
   store.paytonRecords.splice(idx, 1)
 
@@ -273,21 +183,6 @@ export function editPaytonRecord(recordId, newData = {}) {
     ...record,
   }
 
-  const incomingInventoryLink =
-    Object.prototype.hasOwnProperty.call(newData, 'inventoryLink')
-      ? toInventoryLink(newData.inventoryLink)
-      : record.inventoryLink || null
-
-  if (record?.inventoryLink?.type === 'buy') {
-    const rollbackResult = rollbackInventoryDeltaForBuy({
-      name: record.inventoryLink.carName,
-      brand: record.inventoryLink.carBrand,
-      qty: record.inventoryLink.qty,
-      unitPrice: record.inventoryLink.unitPrice,
-    })
-    if (!rollbackResult.ok) return false
-  }
-
   // 回滚旧记录
   rollbackBalance(record.account, record.type, record.amount)
 
@@ -295,47 +190,16 @@ export function editPaytonRecord(recordId, newData = {}) {
   Object.keys(newData).forEach((key) => {
     if (key === 'amount') {
       record.amount = toNumber(newData.amount)
-    } else if (key === 'inventoryLink') {
-      record.inventoryLink = incomingInventoryLink
     } else {
       record[key] = newData[key]
     }
   })
-
-  if (!Object.prototype.hasOwnProperty.call(newData, 'inventoryLink')) {
-    record.inventoryLink = incomingInventoryLink
-  }
 
   // 统一按分类补齐/纠正前缀
   record.note = ensureCategoryPrefix(record.category, record.note)
 
   // 应用新记录
   applyBalance(record.account, record.type, record.amount)
-
-  if (record?.inventoryLink?.type === 'buy') {
-    const applied = applyInventoryDeltaForBuy({
-      name: record.inventoryLink.carName,
-      brand: record.inventoryLink.carBrand,
-      qty: record.inventoryLink.qty,
-      unitPrice: record.inventoryLink.unitPrice,
-    })
-    if (!applied.ok) {
-      rollbackBalance(record.account, record.type, record.amount)
-      Object.keys(beforeRecord).forEach((k) => {
-        record[k] = beforeRecord[k]
-      })
-      applyBalance(beforeRecord.account, beforeRecord.type, beforeRecord.amount)
-      if (beforeRecord?.inventoryLink?.type === 'buy') {
-        applyInventoryDeltaForBuy({
-          name: beforeRecord.inventoryLink.carName,
-          brand: beforeRecord.inventoryLink.carBrand,
-          qty: beforeRecord.inventoryLink.qty,
-          unitPrice: beforeRecord.inventoryLink.unitPrice,
-        })
-      }
-      return false
-    }
-  }
 
   const changes = {}
   Object.keys(newData).forEach((key) => {
@@ -382,29 +246,6 @@ export function addPaytonCarByPurchase(carData = {}) {
   saveToLocalStorage()
   addOperationLog('payton_buy_car', `买入小车`, { name: car?.name, qty: car?.qty })
   return car
-}
-
-export function adjustPaytonInventoryByRecord(inventoryData = {}) {
-  const before = inventoryData.before || {}
-  const after = inventoryData.after || {}
-  const beforeTotal = toNumber(before.qty) * toNumber(before.avgPrice)
-  const afterTotal = toNumber(after.qty) * toNumber(after.avgPrice)
-  const diff = Number((afterTotal - beforeTotal).toFixed(2))
-  if (diff === 0) return null
-
-  const type = diff > 0 ? 'expense' : 'income'
-  const amount = Math.abs(diff)
-  const account = String(inventoryData.account || 'yeb').trim() || 'yeb'
-  const date = inventoryData.date || new Date().toISOString().slice(0, 10)
-  const note = `[库存调整] ${before.name || after.name || '-'} ${before.qty || 0}->${after.qty || 0}，均价 ${before.avgPrice || 0}->${after.avgPrice || 0}`
-  return addPaytonRecord({
-    type,
-    category: '其它',
-    account,
-    date,
-    amount,
-    note,
-  })
 }
 
 export function sellPaytonCar(carId, sellData = {}) {
