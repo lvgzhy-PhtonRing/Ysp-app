@@ -33,6 +33,8 @@ const {
   removePaymentCard,
   removeEntry,
   markEntryFailure,
+  keepEntryAccount,
+  adoptEntryAccount,
   submitEntry,
 } = useRushCarPrototype(toRef(props, 'sourceData'))
 
@@ -161,6 +163,25 @@ function getEntryStatus(row) {
   if (row?.refundStatus === '已退款') return { label: '已退款', cls: 'bg-emerald-100 text-emerald-700' }
   if (row?.purchaseStatus === 'failed') return { label: '失败', cls: 'bg-orange-100 text-orange-700' }
   return { label: '购买成功', cls: 'bg-blue-100 text-blue-700' }
+}
+
+function isAccountMismatch(row) {
+  return String(row?.accountSyncStatus || '') === 'mismatch'
+}
+
+function keepAccountForRow(row) {
+  const ok = keepEntryAccount(row.id)
+  if (!ok) return
+  alert('已保留历史账户，不自动覆盖。')
+}
+
+function adoptAccountForRow(row) {
+  const ok = adoptEntryAccount(row.id)
+  if (!ok) {
+    alert('同步账户失败，请检查该记录。')
+    return
+  }
+  alert('已更新为采购组最新账户。')
 }
 
 function getGroupProductName(group) {
@@ -591,7 +612,16 @@ function confirmRemovePaymentCard(id) {
               <tr v-for="row in filteredEntries" :key="row.id">
                 <td>{{ row.purchaseDate }}</td>
                 <td><span class="block max-w-[180px] leading-5 break-words max-h-10 overflow-hidden">{{ getEntryProductName(row) }}</span></td>
-                <td><span class="block max-w-[150px] truncate">{{ row.username }}</span></td>
+                <td>
+                  <span class="block max-w-[150px] truncate">{{ row.username }}</span>
+                  <div v-if="isAccountMismatch(row)" class="mt-1 text-[11px] text-amber-700 leading-4">
+                    采购组账户已变化：{{ row.syncedWebsiteAccount || '-' }}
+                    <div class="mt-1 flex gap-1">
+                      <button class="btn btn-outline btn-xs" @click="keepAccountForRow(row)">保持原账户</button>
+                      <button class="btn btn-outline btn-xs" @click="adoptAccountForRow(row)">更新新账户</button>
+                    </div>
+                  </div>
+                </td>
                 <td>{{ row.recipient }}</td>
                 <td><span class="block max-w-[120px] leading-5 break-words max-h-10 overflow-hidden">{{ row.forwarderCompany || '-' }}</span></td>
                 <td><span class="block max-w-[170px] truncate">{{ row.cardLabel }}</span></td>

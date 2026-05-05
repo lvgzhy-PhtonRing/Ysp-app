@@ -193,6 +193,22 @@ function buildUsPurchaseGroups(items = []) {
     .sort((a, b) => parseDateTs(b.date) - parseDateTs(a.date))
 }
 
+function buildGroupSyncHash(group = {}) {
+  const lines = Array.isArray(group?.lines) ? group.lines : []
+  const lineHash = lines
+    .map((x) => `${x.sid}|${x.name}|${toNum(x.qty)}|${toNum(x.originalPrice)}|${toNum(x.shipping)}`)
+    .join('||')
+  return [
+    String(group?.key || ''),
+    String(group?.date || ''),
+    String(group?.paymentBatch || ''),
+    String(group?.website || ''),
+    String(group?.websiteAccount || ''),
+    toNum(group?.totalUSD),
+    lineHash,
+  ].join('@@')
+}
+
 export function useRushCarPrototype(rawSeedData = {}) {
   const isSeedRef = isRef(rawSeedData)
   const seedData = isSeedRef ? rawSeedData.value : rawSeedData
@@ -249,6 +265,38 @@ export function useRushCarPrototype(rawSeedData = {}) {
     const resolved = isSeedRef ? (rawSeedData.value || {}) : (seedData || {})
     return buildUsPurchaseGroups(resolved.items || [])
   })
+
+  watch(
+    () => usPurchaseGroups.value.map((g) => buildGroupSyncHash(g)),
+    () => {
+      const groupMap = new Map(usPurchaseGroups.value.map((g) => [String(g.key || ''), g]))
+      state.entries.forEach((row) => {
+        const key = String(row?.sourceGroupKey || '').trim()
+        if (!key) return
+        const g = groupMap.get(key)
+        if (!g) return
+
+        row.purchaseDate = g.date
+        row.lines = clone(g.lines)
+        row.totalUSD = toNum(g.totalUSD)
+        row.consumeUSD = toNum(g.totalUSD)
+        row.paymentBatch = g.paymentBatch
+        row.purchaseGroupId = g.purchaseGroupId
+        row.website = normalizeWebsite(g.website, g.purchaseGroupId)
+        row.sourceWebsiteRaw = String(g.website || '').trim()
+
+        const oldAccount = String(row.username || '').trim()
+        const newAccount = String(g.websiteAccount || '').trim()
+        row.syncedWebsiteAccount = newAccount
+        if (oldAccount && newAccount && oldAccount !== newAccount) {
+          row.accountSyncStatus = 'mismatch'
+        } else {
+          row.accountSyncStatus = 'ok'
+        }
+        row.updatedAt = Date.now()
+      })
+    },
+  )
 
   const selectedGroup = computed(() =>
     usPurchaseGroups.value.find((g) => g.key === state.selectedGroupKey) || null,
@@ -482,6 +530,26 @@ export function useRushCarPrototype(rawSeedData = {}) {
     return true
   }
 
+  function keepEntryAccount(entryId) {
+    const row = state.entries.find((x) => x.id === entryId)
+    if (!row) return false
+    row.accountSyncStatus = 'ignored'
+    row.updatedAt = Date.now()
+    return true
+  }
+
+  function adoptEntryAccount(entryId) {
+    const row = state.entries.find((x) => x.id === entryId)
+    if (!row) return false
+    const nextAccount = String(row.syncedWebsiteAccount || '').trim()
+    if (!nextAccount) return false
+    row.websiteAccount = nextAccount
+    row.username = nextAccount
+    row.accountSyncStatus = 'ok'
+    row.updatedAt = Date.now()
+    return true
+  }
+
   function submitEntry() {
     if (!selectedGroup.value) return { ok: false, message: '请先选择购买组' }
     const key = selectedGroup.value.key
@@ -530,6 +598,8 @@ export function useRushCarPrototype(rawSeedData = {}) {
       vpnNode: state.form.vpnNode,
       browser: state.form.browser,
       username: entrySnapshot.value.username,
+      syncedWebsiteAccount: entrySnapshot.value.websiteAccount,
+      accountSyncStatus: 'ok',
       recipient: selectedRecipientForwarder.value.label,
       recipientId: selectedRecipientForwarder.value.id,
       forwarderCompany: selectedRecipientForwarder.value.companyName,
@@ -580,6 +650,8 @@ export function useRushCarPrototype(rawSeedData = {}) {
     removePaymentCard,
     removeEntry,
     markEntryFailure,
+    keepEntryAccount,
+    adoptEntryAccount,
     submitEntry,
   }
 }
