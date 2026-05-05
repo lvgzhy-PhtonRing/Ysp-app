@@ -507,6 +507,17 @@ watch(
   },
   { deep: true },
 )
+
+watch(
+  () => store.uiNav.ts,
+  () => {
+    const target = String(store.uiNav?.targetTab || '').trim()
+    if (!target) return
+    if (tabs.some((x) => x.id === target)) {
+      currentTab.value = target
+    }
+  },
+)
 </script>
 
 <template>

@@ -2,7 +2,7 @@
 
 import { reactive } from 'vue'
 
-const APP_VERSION = '3.0.1'
+const APP_VERSION = '3.1.0'
 const CLOUD_SYNC_DEBOUNCE_MS = 800
 const MAX_UNDO_STEPS = 20
 const HISTORY_META_EXPIRE_MS = 3000
@@ -20,6 +20,14 @@ const DEFAULT_RUSHCAR = {
   forwarderInfos: [],
   mattelSiteInfos: [],
   paymentCards: [],
+}
+
+const DEFAULT_UI_NAV = {
+  targetTab: '',
+  sourceGroupKey: '',
+  sourceEntryId: '',
+  sourceModule: '',
+  ts: 0,
 }
 
 const DEFAULT_CLOUD_SETTINGS = {
@@ -84,6 +92,7 @@ export const state = reactive({
   paytonRecords: [],
   paytonInventory: [],
   rushcar: clone(DEFAULT_RUSHCAR),
+  uiNav: clone(DEFAULT_UI_NAV),
   version: APP_VERSION,
   cloudSettings: {
     ...DEFAULT_CLOUD_SETTINGS,
@@ -301,9 +310,22 @@ export function loadData(jsonObject = {}) {
   replaceArray(state.paytonInventory, data.payton?.inventory)
 
   replaceObject(state.rushcar, normalizeRushCarData(data.rushcar))
+  replaceObject(state.uiNav, clone(DEFAULT_UI_NAV))
 
   // 侧边栏版本固定显示程序版本，不受导入 JSON 中 version 字段影响
   state.version = APP_VERSION
+}
+
+export function pushUiNav(payload = {}) {
+  state.uiNav.targetTab = String(payload.targetTab || '').trim()
+  state.uiNav.sourceGroupKey = String(payload.sourceGroupKey || '').trim()
+  state.uiNav.sourceEntryId = String(payload.sourceEntryId || '').trim()
+  state.uiNav.sourceModule = String(payload.sourceModule || '').trim()
+  state.uiNav.ts = Date.now()
+}
+
+export function clearUiNav() {
+  replaceObject(state.uiNav, clone(DEFAULT_UI_NAV))
 }
 
 export function exportData() {

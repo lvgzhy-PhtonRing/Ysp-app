@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { saveToLocalStorage, state as store } from '../../data/store'
 import {
   addPaytonCar,
-  addPaytonCarByPurchase,
+  adjustPaytonInventoryByRecord,
   addPaytonRecord,
   deletePaytonRecord,
   editPaytonRecord,
@@ -296,11 +296,24 @@ function openEditCar(car) {
 function submitEditCar() {
   const car = store.paytonInventory.find((x) => x.id === editCarForm.id)
   if (!car) return
+  const before = {
+    name: car.name,
+    qty: Number(car.qty || 0),
+    avgPrice: Number(car.avgPrice || 0),
+  }
   car.name = editCarForm.name
   car.brand = editCarForm.brand
   car.qty = Number(editCarForm.qty || 0)
   car.avgPrice = Number(editCarForm.avgPrice || 0)
   car.totalCost = Number(car.qty) * Number(car.avgPrice)
+  adjustPaytonInventoryByRecord({
+    before,
+    after: {
+      name: car.name,
+      qty: Number(car.qty || 0),
+      avgPrice: Number(car.avgPrice || 0),
+    },
+  })
   saveToLocalStorage()
   showEditCarModal.value = false
 }
@@ -308,7 +321,21 @@ function submitEditCar() {
 function removeCar(carId) {
   const idx = store.paytonInventory.findIndex((x) => x.id === carId)
   if (idx < 0) return
+  const row = store.paytonInventory[idx]
+  const before = {
+    name: row?.name,
+    qty: Number(row?.qty || 0),
+    avgPrice: Number(row?.avgPrice || 0),
+  }
   store.paytonInventory.splice(idx, 1)
+  adjustPaytonInventoryByRecord({
+    before,
+    after: {
+      name: before.name,
+      qty: 0,
+      avgPrice: Number(before.avgPrice || 0),
+    },
+  })
   saveToLocalStorage()
 }
 
@@ -353,23 +380,29 @@ function submitAddRecord() {
     const amount = Number(addRecordForm.amount || 0)
     if (!addRecordForm.carName?.trim()) return alert('请填写小车名称')
     if (qty <= 0) return alert('小车数量需大于0')
-    addPaytonCarByPurchase({
-      name: addRecordForm.carName,
-      brand: addRecordForm.carBrand,
-      qty,
-      avgPrice: qty > 0 ? amount / qty : 0,
-    })
     noteContent = `[买小车] ${addRecordForm.carName} x${qty}`
   }
 
-  addPaytonRecord({
+  const record = addPaytonRecord({
     type: addRecordForm.type,
     category: addRecordForm.category,
     account: addRecordForm.account,
     date: addRecordForm.date,
     amount: Number(addRecordForm.amount || 0),
     note: noteContent,
+    inventoryLink:
+      isBuyCar
+        ? {
+            type: 'buy',
+            carName: addRecordForm.carName,
+            carBrand: addRecordForm.carBrand,
+            qty: Number(addRecordForm.carQty || 0),
+            unitPrice: Number(addRecordForm.carQty || 0) > 0 ? Number(addRecordForm.amount || 0) / Number(addRecordForm.carQty || 0) : 0,
+            totalCost: Number(addRecordForm.amount || 0),
+          }
+        : null,
   })
+  if (!record) return alert('保存失败：库存联动校验未通过')
   showAddRecordModal.value = false
 }
 
@@ -407,15 +440,49 @@ function openEditRecord(record) {
 }
 
 function submitEditRecord() {
-  editPaytonRecord(editRecordForm.id, {
+  const target = store.paytonRecords.find((x) => x.id === editRecordForm.id)
+  const currentLink = target?.inventoryLink || null
+  const isBuyCar = editRecordForm.type === 'expense' && editRecordForm.category === '买小车'
+  let nextLink = null
+  if (isBuyCar) {
+    const parsed = String(editRecordForm.note || '').match(/\[买小车\]\s*(.*?)\s*x(\d+)/)
+    const carName = parsed?.[1] ? String(parsed[1]).trim() : String(currentLink?.carName || '').trim()
+    const qty = parsed?.[2] ? Number(parsed[2]) : Number(currentLink?.qty || 0)
+    if (!carName || qty <= 0) {
+      alert('编辑买小车流水时，请在备注中保持“[买小车] 车型 x数量”格式')
+      return
+    }
+    nextLink = {
+      type: 'buy',
+      carName,
+      carBrand: String(currentLink?.carBrand || '').trim(),
+      qty,
+      unitPrice: qty > 0 ? Number(editRecordForm.amount || 0) / qty : 0,
+      totalCost: Number(editRecordForm.amount || 0),
+    }
+  }
+
+  const result = editPaytonRecord(editRecordForm.id, {
     type: editRecordForm.type,
     category: editRecordForm.category,
     account: editRecordForm.account,
     date: editRecordForm.date,
     amount: Number(editRecordForm.amount || 0),
     note: editRecordForm.note,
+    inventoryLink: nextLink,
   })
+  if (!result) {
+    alert('编辑失败：库存联动校验未通过（可能导致负库存）')
+    return
+  }
   showEditRecordModal.value = false
+}
+
+function removeRecord(recordId) {
+  const ok = deletePaytonRecord(recordId)
+  if (!ok) {
+    alert('删除失败：库存联动校验未通过（可能导致负库存）')
+  }
 }
 
 onMounted(() => {
@@ -534,7 +601,7 @@ watch(
               </td>
               <td class="p-3 text-center space-x-2">
                 <button class="text-blue-500 hover:text-blue-700" @click="openEditRecord(r)">编辑</button>
-                <button class="text-red-500 hover:text-red-700" @click="deletePaytonRecord(r.id)">删除</button>
+                <button class="text-red-500 hover:text-red-700" @click="removeRecord(r.id)">删除</button>
               </td>
             </tr>
           </tbody>

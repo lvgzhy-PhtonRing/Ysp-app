@@ -90,7 +90,7 @@ function createCardOption(label, holder, bank, identifier, cardType, remark = ''
 function createInitialState(seed = {}) {
   const now = new Date().toISOString().slice(0, 10)
   return reactive({
-    entries: Array.isArray(seed.entries) ? seed.entries : [],
+    entries: Array.isArray(seed.entries) ? clone(seed.entries) : [],
     forwarderInfos: Array.isArray(seed.forwarderInfos) && seed.forwarderInfos.length
       ? seed.forwarderInfos.map((x) => createForwarderInfo(x))
       : [],
@@ -98,7 +98,7 @@ function createInitialState(seed = {}) {
       ? seed.mattelSiteInfos.map((x) => createMattelSiteInfo(x))
       : [],
     paymentCards: Array.isArray(seed.paymentCards) && seed.paymentCards.length
-      ? seed.paymentCards
+      ? clone(seed.paymentCards)
       : [],
     addCardForm: {
       holder: 'PT',
@@ -131,6 +131,17 @@ function createInitialState(seed = {}) {
     sourceLoadedFrom: seed.sourceLoadedFrom || 'public/a.json',
     loadedAt: now,
   })
+}
+
+function getGroupKeyFromItem(item = {}) {
+  const pd = item?.purchaseDetails || {}
+  const purchaseGroupId = String(pd.purchaseGroupId || '').trim()
+  const paymentBatch = String(pd.paymentBatch || '').trim()
+  if (purchaseGroupId && paymentBatch) return `${purchaseGroupId}__${paymentBatch}`
+  if (purchaseGroupId) return purchaseGroupId
+  const date = safeDate(pd.date)
+  const website = String(pd.website || '').trim()
+  return `${date}__${website}__${paymentBatch}`
 }
 
 function buildUsPurchaseGroups(items = []) {
@@ -216,6 +227,54 @@ export function useRushCarPrototype(rawSeedData = {}) {
       replaceArray(state.paymentCards, rushcarData.paymentCards)
     },
     { immediate: true },
+  )
+
+  watch(
+    () => {
+      const host = storeStateRef.value
+      if (!host?.items) return []
+      return host.items.map((item) => ({
+        id: item?.id,
+        category: item?.category,
+        status: item?.status,
+        key: getGroupKeyFromItem(item),
+        date: item?.purchaseDetails?.date,
+        website: item?.purchaseDetails?.website,
+        websiteAccount: item?.purchaseDetails?.websiteAccount,
+        paymentBatch: item?.purchaseDetails?.paymentBatch,
+        purchaseGroupId: item?.purchaseDetails?.purchaseGroupId,
+        originalPrice: item?.purchaseDetails?.originalPrice,
+        domesticShipping: item?.purchaseDetails?.domesticShipping,
+        name: item?.name,
+        sid: item?.sid,
+      }))
+    },
+    () => {
+      const groups = new Map(usPurchaseGroups.value.map((g) => [g.key, g]))
+      state.entries.forEach((entry) => {
+        const group = groups.get(String(entry.sourceGroupKey || ''))
+        if (!group) {
+          entry.sourceStatus = 'orphaned'
+          entry.updatedAt = Date.now()
+          return
+        }
+        entry.sourceStatus = 'active'
+        entry.purchaseGroupId = group.purchaseGroupId
+        entry.paymentBatch = group.paymentBatch
+        entry.purchaseDate = group.date
+        entry.website = normalizeWebsite(group.website, group.purchaseGroupId)
+        entry.websiteAccount = group.websiteAccount
+        entry.username = group.websiteAccount
+        entry.lines = clone(group.lines)
+        entry.totalUSD = toNum(group.totalUSD)
+        entry.consumeUSD = toNum(group.totalUSD)
+        entry.sourceWebsiteRaw = String(group.website || '').trim()
+        entry.actualChargeUSD = toNum(group.totalUSD)
+        entry.chargeDiffUSD = 0
+        entry.updatedAt = Date.now()
+      })
+    },
+    { deep: true },
   )
 
   watch(
@@ -496,11 +555,8 @@ export function useRushCarPrototype(rawSeedData = {}) {
       return { ok: false, message: '请填写付款信息' }
     }
 
-    const actualChargeUSD =
-      state.form.actualChargeUSD === '' || state.form.actualChargeUSD === null
-        ? toNum(entrySnapshot.value.totalUSD)
-        : toNum(state.form.actualChargeUSD)
-    const chargeDiffUSD = Number((actualChargeUSD - toNum(entrySnapshot.value.totalUSD)).toFixed(2))
+    const actualChargeUSD = toNum(entrySnapshot.value.totalUSD)
+    const chargeDiffUSD = 0
     const selectedCardLabel =
       String(selectedCard.value.label || '').trim() ||
       buildCardLabel(
@@ -516,6 +572,7 @@ export function useRushCarPrototype(rawSeedData = {}) {
       createdAt: now,
       updatedAt: now,
       sourceGroupKey: selectedGroup.value.key,
+      sourceStatus: 'active',
       purchaseGroupId: selectedGroup.value.purchaseGroupId,
       paymentBatch: selectedGroup.value.paymentBatch,
       purchaseDate: entrySnapshot.value.date,

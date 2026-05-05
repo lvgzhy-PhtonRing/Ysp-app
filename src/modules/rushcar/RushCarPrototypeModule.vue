@@ -1,5 +1,6 @@
-﻿<script setup>
+<script setup>
 import { computed, reactive, toRef, watch } from 'vue'
+import { pushUiNav } from '../../data/store'
 import { useRushCarPrototype } from './useRushCarPrototype'
 
 const props = defineProps({
@@ -103,11 +104,15 @@ watch(
 )
 
 watch(
-  () => entrySnapshot.value.totalUSD,
-  (value) => {
-    state.form.actualChargeUSD = value ? String(Number(value)) : ''
+  () => props?.sourceData?.uiNav?.ts,
+  () => {
+    const nav = props?.sourceData?.uiNav
+    if (!nav || String(nav.targetTab || '') !== 'rushcar') return
+    const sourceGroupKey = String(nav.sourceGroupKey || '').trim()
+    if (!sourceGroupKey) return
+    state.activePage = 'entry'
+    selectGroup(sourceGroupKey)
   },
-  { immediate: true },
 )
 
 watch(
@@ -163,6 +168,13 @@ function getEntryStatus(row) {
   return { label: '购买成功', cls: 'bg-blue-100 text-blue-700' }
 }
 
+function getSourceStatus(row) {
+  if (row?.sourceStatus === 'orphaned') {
+    return { label: '来源失效', cls: 'bg-rose-100 text-rose-700' }
+  }
+  return { label: '来源正常', cls: 'bg-emerald-100 text-emerald-700' }
+}
+
 function getGroupProductName(group) {
   const lines = Array.isArray(group?.lines) ? group.lines : []
   if (lines.length === 0) return '-'
@@ -207,6 +219,15 @@ function buildNetworkDetailLines(row) {
 
 function viewEntryDetail(row) {
   alert(buildNetworkDetailLines(row).join('\n'))
+}
+
+function jumpToPurchaseGroup(row) {
+  pushUiNav({
+    targetTab: 'purchase',
+    sourceGroupKey: String(row?.sourceGroupKey || ''),
+    sourceEntryId: String(row?.id || ''),
+    sourceModule: 'rushcar',
+  })
 }
 
 function openFailureDialog(row) {
@@ -384,7 +405,7 @@ function confirmRemovePaymentCard(id) {
               </option>
             </select>
             <div v-if="state.selectedGroupKey && isGroupRecorded(state.selectedGroupKey)" class="mt-1 text-[11px] text-amber-700">
-              当前购买组已录入历史记录，若需更新请先删除原记录再重建。
+              当前购买组已录入历史记录；采购管理改价后会自动同步到该条记录。
             </div>
           </div>
           <div class="col-span-6 md:col-span-2">
@@ -531,10 +552,6 @@ function confirmRemovePaymentCard(id) {
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
           <div>
-            <label class="block text-xs text-gray-500 mb-1">实际扣款金额(USD)</label>
-            <input v-model="state.form.actualChargeUSD" type="number" step="0.01" class="apple-input" placeholder="默认等于消费金额" />
-          </div>
-          <div>
             <label class="block text-xs text-gray-500 mb-1">备注</label>
             <input v-model="state.form.note" class="apple-input" placeholder="记录支付特殊情况" />
           </div>
@@ -584,6 +601,7 @@ function confirmRemovePaymentCard(id) {
                 <th class="w-[84px]">SHOP快捷</th>
                 <th class="text-right w-[92px]">订单USD</th>
                 <th>状态</th>
+                <th>来源</th>
                 <th></th>
               </tr>
             </thead>
@@ -600,14 +618,18 @@ function confirmRemovePaymentCard(id) {
                 <td>
                   <span class="inline-flex px-2 py-0.5 rounded text-xs" :class="getEntryStatus(row).cls">{{ getEntryStatus(row).label }}</span>
                 </td>
+                <td>
+                  <span class="inline-flex px-2 py-0.5 rounded text-xs" :class="getSourceStatus(row).cls">{{ getSourceStatus(row).label }}</span>
+                </td>
                 <td class="text-right whitespace-nowrap">
-                  <button class="btn btn-outline btn-sm" @click="viewEntryDetail(row)">网络信息</button>
+                  <button class="btn btn-outline btn-sm" @click="jumpToPurchaseGroup(row)">采购组</button>
+                  <button class="btn btn-outline btn-sm ml-1" @click="viewEntryDetail(row)">网络信息</button>
                   <button class="btn btn-sm ml-1 border border-orange-200 bg-orange-100 text-orange-700 hover:bg-orange-200" @click="openFailureDialog(row)">失败</button>
                   <button class="btn btn-outline btn-sm ml-1" @click="removeEntry(row.id)">删除</button>
                 </td>
               </tr>
               <tr v-if="filteredEntries.length === 0">
-                <td colspan="10" class="text-center text-gray-400 py-4">暂无记录</td>
+                <td colspan="11" class="text-center text-gray-400 py-4">暂无记录</td>
               </tr>
             </tbody>
           </table>
