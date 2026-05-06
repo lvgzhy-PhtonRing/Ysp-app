@@ -153,6 +153,7 @@ export function addPaytonRecord(recordData = {}) {
     date: recordData.date || '',
     amount: toNumber(recordData.amount),
     note: ensureCategoryPrefix(recordData.category, recordData.note),
+    carId: recordData.carId || null,
   }
 
   store.paytonRecords.push(record)
@@ -274,6 +275,7 @@ export function sellPaytonCar(carId, sellData = {}) {
     date: sellData.date || '',
     amount: revenue,
     note: `[卖小车] 卖出${car.name} x${qty}`,
+    carId: car.id,
   })
 
   saveToLocalStorage()
@@ -338,6 +340,25 @@ export function movePaytonCarToSell(carId, qty) {
   return true
 }
 
+export function clearCarRefFromRecords(carId) {
+  store.paytonRecords.forEach((record) => {
+    if (record.carId === carId) {
+      record.carId = null
+    }
+  })
+  saveToLocalStorage()
+}
+
+export function syncPaytonRecordsForCarRename(carId, oldName, newName) {
+  store.paytonRecords.forEach((record) => {
+    if (record.carId !== carId) return
+    if (record.note && record.note.includes(oldName)) {
+      record.note = record.note.replace(oldName, newName)
+    }
+  })
+  saveToLocalStorage()
+}
+
 export function getPaytonStats(accounts = {}, records = [], inventory = []) {
   const totalAccountBalance = Object.values(accounts).reduce(
     (sum, account) => sum + toNumber(account?.balance),
@@ -389,5 +410,7 @@ export function usePayton() {
     movePaytonCarToKeep,
     movePaytonCarToSell,
     getPaytonStats,
+    clearCarRefFromRecords,
+    syncPaytonRecordsForCarRename,
   }
 }

@@ -5,12 +5,14 @@ import {
   addPaytonCar,
   addPaytonCarByPurchase,
   addPaytonRecord,
+  clearCarRefFromRecords,
   deletePaytonRecord,
   editPaytonRecord,
   getPaytonStats,
   movePaytonCarToKeep,
   movePaytonCarToSell,
   sellPaytonCar,
+  syncPaytonRecordsForCarRename,
 } from './usePayton'
 
 const showAddCarModal = ref(false)
@@ -296,11 +298,15 @@ function openEditCar(car) {
 function submitEditCar() {
   const car = store.paytonInventory.find((x) => x.id === editCarForm.id)
   if (!car) return
+  const oldName = car.name
   car.name = editCarForm.name
   car.brand = editCarForm.brand
   car.qty = Number(editCarForm.qty || 0)
   car.avgPrice = Number(editCarForm.avgPrice || 0)
   car.totalCost = Number(car.qty) * Number(car.avgPrice)
+  if (oldName !== editCarForm.name) {
+    syncPaytonRecordsForCarRename(car.id, oldName, editCarForm.name)
+  }
   saveToLocalStorage()
   showEditCarModal.value = false
 }
@@ -308,6 +314,7 @@ function submitEditCar() {
 function removeCar(carId) {
   const idx = store.paytonInventory.findIndex((x) => x.id === carId)
   if (idx < 0) return
+  clearCarRefFromRecords(carId)
   store.paytonInventory.splice(idx, 1)
   saveToLocalStorage()
 }
@@ -353,13 +360,24 @@ function submitAddRecord() {
     const amount = Number(addRecordForm.amount || 0)
     if (!addRecordForm.carName?.trim()) return alert('请填写小车名称')
     if (qty <= 0) return alert('小车数量需大于0')
-    addPaytonCarByPurchase({
+    const car = addPaytonCarByPurchase({
       name: addRecordForm.carName,
       brand: addRecordForm.carBrand,
       qty,
       avgPrice: qty > 0 ? amount / qty : 0,
     })
     noteContent = `[买小车] ${addRecordForm.carName} x${qty}`
+    addPaytonRecord({
+      type: addRecordForm.type,
+      category: addRecordForm.category,
+      account: addRecordForm.account,
+      date: addRecordForm.date,
+      amount: Number(addRecordForm.amount || 0),
+      note: noteContent,
+      carId: car ? car.id : null,
+    })
+    showAddRecordModal.value = false
+    return
   }
 
   addPaytonRecord({
