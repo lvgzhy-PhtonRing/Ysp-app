@@ -188,6 +188,10 @@ const editRecordForm = reactive({
   date: '',
   amount: 0,
   note: '',
+  carQty: null,
+  carUnitPrice: null,
+  carName: '',
+  carBrand: '',
 })
 
 const brandOptions = ['Hotwheels', 'MINIGT', 'Tomica', 'TLV', 'Kyosho', '其它']
@@ -360,11 +364,12 @@ function submitAddRecord() {
     const amount = Number(addRecordForm.amount || 0)
     if (!addRecordForm.carName?.trim()) return alert('请填写小车名称')
     if (qty <= 0) return alert('小车数量需大于0')
+    const unitPrice = qty > 0 ? amount / qty : 0
     const car = addPaytonCarByPurchase({
       name: addRecordForm.carName,
       brand: addRecordForm.carBrand,
       qty,
-      avgPrice: qty > 0 ? amount / qty : 0,
+      avgPrice: unitPrice,
     })
     noteContent = `[买小车] ${addRecordForm.carName} x${qty}`
     addPaytonRecord({
@@ -375,6 +380,10 @@ function submitAddRecord() {
       amount: Number(addRecordForm.amount || 0),
       note: noteContent,
       carId: car ? car.id : null,
+      carQty: qty,
+      carUnitPrice: unitPrice,
+      carName: addRecordForm.carName,
+      carBrand: addRecordForm.carBrand,
     })
     showAddRecordModal.value = false
     return
@@ -421,6 +430,10 @@ function openEditRecord(record) {
   editRecordForm.date = record.date
   editRecordForm.amount = Number(record.amount || 0)
   editRecordForm.note = record.note || ''
+  editRecordForm.carQty = record.carQty || null
+  editRecordForm.carUnitPrice = record.carUnitPrice || null
+  editRecordForm.carName = record.carName || ''
+  editRecordForm.carBrand = record.carBrand || ''
   showEditRecordModal.value = true
 }
 
@@ -850,8 +863,8 @@ watch(
               <input type="number" v-model.number="editCarForm.qty" class="apple-input" />
             </div>
             <div>
-              <label class="block text-sm mb-1 text-gray-600">均价</label>
-              <input type="number" v-model.number="editCarForm.avgPrice" class="apple-input" />
+              <label class="block text-sm mb-1 text-gray-600">均价（由购买记录计算，不可编辑）</label>
+              <input type="number" v-model.number="editCarForm.avgPrice" class="apple-input bg-gray-100" readonly />
             </div>
           </div>
           <div class="border-t pt-3" v-if="(store.paytonInventory.find(x => x.id === editCarForm.id)?.pool || 'sell') === 'sell'">
@@ -955,6 +968,18 @@ watch(
           <div>
             <label class="block text-sm mb-1 text-gray-600">备注</label>
             <input type="text" v-model="editRecordForm.note" class="apple-input" />
+          </div>
+          <div v-if="editRecordForm.category === '买小车' && editRecordForm.carName" class="bg-blue-50 p-3 rounded-lg">
+            <div class="text-sm font-medium text-blue-700 mb-2">车辆信息（只读）</div>
+            <div class="text-sm text-gray-700">
+              <span class="font-medium">车型：</span>{{ editRecordForm.carName }}
+            </div>
+            <div class="text-sm text-gray-700" v-if="editRecordForm.carBrand">
+              <span class="font-medium">品牌：</span>{{ editRecordForm.carBrand }}
+            </div>
+            <div class="text-sm text-gray-700" v-if="editRecordForm.carQty">
+              <span class="font-medium">数量：</span>{{ editRecordForm.carQty }}
+            </div>
           </div>
         </div>
         <div class="mt-6 flex justify-end gap-3">

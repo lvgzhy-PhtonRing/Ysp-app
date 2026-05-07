@@ -94,6 +94,46 @@ function mergePaytonInventory({ name, brand, qty, avgPrice, pool = 'sell' }) {
   return car
 }
 
+function removeFromPaytonInventory({ carId, name, brand, qty, avgPrice, pool = 'sell' }) {
+  const removeQty = toNumber(qty)
+  const removeAvg = toNumber(avgPrice)
+  if (removeQty <= 0) return null
+
+  // 优先 carId 查找，回退 name+brand+pool
+  let idx = -1
+  if (carId) {
+    idx = store.paytonInventory.findIndex((x) => x.id === carId && String(x?.pool || 'sell') === pool)
+  }
+  if (idx < 0) {
+    const n = normalizeText(name || '')
+    const b = normalizeText(brand || '')
+    idx = store.paytonInventory.findIndex(
+      (x) => normalizeText(x?.name) === n && normalizeText(x?.brand) === b && String(x?.pool || 'sell') === pool,
+    )
+  }
+  if (idx < 0) {
+    console.warn('[removeFromPaytonInventory] 未找到库存条目，跳过', { carId, name, brand, qty, avgPrice, pool })
+    return null
+  }
+
+  const row = store.paytonInventory[idx]
+  const currentQty = toNumber(row.qty)
+  const currentAvg = toNumber(row.avgPrice)
+  const actualRemoveQty = Math.min(removeQty, currentQty)
+  const removedTotalCost = actualRemoveQty * removeAvg
+  const newQty = currentQty - actualRemoveQty
+  const newAvg = newQty > 0 ? (currentQty * currentAvg - removedTotalCost) / newQty : 0
+
+  if (newQty <= 0) {
+    store.paytonInventory.splice(idx, 1)
+  } else {
+    row.qty = newQty
+    row.avgPrice = newAvg
+    row.totalCost = newQty * newAvg
+  }
+  return row
+}
+
 function cleanupInventoryRow(car) {
   if (!car) return
   if (toNumber(car.qty) > 0) {
@@ -154,6 +194,10 @@ export function addPaytonRecord(recordData = {}) {
     amount: toNumber(recordData.amount),
     note: ensureCategoryPrefix(recordData.category, recordData.note),
     carId: recordData.carId || null,
+    carQty: recordData.carQty || null,
+    carUnitPrice: recordData.carUnitPrice || null,
+    carName: recordData.carName || null,
+    carBrand: recordData.carBrand || null,
   }
 
   store.paytonRecords.push(record)
@@ -168,6 +212,33 @@ export function deletePaytonRecord(recordId) {
   if (idx < 0) return false
 
   const record = store.paytonRecords[idx]
+
+  // 库存联动（best-effort）
+  if (record.carQty && record.carUnitPrice) {
+    try {
+      if (record.category === '买小车') {
+        removeFromPaytonInventory({
+          carId: record.carId,
+          name: record.carName,
+          brand: record.carBrand,
+          qty: record.carQty,
+          avgPrice: record.carUnitPrice,
+          pool: 'sell',
+        })
+      } else if (record.category === '卖小车') {
+        mergePaytonInventory({
+          name: record.carName,
+          brand: record.carBrand,
+          qty: record.carQty,
+          avgPrice: record.carUnitPrice,
+          pool: 'sell',
+        })
+      }
+    } catch (e) {
+      console.warn('[deletePaytonRecord] 库存联动失败，继续执行', e)
+    }
+  }
+
   rollbackBalance(record.account, record.type, record.amount)
   store.paytonRecords.splice(idx, 1)
 
@@ -184,6 +255,40 @@ export function editPaytonRecord(recordId, newData = {}) {
     ...record,
   }
 
+  // 库存联动：编辑买小车金额时更新均价（best-effort）
+  const isBuyCar = record.category === '买小车'
+  const hasAmountChange = 'amount' in newData
+  if (isBuyCar && hasAmountChange && record.carQty && record.carUnitPrice) {
+    try {
+      const oldUnitPrice = record.carUnitPrice
+      const newAmount = toNumber(newData.amount)
+      const newUnitPrice = newAmount > 0 ? newAmount / record.carQty : 0
+      // 移除旧贡献
+      removeFromPaytonInventory({
+        carId: record.carId,
+        name: record.carName,
+        brand: record.carBrand,
+        qty: record.carQty,
+        avgPrice: oldUnitPrice,
+        pool: 'sell',
+      })
+      // 添加新贡献
+      if (newUnitPrice > 0) {
+        mergePaytonInventory({
+          name: record.carName,
+          brand: record.carBrand,
+          qty: record.carQty,
+          avgPrice: newUnitPrice,
+          pool: 'sell',
+        })
+      }
+      // 更新 carUnitPrice 以便后续删除时正确回滚
+      record.carUnitPrice = newUnitPrice
+    } catch (e) {
+      console.warn('[editPaytonRecord] 库存均价联动失败，继续执行', e)
+    }
+  }
+
   // 回滚旧记录
   rollbackBalance(record.account, record.type, record.amount)
 
@@ -191,7 +296,8 @@ export function editPaytonRecord(recordId, newData = {}) {
   Object.keys(newData).forEach((key) => {
     if (key === 'amount') {
       record.amount = toNumber(newData.amount)
-    } else {
+    } else if (key !== 'carUnitPrice') {
+      // carUnitPrice is handled above; skip direct set
       record[key] = newData[key]
     }
   })
@@ -259,6 +365,11 @@ export function sellPaytonCar(carId, sellData = {}) {
 
   if (qty <= 0 || qty > toNumber(car.qty)) return false
 
+  // 在 qty 被修改之前捕获成本价和车辆信息
+  const avgPriceAtSale = toNumber(car.avgPrice)
+  const carNameAtSale = car.name
+  const carBrandAtSale = car.brand
+
   car.qty = toNumber(car.qty) - qty
   car.totalCost = toNumber(car.qty) * toNumber(car.avgPrice)
 
@@ -276,6 +387,10 @@ export function sellPaytonCar(carId, sellData = {}) {
     amount: revenue,
     note: `[卖小车] 卖出${car.name} x${qty}`,
     carId: car.id,
+    carQty: qty,
+    carUnitPrice: avgPriceAtSale,
+    carName: carNameAtSale,
+    carBrand: carBrandAtSale,
   })
 
   saveToLocalStorage()
