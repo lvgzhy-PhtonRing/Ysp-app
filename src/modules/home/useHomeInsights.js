@@ -90,7 +90,7 @@ export function getBatchReturnStats(items = []) {
     }
   })
 
-  // 旧版关键口径：销售额先按 sid+日期 去重分组，按单笔成交累加
+  // 销售额按 sid+日期 去重分组，同组累加每条的 totalPrice 或 saleDetails.price
   const saleGroups = {}
   items.forEach((item) => {
     if (item?.status !== 'sold') return
@@ -100,9 +100,10 @@ export function getBatchReturnStats(items = []) {
         sid: item?.sid,
         category: item?.category,
         batch: item?.batch,
-        price: Number(item?.totalPrice || item?.saleDetails?.price || 0),
+        price: 0,
       }
     }
+    saleGroups[groupKey].price += Number(item?.totalPrice || item?.saleDetails?.price || 0)
   })
 
   Object.values(saleGroups).forEach((sale) => {
