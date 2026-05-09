@@ -1,5 +1,5 @@
 ﻿<script setup>
-import { computed, reactive, toRef, watch } from 'vue'
+import { computed, reactive, ref, toRef, watch } from 'vue'
 import { useRushCarPrototype } from './useRushCarPrototype'
 
 const props = defineProps({
@@ -65,6 +65,7 @@ const showForwarderPassword = reactive({})
 const showMattelPassword = reactive({})
 const forwarderEditableMap = reactive({})
 const mattelEditableMap = reactive({})
+const expandedProductRows = ref(new Set())
 
 const cardFilterOptions = computed(() => {
   const ids = new Set(filteredEntries.value.map((row) => row.cardId).filter(Boolean))
@@ -196,12 +197,29 @@ function isGroupRecorded(groupKey) {
   return existingGroupKeys.value.has(String(groupKey || ''))
 }
 
-function getEntryProductName(row) {
+function getProductLineNames(row) {
   const lines = Array.isArray(row?.lines) ? row.lines : []
-  if (lines.length === 0) return '-'
-  const firstName = String(lines[0]?.name || '').trim() || '-'
-  if (lines.length === 1) return firstName
-  return `${firstName} +${lines.length - 1}`
+  return lines.map((l) => String(l?.name || '').trim() || '-')
+}
+
+function toggleProductRowExpand(rowId) {
+  const s = expandedProductRows.value
+  if (s.has(rowId)) s.delete(rowId)
+  else s.add(rowId)
+  expandedProductRows.value = new Set(s)
+}
+
+function getEntryProductName(row) {
+  const names = getProductLineNames(row)
+  if (names.length === 0) return '-'
+  if (names.length <= 2 || expandedProductRows.value.has(row.id)) return names
+  return names.slice(0, 2)
+}
+
+function getProductOverflow(row) {
+  const lines = Array.isArray(row?.lines) ? row.lines : []
+  if (lines.length <= 2) return 0
+  return lines.length - 2
 }
 
 function buildNetworkDetailLines(row) {
@@ -611,7 +629,24 @@ function confirmRemovePaymentCard(id) {
             <tbody>
               <tr v-for="row in filteredEntries" :key="row.id">
                 <td>{{ row.purchaseDate }}</td>
-                <td><span class="block max-w-[180px] leading-5 break-words max-h-10 overflow-hidden">{{ getEntryProductName(row) }}</span></td>
+                <td>
+                  <template v-if="getProductLineNames(row).length === 0">
+                    <span class="text-gray-400">-</span>
+                  </template>
+                  <template v-else>
+                    <div v-for="(name, idx) in getEntryProductName(row)" :key="idx" class="leading-5 break-words text-sm">{{ name }}</div>
+                    <div v-if="getProductOverflow(row) > 0 && !expandedProductRows.has(row.id)"
+                         @click="toggleProductRowExpand(row.id)"
+                         class="text-xs text-blue-500 cursor-pointer hover:text-blue-700 mt-0.5">
+                      +{{ getProductOverflow(row) }} 件
+                    </div>
+                    <div v-if="expandedProductRows.has(row.id)"
+                         @click="toggleProductRowExpand(row.id)"
+                         class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 mt-0.5">
+                      收起
+                    </div>
+                  </template>
+                </td>
                 <td>
                   <span class="block max-w-[150px] truncate">{{ row.username }}</span>
                   <div v-if="isAccountMismatch(row)" class="mt-1 text-[11px] text-amber-700 leading-4">
