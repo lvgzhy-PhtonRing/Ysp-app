@@ -22,6 +22,17 @@ const CATEGORY_BATCHES = {
 
 const collapsedGroups = reactive({})
 const expandedTransfers = reactive({})
+const expandedPurchaseGroups = ref(new Set())
+function togglePurchaseGroupExpand(groupKey) {
+  const s = expandedPurchaseGroups.value
+  if (s.has(groupKey)) s.delete(groupKey)
+  else s.add(groupKey)
+  expandedPurchaseGroups.value = new Set(s)
+}
+function slicedItems(items, groupKey) {
+  if (expandedPurchaseGroups.value.has(groupKey)) return items
+  return items.length > 2 ? items.slice(0, 2) : items
+}
 const selectedItemIds = ref([])
 const purchaseViewCategory = ref('日淘')
 const transferCategoryBatch = ref('')
@@ -1622,21 +1633,37 @@ watch(purchaseViewCategory, () => {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="item in group.itemsBySid" :key="item.sid" class="bg-white border-b border-gray-50 last:border-b-0">
-                  <td class="font-medium truncate max-w-xs px-3 py-2">{{ item.name }} <span v-if="item.qty > 1" class="text-xs text-gray-400">x{{ item.qty }}</span></td>
-                  <td class="text-center px-2 py-2">{{ item.qty }}</td>
-                  <td class="text-gray-500 text-right px-2 py-2">{{ item.purchaseDetails?.originalPrice || '-' }}</td>
-                  <td class="text-gray-500 text-right px-2 py-2">{{ item.purchaseDetails?.domesticShipping || 0 }}</td>
-                  <td class="text-gray-500 text-right px-2 py-2">{{ item.purchaseDetails?.fee || 0 }}</td>
-                  <td class="text-center px-2 py-2">{{ item.purchaseDetails?.transferCoefficient || 1 }}</td>
-                  <td class="text-warning text-right px-2 py-2">{{ fmtMoney(item.purchaseDetails?.preTransferCost || 0) }}</td>
-                  <td class="text-teal text-right px-2 py-2">{{ fmtMoney(item.purchaseDetails?.transferCost || 0) }}</td>
-                  <td class="text-primary font-bold text-right px-2 py-2">{{ fmtMoney(item.cost) }}</td>
-                  <td class="text-center px-2 py-2">
-                    <span v-if="item.purchaseDetails?.transferStatus === 'completed'" class="text-gray-400 text-xs" title="转运批次">{{ item.purchaseDetails?.transferBatch }}</span>
-                    <span v-else class="text-gray-300 text-sm" title="待转运">○</span>
+                <template v-for="(item, idx) in slicedItems(group.itemsBySid, group.key)" :key="item.sid">
+                  <tr class="bg-white border-b border-gray-50 last:border-b-0">
+                    <td class="font-medium truncate max-w-xs px-3 py-2">{{ item.name }} <span v-if="item.qty > 1" class="text-xs text-gray-400">x{{ item.qty }}</span></td>
+                    <td class="text-center px-2 py-2">{{ item.qty }}</td>
+                    <td class="text-gray-500 text-right px-2 py-2">{{ item.purchaseDetails?.originalPrice || '-' }}</td>
+                    <td class="text-gray-500 text-right px-2 py-2">{{ item.purchaseDetails?.domesticShipping || 0 }}</td>
+                    <td class="text-gray-500 text-right px-2 py-2">{{ item.purchaseDetails?.fee || 0 }}</td>
+                    <td class="text-center px-2 py-2">{{ item.purchaseDetails?.transferCoefficient || 1 }}</td>
+                    <td class="text-warning text-right px-2 py-2">{{ fmtMoney(item.purchaseDetails?.preTransferCost || 0) }}</td>
+                    <td class="text-teal text-right px-2 py-2">{{ fmtMoney(item.purchaseDetails?.transferCost || 0) }}</td>
+                    <td class="text-primary font-bold text-right px-2 py-2">{{ fmtMoney(item.cost) }}</td>
+                    <td class="text-center px-2 py-2">
+                      <span v-if="item.purchaseDetails?.transferStatus === 'completed'" class="text-gray-400 text-xs" title="转运批次">{{ item.purchaseDetails?.transferBatch }}</span>
+                      <span v-else class="text-gray-300 text-sm" title="待转运">○</span>
+                    </td>
+                    <td></td>
+                  </tr>
+                </template>
+                <tr v-if="group.itemsBySid.length > 2 && !expandedPurchaseGroups.has(group.key)"
+                    @click="togglePurchaseGroupExpand(group.key)"
+                    class="bg-gray-50 border-b border-gray-100 cursor-pointer hover:bg-blue-50 transition-colors">
+                  <td :colspan="11" class="text-center py-1.5 text-sm text-blue-500 font-medium">
+                    +{{ group.itemsBySid.length - 2 }} 件 展开查看
                   </td>
-                  <td></td>
+                </tr>
+                <tr v-if="group.itemsBySid.length > 2 && expandedPurchaseGroups.has(group.key)"
+                    @click="togglePurchaseGroupExpand(group.key)"
+                    class="bg-gray-50 border-b border-gray-100 cursor-pointer hover:bg-blue-50 transition-colors">
+                  <td :colspan="11" class="text-center py-1.5 text-sm text-gray-400 font-medium">
+                    收起
+                  </td>
                 </tr>
               </tbody>
             </table>
