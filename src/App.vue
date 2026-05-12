@@ -15,10 +15,12 @@ import {
   clearCloudSession,
   clearOperationLogs,
   exportData,
+  isCloudSyncUnhealthy,
   loadData,
   loadFromLocalStorage,
   loadUiStateFromLocalStorage,
   registerCloudSyncHandler,
+  resetCloudUnhealthyWarning,
   saveToLocalStorage,
   setCloudLoadError,
   setCloudLoadSuccess,
@@ -177,6 +179,12 @@ const cloudForm = ref({
   password: '',
 })
 const cloudBusy = ref(false)
+
+const cloudUnhealthy = computed(() => isCloudSyncUnhealthy())
+
+watch(cloudUnhealthy, (unhealthy) => {
+  if (!unhealthy) resetCloudUnhealthyWarning()
+})
 
 function getEnvCloudSettings() {
   const enabledRaw = String(import.meta.env.VITE_SUPABASE_ENABLED || '').toLowerCase()
@@ -523,6 +531,7 @@ watch(
       :tabs="tabs"
       :current-tab="currentTab"
       :version="store.version"
+      :cloud-unhealthy="cloudUnhealthy"
       @select="currentTab = $event"
       @import="triggerImport"
       @export="handleExport"
@@ -531,6 +540,15 @@ watch(
     />
 
     <main :class="['flex-1 overflow-y-auto p-8', currentTab === 'inventory-aging' ? 'bg-sky-50/60' : '']">
+      <!-- 云端未连接警告 -->
+      <div
+        v-if="cloudUnhealthy"
+        class="-mt-4 mb-4 mx-1 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700"
+      >
+        <i class="fa-solid fa-triangle-exclamation text-amber-500"></i>
+        <span>云端同步未连接，数据仅保存在本地浏览器中。</span>
+        <button class="ml-auto shrink-0 underline hover:text-amber-800" @click="openCloudSettings">去登录</button>
+      </div>
       <div class="mx-auto max-w-7xl space-y-6 pb-8">
         <HomeModule v-if="currentTab === 'home'" />
         <InventoryModule v-else-if="currentTab === 'inventory'" @open-aging="currentTab = 'inventory-aging'" />

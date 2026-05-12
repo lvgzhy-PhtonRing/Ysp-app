@@ -12,6 +12,10 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  cloudUnhealthy: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const emit = defineEmits(['select', 'import', 'export', 'cloud', 'logs'])
@@ -92,10 +96,12 @@ function handleSelect(tab) {
         <i class="fa-solid fa-upload mr-2" />导入数据
       </button>
       <button
-        class="w-full text-left px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg"
+        class="w-full text-left px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg flex items-center gap-2"
         @click="emit('cloud')"
       >
-        <i class="fa-solid fa-database mr-2" />云端同步
+        <i class="fa-solid fa-database mr-1" />
+        <span class="flex-1">云端同步</span>
+        <i v-if="cloudUnhealthy" class="fa-solid fa-circle text-amber-400 text-[8px] animate-pulse" title="云端未连接" />
       </button>
       <button
         class="w-full text-left px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg"

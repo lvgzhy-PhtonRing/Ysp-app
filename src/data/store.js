@@ -2,7 +2,7 @@
 
 import { reactive } from 'vue'
 
-const APP_VERSION = '3.0.6'
+const APP_VERSION = '3.0.7'
 const CLOUD_SYNC_DEBOUNCE_MS = 800
 const MAX_UNDO_STEPS = 20
 const HISTORY_META_EXPIRE_MS = 3000
@@ -111,6 +111,17 @@ let lastPersistedData = null
 let lastPersistedSerialized = ''
 let hasPersistedSnapshot = false
 let pendingHistoryMeta = null
+
+let _cloudUnhealthyWarned = false
+
+export function isCloudSyncUnhealthy() {
+  const s = state.cloudSettings
+  return Boolean(s.enabled && s.supabaseUrl && s.supabaseAnonKey) && !state.cloudStatus.connected
+}
+
+export function resetCloudUnhealthyWarning() {
+  _cloudUnhealthyWarned = false
+}
 
 function trimString(value) {
   return typeof value === 'string' ? value.trim() : ''
@@ -461,6 +472,13 @@ export function addOperationLog(type, message, detail = {}) {
   }
 
   saveUiStateToLocalStorage()
+
+  if (!_cloudUnhealthyWarned && isCloudSyncUnhealthy()) {
+    _cloudUnhealthyWarned = true
+    setTimeout(() => {
+      alert('⚠️ 云端同步未连接，操作仅保存在本地浏览器中。\n更换设备或清除浏览器缓存后数据将丢失，请尽快登录云端账号同步。')
+    }, 100)
+  }
 }
 
 export function clearOperationLogs() {
