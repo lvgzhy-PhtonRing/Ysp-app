@@ -66,6 +66,16 @@ const showMattelPassword = reactive({})
 const forwarderEditableMap = reactive({})
 const mattelEditableMap = reactive({})
 const expandedProductRows = ref(new Set())
+const showEntryModal = ref(false)
+
+function openEntryModal() { showEntryModal.value = true }
+function closeEntryModal() { showEntryModal.value = false }
+function submitFromModal() {
+  const res = submitEntry()
+  if (!res.ok) { alert(res.message); return }
+  alert(res.message)
+  closeEntryModal()
+}
 
 const cardFilterOptions = computed(() => {
   const ids = new Set(filteredEntries.value.map((row) => row.cardId).filter(Boolean))
@@ -122,8 +132,7 @@ watch(
     })
     ids.forEach((id) => {
       if (!(id in forwarderEditableMap)) {
-        const row = state.forwarderInfos.find((x) => x.id === id)
-        forwarderEditableMap[id] = !isForwarderFilled(row)
+        forwarderEditableMap[id] = false
       }
     })
   },
@@ -139,8 +148,7 @@ watch(
     })
     ids.forEach((id) => {
       if (!(id in mattelEditableMap)) {
-        const row = state.mattelSiteInfos.find((x) => x.id === id)
-        mattelEditableMap[id] = !isMattelFilled(row)
+        mattelEditableMap[id] = false
       }
     })
   },
@@ -395,10 +403,17 @@ function confirmRemovePaymentCard(id) {
       <div class="flex gap-2">
         <button
           class="flex-1 py-2.5 rounded-lg font-semibold"
-          :class="state.activePage === 'entry' ? 'bg-cyan-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
-          @click="state.activePage = 'entry'"
+          :class="state.activePage === 'history' ? 'bg-cyan-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+          @click="state.activePage = 'history'"
         >
-          美淘购买信息记录
+          历史记录
+        </button>
+        <button
+          class="flex-1 py-2.5 rounded-lg font-semibold"
+          :class="state.activePage === 'input' ? 'bg-cyan-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+          @click="state.activePage = 'input'"
+        >
+          录入记录
         </button>
         <button
           class="flex-1 py-2.5 rounded-lg font-semibold"
@@ -410,7 +425,107 @@ function confirmRemovePaymentCard(id) {
       </div>
     </div>
 
-    <template v-if="state.activePage === 'entry'">
+    <template v-if="state.activePage === 'history'">
+      <div class="apple-card">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-sm font-semibold text-gray-700">历史记录过滤（用户名 / 支付卡 / 收件人）</div>
+          <button class="btn btn-primary" @click="openEntryModal">+ 新增美淘记录</button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">用户名</label>
+            <select v-model="state.filters.username" class="apple-select">
+              <option value="">全部</option>
+              <option v-for="u in filterUsernameOptions" :key="u" :value="u">{{ u }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">支付卡</label>
+            <select v-model="state.filters.cardId" class="apple-select">
+              <option value="">全部</option>
+              <option v-for="c in cardFilterOptions" :key="c.id" :value="c.id">{{ c.label }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">收件人</label>
+            <select v-model="state.filters.recipient" class="apple-select">
+              <option value="">全部</option>
+              <option v-for="r in filterRecipientOptions" :key="r" :value="r">{{ r }}</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto border border-gray-100 rounded-lg">
+          <table class="apple-table min-w-[980px]">
+            <thead>
+              <tr>
+                <th class="w-[96px]">购买日期</th>
+                <th class="w-[180px]">商品名称</th>
+                <th class="w-[150px]">用户名</th>
+                <th class="w-[90px]">收件人</th>
+                <th class="w-[120px]">转运公司</th>
+                <th class="w-[170px]">卡片</th>
+                <th class="w-[84px]">SHOP快捷</th>
+                <th class="text-right w-[92px]">订单USD</th>
+                <th>状态</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in filteredEntries" :key="row.id">
+                <td>{{ row.purchaseDate }}</td>
+                <td>
+                  <template v-if="getProductLineNames(row).length === 0">
+                    <span class="text-gray-400">-</span>
+                  </template>
+                  <template v-else>
+                    <div v-for="(name, idx) in getEntryProductName(row)" :key="idx" class="leading-5 break-words text-sm">{{ name }}</div>
+                    <div v-if="getProductOverflow(row) > 0 && !expandedProductRows.has(row.id)"
+                         @click="toggleProductRowExpand(row.id)"
+                         class="text-xs text-blue-500 cursor-pointer hover:text-blue-700 mt-0.5">
+                      +{{ getProductOverflow(row) }} 件
+                    </div>
+                    <div v-if="expandedProductRows.has(row.id)"
+                         @click="toggleProductRowExpand(row.id)"
+                         class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 mt-0.5">
+                      收起
+                    </div>
+                  </template>
+                </td>
+                <td>
+                  <span class="block max-w-[150px] truncate">{{ row.username }}</span>
+                  <div v-if="isAccountMismatch(row)" class="mt-1 text-[11px] text-amber-700 leading-4">
+                    采购组账户已变化：{{ row.syncedWebsiteAccount || '-' }}
+                    <div class="mt-1 flex gap-1">
+                      <button class="btn btn-outline btn-xs" @click="keepAccountForRow(row)">保持原账户</button>
+                      <button class="btn btn-outline btn-xs" @click="adoptAccountForRow(row)">更新新账户</button>
+                    </div>
+                  </div>
+                </td>
+                <td>{{ row.recipient }}</td>
+                <td><span class="block max-w-[120px] leading-5 break-words max-h-10 overflow-hidden">{{ row.forwarderCompany || '-' }}</span></td>
+                <td><span class="block max-w-[170px] truncate">{{ row.cardLabel }}</span></td>
+                <td class="text-center">{{ row.shopQuickPay || '-' }}</td>
+                <td class="text-right tabular-nums">{{ fmtUsd(row.consumeUSD) }}</td>
+                <td>
+                  <span class="inline-flex px-2 py-0.5 rounded text-xs" :class="getEntryStatus(row).cls">{{ getEntryStatus(row).label }}</span>
+                </td>
+                <td class="text-right whitespace-nowrap">
+                  <button class="btn btn-outline btn-sm" @click="viewEntryDetail(row)">网络信息</button>
+                  <button class="btn btn-sm ml-1 border border-orange-200 bg-orange-100 text-orange-700 hover:bg-orange-200" @click="openFailureDialog(row)">失败</button>
+                  <button class="btn btn-outline btn-sm ml-1" @click="removeEntry(row.id)">删除</button>
+                </td>
+              </tr>
+              <tr v-if="filteredEntries.length === 0">
+                <td colspan="10" class="text-center text-gray-400 py-4">暂无记录</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </template>
+
+    <template v-else-if="state.activePage === 'input'">
       <div class="apple-card">
         <div class="text-sm font-semibold text-gray-700 mb-3">第一组：订单基本信息（只读带入）</div>
         <div class="grid grid-cols-12 gap-3">
@@ -583,101 +698,6 @@ function confirmRemovePaymentCard(id) {
           <button class="btn btn-primary" @click="submit">保存美淘记录</button>
         </div>
       </div>
-
-      <div class="apple-card">
-        <div class="text-sm font-semibold text-gray-700 mb-3">历史记录过滤（用户名 / 支付卡 / 收件人）</div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">用户名</label>
-            <select v-model="state.filters.username" class="apple-select">
-              <option value="">全部</option>
-              <option v-for="u in filterUsernameOptions" :key="u" :value="u">{{ u }}</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">支付卡</label>
-            <select v-model="state.filters.cardId" class="apple-select">
-              <option value="">全部</option>
-              <option v-for="c in cardFilterOptions" :key="c.id" :value="c.id">{{ c.label }}</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">收件人</label>
-            <select v-model="state.filters.recipient" class="apple-select">
-              <option value="">全部</option>
-              <option v-for="r in filterRecipientOptions" :key="r" :value="r">{{ r }}</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="overflow-x-auto border border-gray-100 rounded-lg">
-          <table class="apple-table min-w-[980px]">
-            <thead>
-              <tr>
-                <th class="w-[96px]">购买日期</th>
-                <th class="w-[180px]">商品名称</th>
-                <th class="w-[150px]">用户名</th>
-                <th class="w-[90px]">收件人</th>
-                <th class="w-[120px]">转运公司</th>
-                <th class="w-[170px]">卡片</th>
-                <th class="w-[84px]">SHOP快捷</th>
-                <th class="text-right w-[92px]">订单USD</th>
-                <th>状态</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in filteredEntries" :key="row.id">
-                <td>{{ row.purchaseDate }}</td>
-                <td>
-                  <template v-if="getProductLineNames(row).length === 0">
-                    <span class="text-gray-400">-</span>
-                  </template>
-                  <template v-else>
-                    <div v-for="(name, idx) in getEntryProductName(row)" :key="idx" class="leading-5 break-words text-sm">{{ name }}</div>
-                    <div v-if="getProductOverflow(row) > 0 && !expandedProductRows.has(row.id)"
-                         @click="toggleProductRowExpand(row.id)"
-                         class="text-xs text-blue-500 cursor-pointer hover:text-blue-700 mt-0.5">
-                      +{{ getProductOverflow(row) }} 件
-                    </div>
-                    <div v-if="expandedProductRows.has(row.id)"
-                         @click="toggleProductRowExpand(row.id)"
-                         class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 mt-0.5">
-                      收起
-                    </div>
-                  </template>
-                </td>
-                <td>
-                  <span class="block max-w-[150px] truncate">{{ row.username }}</span>
-                  <div v-if="isAccountMismatch(row)" class="mt-1 text-[11px] text-amber-700 leading-4">
-                    采购组账户已变化：{{ row.syncedWebsiteAccount || '-' }}
-                    <div class="mt-1 flex gap-1">
-                      <button class="btn btn-outline btn-xs" @click="keepAccountForRow(row)">保持原账户</button>
-                      <button class="btn btn-outline btn-xs" @click="adoptAccountForRow(row)">更新新账户</button>
-                    </div>
-                  </div>
-                </td>
-                <td>{{ row.recipient }}</td>
-                <td><span class="block max-w-[120px] leading-5 break-words max-h-10 overflow-hidden">{{ row.forwarderCompany || '-' }}</span></td>
-                <td><span class="block max-w-[170px] truncate">{{ row.cardLabel }}</span></td>
-                <td class="text-center">{{ row.shopQuickPay || '-' }}</td>
-                <td class="text-right tabular-nums">{{ fmtUsd(row.consumeUSD) }}</td>
-                <td>
-                  <span class="inline-flex px-2 py-0.5 rounded text-xs" :class="getEntryStatus(row).cls">{{ getEntryStatus(row).label }}</span>
-                </td>
-                <td class="text-right whitespace-nowrap">
-                  <button class="btn btn-outline btn-sm" @click="viewEntryDetail(row)">网络信息</button>
-                  <button class="btn btn-sm ml-1 border border-orange-200 bg-orange-100 text-orange-700 hover:bg-orange-200" @click="openFailureDialog(row)">失败</button>
-                  <button class="btn btn-outline btn-sm ml-1" @click="removeEntry(row.id)">删除</button>
-                </td>
-              </tr>
-              <tr v-if="filteredEntries.length === 0">
-                <td colspan="10" class="text-center text-gray-400 py-4">暂无记录</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
     </template>
 
     <template v-else>
@@ -703,32 +723,52 @@ function confirmRemovePaymentCard(id) {
             <tbody>
               <tr v-for="row in state.forwarderInfos" :key="row.id" :class="isForwarderEditable(row.id) ? '' : 'bg-gray-50'">
                 <td>
-                  <select v-model="row.companyName" class="apple-select" :disabled="!isForwarderEditable(row.id)" :class="!isForwarderEditable(row.id) ? 'bg-gray-100' : ''">
-                    <option value="">请选择</option>
-                    <option v-for="x in transferCompanyOptions" :key="x" :value="x">{{ x }}</option>
-                  </select>
+                  <template v-if="isForwarderEditable(row.id)">
+                    <select v-model="row.companyName" class="apple-select">
+                      <option value="">请选择</option>
+                      <option v-for="x in transferCompanyOptions" :key="x" :value="x">{{ x }}</option>
+                    </select>
+                  </template>
+                  <template v-else>{{ row.companyName || '-' }}</template>
                 </td>
-                <td><input v-model="row.loginUsername" class="apple-input" :disabled="!isForwarderEditable(row.id)" :class="!isForwarderEditable(row.id) ? 'bg-gray-100' : ''" placeholder="登录用户名" /></td>
+                <td>
+                  <template v-if="isForwarderEditable(row.id)">
+                    <input v-model="row.loginUsername" class="apple-input" placeholder="登录用户名" />
+                  </template>
+                  <template v-else>{{ row.loginUsername || '-' }}</template>
+                </td>
                 <td>
                   <div class="flex gap-2">
-                    <input
-                      :type="showForwarderPassword[row.id] ? 'text' : 'password'"
-                      v-model="row.passwordPrefix"
-                      class="apple-input w-24"
-                      maxlength="3"
-                      :disabled="!isForwarderEditable(row.id)"
-                      :class="!isForwarderEditable(row.id) ? 'bg-gray-100' : ''"
-                      placeholder="前三位"
-                      @input="clampPasswordPrefix(row, 'passwordPrefix')"
-                    />
+                    <template v-if="isForwarderEditable(row.id)">
+                      <input
+                        :type="showForwarderPassword[row.id] ? 'text' : 'password'"
+                        v-model="row.passwordPrefix"
+                        class="apple-input w-24"
+                        maxlength="3"
+                        placeholder="前三位"
+                        @input="clampPasswordPrefix(row, 'passwordPrefix')"
+                      />
+                    </template>
+                    <template v-else>
+                      <span v-if="showForwarderPassword[row.id]">{{ row.passwordPrefix || '-' }}</span>
+                      <span v-else>***</span>
+                    </template>
                     <button class="btn btn-outline btn-sm" @click="toggleForwarderPassword(row.id)">{{ showForwarderPassword[row.id] ? '隐藏' : '显示' }}</button>
                   </div>
                 </td>
-                <td><input v-model="row.recipientName" class="apple-input" :disabled="!isForwarderEditable(row.id)" :class="!isForwarderEditable(row.id) ? 'bg-gray-100' : ''" placeholder="收件人名称" /></td>
                 <td>
-                  <select v-model="row.domesticReceiver" class="apple-select" :disabled="!isForwarderEditable(row.id)" :class="!isForwarderEditable(row.id) ? 'bg-gray-100' : ''">
-                    <option v-for="v in domesticReceiverOptions" :key="v" :value="v">{{ v }}</option>
-                  </select>
+                  <template v-if="isForwarderEditable(row.id)">
+                    <input v-model="row.recipientName" class="apple-input" placeholder="收件人名称" />
+                  </template>
+                  <template v-else>{{ row.recipientName || '-' }}</template>
+                </td>
+                <td>
+                  <template v-if="isForwarderEditable(row.id)">
+                    <select v-model="row.domesticReceiver" class="apple-select">
+                      <option v-for="v in domesticReceiverOptions" :key="v" :value="v">{{ v }}</option>
+                    </select>
+                  </template>
+                  <template v-else>{{ row.domesticReceiver || '-' }}</template>
                 </td>
                 <td>
                   <span class="inline-flex px-2 py-0.5 rounded text-xs" :class="getLockBadge(isForwarderEditable(row.id)).cls">
@@ -773,40 +813,62 @@ function confirmRemovePaymentCard(id) {
             <tbody>
               <tr v-for="row in state.mattelSiteInfos" :key="row.id" :class="isMattelEditable(row.id) ? '' : 'bg-gray-50'">
                 <td>
-                  <select v-model="row.loginUsername" class="apple-select" :disabled="!isMattelEditable(row.id)" :class="!isMattelEditable(row.id) ? 'bg-gray-100' : ''">
-                    <option v-for="acc in mattelAccountOptions" :key="acc" :value="acc">{{ acc }}</option>
-                  </select>
+                  <template v-if="isMattelEditable(row.id)">
+                    <select v-model="row.loginUsername" class="apple-select">
+                      <option v-for="acc in mattelAccountOptions" :key="acc" :value="acc">{{ acc }}</option>
+                    </select>
+                  </template>
+                  <template v-else>{{ row.loginUsername || '-' }}</template>
                 </td>
                 <td>
                   <div class="flex gap-2">
-                    <input
-                      :type="showMattelPassword[row.id] ? 'text' : 'password'"
-                      v-model="row.passwordPrefix"
-                      class="apple-input w-24"
-                      maxlength="3"
-                      :disabled="!isMattelEditable(row.id)"
-                      :class="!isMattelEditable(row.id) ? 'bg-gray-100' : ''"
-                      placeholder="前三位"
-                      @input="clampPasswordPrefix(row, 'passwordPrefix')"
-                    />
+                    <template v-if="isMattelEditable(row.id)">
+                      <input
+                        :type="showMattelPassword[row.id] ? 'text' : 'password'"
+                        v-model="row.passwordPrefix"
+                        class="apple-input w-24"
+                        maxlength="3"
+                        placeholder="前三位"
+                        @input="clampPasswordPrefix(row, 'passwordPrefix')"
+                      />
+                    </template>
+                    <template v-else>
+                      <span v-if="showMattelPassword[row.id]">{{ row.passwordPrefix || '-' }}</span>
+                      <span v-else>***</span>
+                    </template>
                     <button class="btn btn-outline btn-sm" @click="toggleMattelPassword(row.id)">{{ showMattelPassword[row.id] ? '隐藏' : '显示' }}</button>
                   </div>
                 </td>
                 <td>
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-2 min-w-[420px]">
-                    <label v-for="fw in state.forwarderInfos" :key="fw.id" class="inline-flex items-center gap-2 text-xs text-gray-600">
-                      <input
-                        type="checkbox"
-                        class="rounded border-gray-300"
-                        :checked="(row.forwarderIds || []).includes(fw.id)"
-                        :disabled="!isMattelEditable(row.id)"
-                        @change="toggleSiteForwarder(row, fw.id, $event)"
-                      />
-                      <span>{{ fw.recipientName || '-' }}（{{ fw.companyName || '-' }}）</span>
-                    </label>
-                  </div>
+                  <template v-if="isMattelEditable(row.id)">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 min-w-[420px]">
+                      <label v-for="fw in state.forwarderInfos" :key="fw.id" class="inline-flex items-center gap-2 text-xs text-gray-600">
+                        <input
+                          type="checkbox"
+                          class="rounded border-gray-300"
+                          :checked="(row.forwarderIds || []).includes(fw.id)"
+                          @change="toggleSiteForwarder(row, fw.id, $event)"
+                        />
+                        <span>{{ fw.recipientName || '-' }}（{{ fw.companyName || '-' }}）</span>
+                      </label>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <span v-if="row.forwarderIds && row.forwarderIds.length">
+                      <template v-for="(fwId, idx) in row.forwarderIds" :key="fwId">
+                        <template v-if="idx > 0">、</template>
+                        {{ (state.forwarderInfos.find(f => f.id === fwId) || {}).recipientName || fwId }}
+                      </template>
+                    </span>
+                    <span v-else class="text-gray-400">-</span>
+                  </template>
                 </td>
-                <td><input v-model="row.mattelDisplayName" class="apple-input" :disabled="!isMattelEditable(row.id)" :class="!isMattelEditable(row.id) ? 'bg-gray-100' : ''" placeholder="美泰网站显示的称呼" /></td>
+                <td>
+                  <template v-if="isMattelEditable(row.id)">
+                    <input v-model="row.mattelDisplayName" class="apple-input" placeholder="美泰网站显示的称呼" />
+                  </template>
+                  <template v-else>{{ row.mattelDisplayName || '-' }}</template>
+                </td>
                 <td>
                   <span class="inline-flex px-2 py-0.5 rounded text-xs" :class="getLockBadge(isMattelEditable(row.id)).cls">
                     {{ getLockBadge(isMattelEditable(row.id)).label }}
@@ -930,6 +992,189 @@ function confirmRemovePaymentCard(id) {
         <div class="flex justify-end gap-2">
           <button class="btn btn-outline" @click="closeFailureDialog">取消</button>
           <button class="btn" style="background:#fb923c;color:#7c2d12" @click="saveFailureDialog">保存购买失败信息</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showEntryModal" class="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-6xl max-h-[90vh] overflow-y-auto p-6 space-y-5">
+        <div class="flex items-center justify-between">
+          <h3 class="text-lg font-bold text-gray-800">新增美淘记录</h3>
+          <button class="btn btn-outline btn-sm" @click="closeEntryModal">关闭</button>
+        </div>
+
+        <div class="apple-card">
+          <div class="text-sm font-semibold text-gray-700 mb-3">第一组：订单基本信息（只读带入）</div>
+          <div class="grid grid-cols-12 gap-3">
+            <div class="col-span-12 md:col-span-5">
+              <label class="block text-xs text-gray-500 mb-1">购买组点选（美淘）</label>
+              <select class="apple-select" :value="state.selectedGroupKey" @change="selectGroup($event.target.value)">
+                <option value="">请选择购买组</option>
+                <option v-for="g in usPurchaseGroups" :key="g.key" :value="g.key">
+                  {{ isGroupRecorded(g.key) ? '【已录入】' : '' }}{{ g.date || '-' }} / {{ getGroupProductName(g) }} / {{ g.paymentBatch || '-' }}
+                </option>
+              </select>
+              <div v-if="state.selectedGroupKey && isGroupRecorded(state.selectedGroupKey)" class="mt-1 text-[11px] text-amber-700">
+                当前购买组已录入历史记录，若需更新请先删除原记录再重建。
+              </div>
+            </div>
+            <div class="col-span-6 md:col-span-2">
+              <label class="block text-xs text-gray-500 mb-1">购买日期</label>
+              <input class="apple-input bg-gray-100" :value="entrySnapshot.date" disabled />
+            </div>
+            <div class="col-span-6 md:col-span-2">
+              <label class="block text-xs text-gray-500 mb-1">购买网站</label>
+              <input class="apple-input bg-gray-100" :value="entrySnapshot.website" disabled />
+            </div>
+            <div class="col-span-12 md:col-span-3">
+              <label class="block text-xs text-gray-500 mb-1">网站账户</label>
+              <input class="apple-input bg-gray-100" :value="entrySnapshot.websiteAccount" disabled />
+            </div>
+          </div>
+
+          <div class="mt-4 overflow-x-auto border border-gray-100 rounded-lg">
+            <table class="apple-table min-w-[760px]">
+              <thead>
+                <tr>
+                  <th>SID</th>
+                  <th>商品名称</th>
+                  <th class="text-right">数目</th>
+                  <th class="text-right">官网原价(USD)</th>
+                  <th class="text-right">运费(USD)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="line in entrySnapshot.lines" :key="line.lineKey">
+                  <td>{{ line.sid }}</td>
+                  <td>{{ line.name }}</td>
+                  <td class="text-right">{{ line.qty }}</td>
+                  <td class="text-right">{{ fmtUsd(line.originalPrice) }}</td>
+                  <td class="text-right">{{ fmtUsd(line.shipping) }}</td>
+                </tr>
+                <tr v-if="entrySnapshot.lines.length === 0">
+                  <td colspan="5" class="text-center text-gray-400 py-4">请先选择购买组</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="mt-3 flex justify-end text-sm">
+            <div class="bg-cyan-50 border border-cyan-100 rounded px-3 py-2">总计金额（Total USD）：<span class="font-bold text-cyan-700">{{ fmtUsd(entrySnapshot.totalUSD) }}</span></div>
+          </div>
+        </div>
+
+        <div class="apple-card">
+          <div class="text-sm font-semibold text-gray-700 mb-3">第二组：操作环境信息（全点选）</div>
+          <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">购买设备</label>
+              <select v-model="state.form.purchaseDevice" class="apple-select">
+                <option value="">请选择</option>
+                <option v-for="v in deviceOptions" :key="v" :value="v">{{ v }}</option>
+              </select>
+            </div>
+            <div class="flex items-end">
+              <label class="inline-flex items-center gap-2 text-sm text-gray-700 h-10 px-3 border border-gray-200 rounded-lg bg-white">
+                <input v-model="state.form.virtualMachine" type="checkbox" class="rounded border-gray-300" />
+                <span>虚拟机</span>
+              </label>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">网络环境</label>
+              <select v-model="state.form.networkEnv" class="apple-select">
+                <option value="">请选择</option>
+                <option v-for="v in networkOptions" :key="v" :value="v">{{ v }}</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">VPN节点</label>
+              <select v-model="state.form.vpnNode" class="apple-select">
+                <option value="">请选择</option>
+                <option v-for="v in vpnNodeOptions" :key="v" :value="v">{{ v }}</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">网页浏览器</label>
+              <select v-model="state.form.browser" class="apple-select">
+                <option value="">请选择</option>
+                <option v-for="v in browserOptions" :key="v" :value="v">{{ v }}</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="apple-card">
+          <div class="text-sm font-semibold text-gray-700 mb-3">第三组：网站登录信息</div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">网站用户名（自动带入）</label>
+              <input class="apple-input bg-gray-100" :value="entrySnapshot.username || '-'" disabled />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">收件人（联动转运）</label>
+              <select v-model="state.form.recipientId" class="apple-select">
+                <option value="">请选择收件人</option>
+                <option v-for="r in recipientOptions" :key="r.id" :value="r.id">{{ r.label }}</option>
+              </select>
+            </div>
+          </div>
+          <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-gray-600">
+            <div>
+              <label class="block text-[11px] text-gray-500 mb-1">转运公司</label>
+              <input class="apple-input bg-gray-100" :value="selectedRecipientForwarder?.companyName || '-'" disabled />
+            </div>
+            <div>
+              <label class="block text-[11px] text-gray-500 mb-1">转运账号</label>
+              <input class="apple-input bg-gray-100" :value="selectedRecipientForwarder?.account || '-'" disabled />
+            </div>
+          </div>
+        </div>
+
+        <div class="apple-card">
+          <div class="text-sm font-semibold text-gray-700 mb-3">第四组：付款信息</div>
+          <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">持有人</label>
+              <select v-model="state.form.holder" class="apple-select">
+                <option>PT</option>
+                <option>NT</option>
+              </select>
+            </div>
+            <div class="md:col-span-2">
+              <label class="block text-xs text-gray-500 mb-1">银行卡/账号</label>
+              <select v-model="state.form.cardId" class="apple-select">
+                <option value="">请选择卡片</option>
+                <option v-for="c in filteredCardsByHolder" :key="c.id" :value="c.id">{{ c.label }}</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Shop快捷支付</label>
+              <select v-model="state.form.shopQuickPay" class="apple-select">
+                <option>是</option>
+                <option>否</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">消费金额(USD)</label>
+              <input class="apple-input bg-gray-100" :value="fmtUsd(entrySnapshot.totalUSD)" disabled />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">实际扣款金额(USD)</label>
+              <input v-model="state.form.actualChargeUSD" type="number" step="0.01" class="apple-input" placeholder="默认等于消费金额" />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">备注</label>
+              <input v-model="state.form.note" class="apple-input" placeholder="记录支付特殊情况" />
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-4 border-t">
+          <button class="btn btn-outline" @click="closeEntryModal">取消</button>
+          <button class="btn btn-primary" @click="submitFromModal">保存美淘记录</button>
         </div>
       </div>
     </div>

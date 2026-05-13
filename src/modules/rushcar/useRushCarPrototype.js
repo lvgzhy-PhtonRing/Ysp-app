@@ -108,7 +108,7 @@ function createInitialState(seed = {}) {
       remark: '',
     },
     cardEditId: '',
-    activePage: 'entry',
+    activePage: 'history',
     selectedGroupKey: '',
     form: {
       purchaseDevice: '',

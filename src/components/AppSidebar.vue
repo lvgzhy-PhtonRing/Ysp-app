@@ -41,16 +41,12 @@ function getTabStyle(tab, currentTab) {
   if (currentTab === tab.id) {
     return tab.id === 'payton'
       ? 'background:#dbeafe;color:#1d4ed8;'
-      : tab.id === 'rushcar'
-        ? 'background:#ecfeff;color:#0f766e;'
-        : 'background:#eff6ff;color:#0066cc;'
+      : 'background:#eff6ff;color:#0066cc;'
   }
 
   return tab.id === 'payton'
     ? 'color:#2563eb;'
-    : tab.id === 'rushcar'
-      ? 'color:#0f766e;'
-      : 'color:#4b5563;'
+    : 'color:#4b5563;'
 }
 
 function handleSelect(tab) {
