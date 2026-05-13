@@ -155,15 +155,6 @@ watch(
   { immediate: true },
 )
 
-function submit() {
-  const res = submitEntry()
-  if (!res.ok) {
-    alert(res.message)
-    return
-  }
-  alert(res.message)
-}
-
 function fmtUsd(value) {
   return Number(value || 0).toFixed(2)
 }
@@ -389,8 +380,8 @@ function confirmRemovePaymentCard(id) {
     <div class="apple-card bg-gradient-to-r from-cyan-50 to-white border-cyan-100">
       <div class="flex items-center justify-between gap-4">
         <div>
-          <h2 class="text-xl font-bold text-gray-800">美淘记录（独立原型）</h2>
-          <p class="text-sm text-gray-500 mt-1">只读引用采购数据，记录独立保存，不影响 ysp-app 源数据。</p>
+          <h2 class="text-3xl font-extrabold">美淘记录</h2>
+          <span class="text-base text-gray-400 font-light">US Import Records</span>
         </div>
         <div class="text-right text-xs text-gray-500">
           <div>数据源：{{ state.sourceLoadedFrom }}</div>
@@ -407,13 +398,6 @@ function confirmRemovePaymentCard(id) {
           @click="state.activePage = 'history'"
         >
           历史记录
-        </button>
-        <button
-          class="flex-1 py-2.5 rounded-lg font-semibold"
-          :class="state.activePage === 'input' ? 'bg-cyan-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
-          @click="state.activePage = 'input'"
-        >
-          录入记录
         </button>
         <button
           class="flex-1 py-2.5 rounded-lg font-semibold"
@@ -521,181 +505,6 @@ function confirmRemovePaymentCard(id) {
               </tr>
             </tbody>
           </table>
-        </div>
-      </div>
-    </template>
-
-    <template v-else-if="state.activePage === 'input'">
-      <div class="apple-card">
-        <div class="text-sm font-semibold text-gray-700 mb-3">第一组：订单基本信息（只读带入）</div>
-        <div class="grid grid-cols-12 gap-3">
-          <div class="col-span-12 md:col-span-5">
-            <label class="block text-xs text-gray-500 mb-1">购买组点选（美淘）</label>
-            <select class="apple-select" :value="state.selectedGroupKey" @change="selectGroup($event.target.value)">
-              <option value="">请选择购买组</option>
-              <option v-for="g in usPurchaseGroups" :key="g.key" :value="g.key">
-                {{ isGroupRecorded(g.key) ? '【已录入】' : '' }}{{ g.date || '-' }} / {{ getGroupProductName(g) }} / {{ g.paymentBatch || '-' }}
-              </option>
-            </select>
-            <div v-if="state.selectedGroupKey && isGroupRecorded(state.selectedGroupKey)" class="mt-1 text-[11px] text-amber-700">
-              当前购买组已录入历史记录，若需更新请先删除原记录再重建。
-            </div>
-          </div>
-          <div class="col-span-6 md:col-span-2">
-            <label class="block text-xs text-gray-500 mb-1">购买日期</label>
-            <input class="apple-input bg-gray-100" :value="entrySnapshot.date" disabled />
-          </div>
-          <div class="col-span-6 md:col-span-2">
-            <label class="block text-xs text-gray-500 mb-1">购买网站</label>
-            <input class="apple-input bg-gray-100" :value="entrySnapshot.website" disabled />
-          </div>
-          <div class="col-span-12 md:col-span-3">
-            <label class="block text-xs text-gray-500 mb-1">网站账户</label>
-            <input class="apple-input bg-gray-100" :value="entrySnapshot.websiteAccount" disabled />
-          </div>
-        </div>
-
-        <div class="mt-4 overflow-x-auto border border-gray-100 rounded-lg">
-          <table class="apple-table min-w-[760px]">
-            <thead>
-              <tr>
-                <th>SID</th>
-                <th>商品名称</th>
-                <th class="text-right">数目</th>
-                <th class="text-right">官网原价(USD)</th>
-                <th class="text-right">运费(USD)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="line in entrySnapshot.lines" :key="line.lineKey">
-                <td>{{ line.sid }}</td>
-                <td>{{ line.name }}</td>
-                <td class="text-right">{{ line.qty }}</td>
-                <td class="text-right">{{ fmtUsd(line.originalPrice) }}</td>
-                <td class="text-right">{{ fmtUsd(line.shipping) }}</td>
-              </tr>
-              <tr v-if="entrySnapshot.lines.length === 0">
-                <td colspan="5" class="text-center text-gray-400 py-4">请先选择购买组</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="mt-3 flex justify-end text-sm">
-          <div class="bg-cyan-50 border border-cyan-100 rounded px-3 py-2">总计金额（Total USD）：<span class="font-bold text-cyan-700">{{ fmtUsd(entrySnapshot.totalUSD) }}</span></div>
-        </div>
-      </div>
-
-      <div class="apple-card">
-        <div class="text-sm font-semibold text-gray-700 mb-3">第二组：操作环境信息（全点选）</div>
-        <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">购买设备</label>
-            <select v-model="state.form.purchaseDevice" class="apple-select">
-              <option value="">请选择</option>
-              <option v-for="v in deviceOptions" :key="v" :value="v">{{ v }}</option>
-            </select>
-          </div>
-          <div class="flex items-end">
-            <label class="inline-flex items-center gap-2 text-sm text-gray-700 h-10 px-3 border border-gray-200 rounded-lg bg-white">
-              <input v-model="state.form.virtualMachine" type="checkbox" class="rounded border-gray-300" />
-              <span>虚拟机</span>
-            </label>
-          </div>
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">网络环境</label>
-            <select v-model="state.form.networkEnv" class="apple-select">
-              <option value="">请选择</option>
-              <option v-for="v in networkOptions" :key="v" :value="v">{{ v }}</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">VPN节点</label>
-            <select v-model="state.form.vpnNode" class="apple-select">
-              <option value="">请选择</option>
-              <option v-for="v in vpnNodeOptions" :key="v" :value="v">{{ v }}</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">网页浏览器</label>
-            <select v-model="state.form.browser" class="apple-select">
-              <option value="">请选择</option>
-              <option v-for="v in browserOptions" :key="v" :value="v">{{ v }}</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <div class="apple-card">
-        <div class="text-sm font-semibold text-gray-700 mb-3">第三组：网站登录信息</div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">网站用户名（自动带入）</label>
-            <input class="apple-input bg-gray-100" :value="entrySnapshot.username || '-'" disabled />
-          </div>
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">收件人（联动转运）</label>
-            <select v-model="state.form.recipientId" class="apple-select">
-              <option value="">请选择收件人</option>
-              <option v-for="r in recipientOptions" :key="r.id" :value="r.id">{{ r.label }}</option>
-            </select>
-          </div>
-        </div>
-        <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-gray-600">
-          <div>
-            <label class="block text-[11px] text-gray-500 mb-1">转运公司</label>
-            <input class="apple-input bg-gray-100" :value="selectedRecipientForwarder?.companyName || '-'" disabled />
-          </div>
-          <div>
-            <label class="block text-[11px] text-gray-500 mb-1">转运账号</label>
-            <input class="apple-input bg-gray-100" :value="selectedRecipientForwarder?.account || '-'" disabled />
-          </div>
-        </div>
-      </div>
-
-      <div class="apple-card">
-        <div class="text-sm font-semibold text-gray-700 mb-3">第四组：付款信息</div>
-        <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">持有人</label>
-            <select v-model="state.form.holder" class="apple-select">
-              <option>PT</option>
-              <option>NT</option>
-            </select>
-          </div>
-          <div class="md:col-span-2">
-            <label class="block text-xs text-gray-500 mb-1">银行卡/账号</label>
-            <select v-model="state.form.cardId" class="apple-select">
-              <option value="">请选择卡片</option>
-              <option v-for="c in filteredCardsByHolder" :key="c.id" :value="c.id">{{ c.label }}</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">Shop快捷支付</label>
-            <select v-model="state.form.shopQuickPay" class="apple-select">
-              <option>是</option>
-              <option>否</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">消费金额(USD)</label>
-            <input class="apple-input bg-gray-100" :value="fmtUsd(entrySnapshot.totalUSD)" disabled />
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">实际扣款金额(USD)</label>
-            <input v-model="state.form.actualChargeUSD" type="number" step="0.01" class="apple-input" placeholder="默认等于消费金额" />
-          </div>
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">备注</label>
-            <input v-model="state.form.note" class="apple-input" placeholder="记录支付特殊情况" />
-          </div>
-        </div>
-
-        <div class="mt-4 flex justify-end">
-          <button class="btn btn-primary" @click="submit">保存美淘记录</button>
         </div>
       </div>
     </template>
