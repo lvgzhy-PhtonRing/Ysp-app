@@ -68,6 +68,7 @@ const editGroupForm = reactive({
   discount: '',
   website: '',
   websiteAccount: '',
+  note: '',
   totalRMB: 0,
   items: [],
 })
@@ -139,6 +140,7 @@ const addForm = reactive({
   discount: '',
   website: '',
   websiteAccount: '',
+  note: '',
   totalRMB: 0,
   items: [],
 })
@@ -259,6 +261,7 @@ const groupedByBatch = computed(() => {
         discount: item.purchaseDetails?.discount || '',
         exchangeRate: Number(item.purchaseDetails?.exchangeRate || 0),
         paymentBatch: item.purchaseDetails?.paymentBatch || '-',
+        note: item.purchaseDetails?.note || '',
         totalRMB: Number(item.purchaseDetails?.totalRMB || 0),
         items: [],
       })
@@ -779,6 +782,7 @@ function applyLineToItem(line, target) {
     discount: editGroupForm.discount,
     website: editGroupForm.website,
     websiteAccount: editGroupForm.websiteAccount,
+    note: editGroupForm.note,
     totalRMB: Number(editGroupCalculatedTotalRMB.value || 0),
     originalPrice,
     exchangeRate,
@@ -906,6 +910,7 @@ function submitAdd() {
             discount: addForm.discount,
             website: addForm.website,
             websiteAccount: addForm.websiteAccount,
+            note: addForm.note,
             paymentBatch,
             purchaseGroupId,
             totalRMB,
@@ -1119,6 +1124,7 @@ function openEditPurchaseGroup(group) {
   editGroupForm.discount = first?.purchaseDetails?.discount || ''
   editGroupForm.website = first?.purchaseDetails?.website || ''
   editGroupForm.websiteAccount = first?.purchaseDetails?.websiteAccount || ''
+  editGroupForm.note = first?.purchaseDetails?.note || ''
   editGroupForm.totalRMB = Number(first?.purchaseDetails?.totalRMB || 0)
   editGroupForm.items = rows.map((item) => createEditGroupLine(item))
   buildEditGroupItemsBySid()
@@ -1215,6 +1221,7 @@ function submitEditPurchaseGroup() {
             discount: editGroupForm.discount,
             website: editGroupForm.website,
             websiteAccount: editGroupForm.websiteAccount,
+            note: editGroupForm.note,
             paymentBatch: purchaseRows[0]?.purchaseDetails?.paymentBatch || editableRows[0]?.purchaseDetails?.paymentBatch || '-',
             purchaseGroupId: editGroupForm.purchaseGroupId,
             totalRMB: Number(editGroupCalculatedTotalRMB.value || 0),
@@ -1594,7 +1601,7 @@ watch(purchaseViewCategory, () => {
             <div class="p-3 border-b border-gray-100 bg-gray-100">
               <div class="grid grid-cols-12 gap-2 text-sm items-center">
                 <div class="col-span-2 font-medium truncate">{{ group.date }}</div>
-                <div class="col-span-3 text-gray-400 truncate">{{ group.website || '-' }}</div>
+                <div class="col-span-3 truncate">{{ group.website || '-' }}<span v-if="group.note" class="text-gray-500 text-xs ml-2">{{ group.note }}</span></div>
                 <div class="col-span-2 text-gray-400 text-xs text-right">100{{ group.category === '日淘' ? 'JPY' : group.category === '美淘' ? 'USD' : '' }}={{ group.category === '日淘' || group.category === '美淘' ? fmtNum(group.exchangeRate * 100) + 'RMB' : '' }}</div>
                 <div class="col-span-2 text-gray-300 text-xs truncate text-right">{{ group.paymentBatch || '-' }}</div>
                 <div class="col-span-2 font-semibold text-gray-700 text-right"><span class="text-xs font-normal">初始购买金额(不含转运)</span> ¥{{ fmtNum(group.totalRMB) }}</div>
@@ -1675,6 +1682,11 @@ watch(purchaseViewCategory, () => {
           <div><label class="block text-sm mb-1 text-gray-600">购买优惠</label><input v-model="addForm.discount" class="apple-input" list="discountsList" placeholder="优惠金额或描述" /></div>
           <div><label class="block text-sm mb-1 text-gray-600">采购网站</label><input v-model="addForm.website" class="apple-input" list="websitesList" placeholder="采购网站名称" /></div>
           <div><label class="block text-sm mb-1 text-gray-600">网站账户</label><input v-model="addForm.websiteAccount" class="apple-input" list="websiteAccountsList" placeholder="网站登录账户" /></div>
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-sm mb-1 text-gray-600">备注</label>
+          <input v-model="addForm.note" class="apple-input" placeholder="购买组备注信息" />
         </div>
 
         <div class="border-t border-gray-200 pt-4 mb-4">
@@ -1966,6 +1978,11 @@ watch(purchaseViewCategory, () => {
           <div><label class="block text-sm mb-1 text-gray-600">购买优惠</label><input v-model="editGroupForm.discount" class="apple-input" /></div>
           <div><label class="block text-sm mb-1 text-gray-600">采购网站</label><input v-model="editGroupForm.website" class="apple-input" /></div>
           <div><label class="block text-sm mb-1 text-gray-600">网站账户</label><input v-model="editGroupForm.websiteAccount" class="apple-input" /></div>
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-sm mb-1 text-gray-600">备注</label>
+          <input v-model="editGroupForm.note" class="apple-input" placeholder="购买组备注信息" />
         </div>
 
           <div class="grid grid-cols-2 gap-3 mb-4">
