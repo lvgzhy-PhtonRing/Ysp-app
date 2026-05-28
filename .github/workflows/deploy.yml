@@ -27,6 +27,9 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Create cloud-config.json from secret
+        run: echo '${{ secrets.CLOUD_CONFIG_JSON }}' > public/cloud-config.json
+
       - name: Install deps
         run: npm install
 

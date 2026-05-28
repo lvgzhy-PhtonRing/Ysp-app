@@ -23,4 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 
-2.13ÎÈ¶¨.zip
+2.13ç¨³å®š.zip
+
+# Sensitive personal data - must not be in public repo
+public/a.json
+public/cloud-config.json
