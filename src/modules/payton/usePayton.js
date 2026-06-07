@@ -203,7 +203,14 @@ export function addPaytonRecord(recordData = {}) {
   store.paytonRecords.push(record)
   applyBalance(record.account, record.type, record.amount)
   saveToLocalStorage()
-  addOperationLog('payton_add_record', `新增基金流水`, { type: record.type, amount: record.amount, account: record.account })
+  addOperationLog('payton_add_record', `新增基金流水: ${record.category || record.type || '-'}${record.carName ? ' | ' + record.carName : ''}`, {
+    type: record.type,
+    amount: record.amount,
+    account: record.account,
+    category: record.category,
+    carName: record.carName,
+    date: record.date,
+  })
   return record
 }
 
@@ -243,7 +250,13 @@ export function deletePaytonRecord(recordId) {
   store.paytonRecords.splice(idx, 1)
 
   saveToLocalStorage()
-  addOperationLog('payton_delete_record', `删除基金流水`, { recordId })
+  addOperationLog('payton_delete_record', `删除基金流水: ${record.category || '-'}${record.carName ? ' | ' + record.carName : ''}`, {
+    recordId,
+    category: record.category,
+    amount: record.amount,
+    account: record.account,
+    carName: record.carName,
+  })
   return true
 }
 
@@ -318,8 +331,11 @@ export function editPaytonRecord(recordId, newData = {}) {
   })
 
   saveToLocalStorage()
-  addOperationLog('payton_edit_record', `编辑基金流水`, {
+  addOperationLog('payton_edit_record', `编辑基金流水: ${record.category || '-'}${record.carName ? ' | ' + record.carName : ''}`, {
     recordId,
+    category: record.category,
+    carName: record.carName,
+    account: record.account,
     changedFields: Object.keys(changes),
     changes,
   })
@@ -394,7 +410,15 @@ export function sellPaytonCar(carId, sellData = {}) {
   })
 
   saveToLocalStorage()
-  addOperationLog('payton_sell_car', `卖出小车`, { carId, qty, sellPrice, account: sellData.account })
+  addOperationLog('payton_sell_car', `卖出小车: ${carNameAtSale || '-'}`, {
+    carId,
+    carName: carNameAtSale,
+    carBrand: carBrandAtSale,
+    qty,
+    sellPrice,
+    avgPriceAtSale,
+    account: sellData.account,
+  })
   return true
 }
 
@@ -429,7 +453,14 @@ export function movePaytonCarToKeep(carId, qty, keepTotalCost) {
   })
 
   saveToLocalStorage()
-  addOperationLog('payton_move_keep', `转入自留库`, { carId, qty: n, keepTotalCost: movedTotalCost })
+  addOperationLog('payton_move_keep', `转入自留库: ${source.name || '-'}`, {
+    carId,
+    carName: source.name,
+    carBrand: source.brand,
+    qty: n,
+    keepTotalCost: movedTotalCost,
+    movedAvgPrice,
+  })
   return true
 }
 
@@ -451,7 +482,12 @@ export function movePaytonCarToSell(carId, qty) {
   })
 
   saveToLocalStorage()
-  addOperationLog('payton_move_sell', `移出自留库`, { carId, qty: n })
+  addOperationLog('payton_move_sell', `移出自留库: ${source.name || '-'}`, {
+    carId,
+    carName: source.name,
+    carBrand: source.brand,
+    qty: n,
+  })
   return true
 }
 

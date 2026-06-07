@@ -133,7 +133,7 @@ export function deleteItem(itemId) {
   const target = store.items[idx]
   store.items.splice(idx, 1)
   saveToLocalStorage()
-  addOperationLog('inventory_delete', `删除商品: ${target?.name || itemId}`, { sid: target?.sid, itemId })
+  addOperationLog('inventory_delete', `删除商品: ${target?.name || itemId}`, { name: target?.name, sid: target?.sid, itemId })
   return true
 }
 
@@ -148,7 +148,7 @@ export function submitManualAdd(itemData = {}) {
 
   store.items.push(item)
   saveToLocalStorage()
-  addOperationLog('inventory_manual_add', `手动添加商品: ${item.name}`, { sid: item.sid, cost: item.cost })
+  addOperationLog('inventory_manual_add', `手动添加商品: ${item.name}`, { name: item.name, sid: item.sid, cost: item.cost })
   return item
 }
 

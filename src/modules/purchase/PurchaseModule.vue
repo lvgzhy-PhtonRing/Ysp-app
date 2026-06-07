@@ -1192,6 +1192,38 @@ function submitEditPurchaseGroup() {
       }
     })
 
+    // 计算字段变更明细（每个商品的变化以 before/after 分组）
+    const groupEditChanges = {}
+    lines.forEach((line) => {
+      const src = line.id ? originalById.get(line.id) : null
+      if (!src) return
+      const pd = src.purchaseDetails || {}
+      const label = `${line.sid || line.name}`
+      const before = {}
+      const after = {}
+      const isDomesticCtx = editGroupForm.category === '国内'
+
+      if (src.name !== line.name) { before.名称 = src.name; after.名称 = line.name }
+      if (src.brand !== line.brand) { before.品牌 = src.brand; after.品牌 = line.brand }
+      if (src.category !== editGroupForm.category) { before.大类 = src.category; after.大类 = editGroupForm.category }
+      if (src.batch !== editGroupForm.batch) { before.批次 = src.batch; after.批次 = editGroupForm.batch }
+      if (pd.date !== editGroupForm.date) { before.日期 = pd.date; after.日期 = editGroupForm.date }
+      if (pd.paymentAccount !== editGroupForm.paymentAccount) { before.支付账户 = pd.paymentAccount; after.支付账户 = editGroupForm.paymentAccount }
+      if (pd.discount !== editGroupForm.discount) { before.折扣 = pd.discount; after.折扣 = editGroupForm.discount }
+      if (pd.website !== editGroupForm.website) { before.网站 = pd.website; after.网站 = editGroupForm.website }
+      if (pd.websiteAccount !== editGroupForm.websiteAccount) { before.网站账号 = pd.websiteAccount; after.网站账号 = editGroupForm.websiteAccount }
+      if (pd.note !== editGroupForm.note) { before.备注 = pd.note; after.备注 = editGroupForm.note }
+      if (Number(pd.originalPrice || 0) !== Number(line.originalPrice || 0)) { before.原价 = pd.originalPrice; after.原价 = line.originalPrice }
+      if (!isDomesticCtx && Number(pd.exchangeRate || 0) !== Number(editGroupRate.value || 0)) { before.汇率 = pd.exchangeRate; after.汇率 = editGroupRate.value }
+      if (!isDomesticCtx && Number(pd.domesticShipping || 0) !== Number(line.domesticShipping || 0)) { before.国内运费 = pd.domesticShipping; after.国内运费 = line.domesticShipping }
+      if (!isDomesticCtx && Number(pd.fee || 0) !== Number(line.fee || 0)) { before.手续费 = pd.fee; after.手续费 = line.fee }
+      if (!isDomesticCtx && Number(pd.transferCoefficient || 1) !== Number(line.transferCoefficient || 1)) { before.转运系数 = pd.transferCoefficient; after.转运系数 = line.transferCoefficient }
+
+      if (Object.keys(before).length > 0) {
+        groupEditChanges[label] = { before, after }
+      }
+    })
+
     purchaseRows.forEach((row) => {
       if (!lines.some((l) => l.id === row.id)) {
         const idx = store.items.findIndex((x) => x.id === row.id)
@@ -1278,6 +1310,7 @@ function submitEditPurchaseGroup() {
       category: editGroupForm.category,
       batch: editGroupForm.batch,
       count: lines.length,
+      changes: groupEditChanges,
     })
     showEditGroupModal.value = false
   } finally {
@@ -1371,6 +1404,9 @@ function submitEditTransfer() {
   )
   if (invalidCoefficient) return alert('存在非法转运系数（需在 0~10 之间），请先编辑购买组修正')
 
+  // 捕获修改前的原始值
+  const beforeRecord = { date: record.date, totalRMB: record.totalRMB, paymentAccount: record.paymentAccount }
+
   isSubmittingEditTransfer.value = true
   try {
     record.date = editTransferForm.date
@@ -1390,9 +1426,14 @@ function submitEditTransfer() {
     })
 
     saveToLocalStorage()
+    const changes = {}
+    if (beforeRecord.date !== record.date) changes.日期 = { before: beforeRecord.date, after: record.date }
+    if (Number(beforeRecord.totalRMB) !== record.totalRMB) changes.总费用RMB = { before: beforeRecord.totalRMB, after: record.totalRMB }
+    if (beforeRecord.paymentAccount !== record.paymentAccount) changes.支付账户 = { before: beforeRecord.paymentAccount, after: record.paymentAccount }
     addOperationLog('purchase_transfer_edit', `编辑转运记录: ${record.transferBatch || record.transferId}`, {
       transferId: record.transferId,
       totalRMB: record.totalRMB,
+      changes,
     })
     showEditTransferModal.value = false
   } finally {

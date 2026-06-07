@@ -165,6 +165,7 @@ export function addPurchaseItem(itemData = {}, options = {}) {
   store.items.push(item)
   if (!options?.skipLog) {
     addOperationLog('purchase_add', `新增采购: ${item.name}`, {
+      name: item.name,
       sid: item.sid,
       qty: 1,
       category: item.category,
@@ -237,14 +238,14 @@ export function moveToInventory(itemId) {
       }
     })
     saveToLocalStorage()
-    addOperationLog('purchase_to_inventory', `同转运批次整组入库: ${item.name}`, { sid: item.sid, transferId, inStockDate })
+    addOperationLog('purchase_to_inventory', `同转运批次整组入库: ${item.name}`, { name: item.name, sid: item.sid, transferId, inStockDate })
     return true
   }
 
   markInStockDate(item, inStockDate)
   item.status = 'inventory'
   saveToLocalStorage()
-  addOperationLog('purchase_to_inventory', `移入库存: ${item.name}`, { sid: item.sid, inStockDate })
+  addOperationLog('purchase_to_inventory', `移入库存: ${item.name}`, { name: item.name, sid: item.sid, inStockDate })
   return true
 }
 
@@ -252,9 +253,11 @@ export function batchMoveToInventory(itemIds = []) {
   const idSet = new Set(itemIds)
   const inStockDate = todayDate()
   let movedCount = 0
+  const movedNames = []
 
   store.items.forEach((item) => {
     if (idSet.has(item.id) && item?.status === 'purchase') {
+      movedNames.push(item.name)
       item.status = 'inventory'
       markInStockDate(item, inStockDate)
       movedCount += 1
@@ -262,7 +265,7 @@ export function batchMoveToInventory(itemIds = []) {
   })
 
   saveToLocalStorage()
-  addOperationLog('purchase_batch_to_inventory', `批量移入库存`, { count: movedCount, inStockDate })
+  addOperationLog('purchase_batch_to_inventory', `批量移入库存`, { count: movedCount, inStockDate, itemNames: movedNames })
 }
 
 export function deletePurchaseItem(itemId) {
@@ -279,7 +282,7 @@ export function deletePurchaseItem(itemId) {
   }
 
   saveToLocalStorage()
-  addOperationLog('purchase_delete', `删除采购商品: ${target?.name || itemId}`, { sid: target?.sid, transferId })
+  addOperationLog('purchase_delete', `删除采购商品: ${target?.name || itemId}`, { name: target?.name, sid: target?.sid, transferId })
   return true
 }
 

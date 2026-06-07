@@ -329,7 +329,7 @@ function rollbackSale(itemId) {
   item.stock = 1
   delete item.saleDetails
   saveToLocalStorage()
-  addOperationLog('sales_rollback', `回滚销售: ${item?.name || itemId}`, { sid: item?.sid })
+  addOperationLog('sales_rollback', `回滚销售: ${item?.name || itemId}`, { name: item?.name, sid: item?.sid })
 }
 
 function toggleSalesGroup(key) {

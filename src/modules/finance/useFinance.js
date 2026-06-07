@@ -23,17 +23,24 @@ export function addFinanceRecord(recordData = {}) {
 
   store.financeRecords.push(record)
   saveToLocalStorage()
-  addOperationLog('finance_add_record', `新增收支: ${record.item}`, { type: record.type, amount: record.amount })
+  addOperationLog('finance_add_record', `新增收支: ${record.item}`, { item: record.item, type: record.type, amount: record.amount })
   return record
 }
 
 export function deleteFinanceRecord(recordId) {
   const idx = store.financeRecords.findIndex((x) => x.id === recordId)
   if (idx < 0) return false
+  const record = store.financeRecords[idx]
 
   store.financeRecords.splice(idx, 1)
   saveToLocalStorage()
-  addOperationLog('finance_delete_record', `删除收支记录`, { recordId })
+  addOperationLog('finance_delete_record', `删除收支: ${record.item || '-'}`, {
+    item: record.item,
+    type: record.type,
+    amount: record.amount,
+    date: record.date,
+    recordId,
+  })
   return true
 }
 
@@ -41,14 +48,29 @@ export function updateFinanceRecord(recordId, patch = {}) {
   const record = store.financeRecords.find((x) => x.id === recordId)
   if (!record) return false
 
+  const before = { type: record.type, date: record.date, item: record.item, amount: record.amount, note: record.note }
+
   record.type = patch.type ?? record.type
   record.date = patch.date ?? record.date
   record.item = patch.item ?? record.item
   record.amount = patch.amount !== undefined ? toNumber(patch.amount) : record.amount
   record.note = patch.note ?? record.note
 
+  const changes = {}
+  const after = { type: record.type, date: record.date, item: record.item, amount: record.amount, note: record.note }
+  Object.keys(after).forEach((key) => {
+    if (before[key] !== after[key]) {
+      changes[key] = { before: before[key], after: after[key] }
+    }
+  })
+
   saveToLocalStorage()
-  addOperationLog('finance_update_record', `编辑收支: ${record.item}`, { type: record.type, amount: record.amount })
+  addOperationLog('finance_update_record', `编辑收支: ${record.item}`, {
+    type: record.type,
+    amount: record.amount,
+    changedFields: Object.keys(changes),
+    changes,
+  })
   return record
 }
 
@@ -64,7 +86,12 @@ export function addLoanRecord(loanData = {}) {
 
   store.loanRecords.push(loan)
   saveToLocalStorage()
-  addOperationLog('finance_add_loan', `新增借贷`, { type: loan.type, amount: loan.amount })
+  addOperationLog('finance_add_loan', `新增借贷: ${loan.counterparty || '-'}`, {
+    type: loan.type,
+    amount: loan.amount,
+    counterparty: loan.counterparty,
+    date: loan.date,
+  })
   return loan
 }
 
@@ -72,15 +99,28 @@ export function updateLoanRecord(loanId, patch = {}) {
   const loan = store.loanRecords.find((x) => x.id === loanId)
   if (!loan) return false
 
+  const before = { type: loan.type, date: loan.date, counterparty: loan.counterparty, amount: loan.amount, note: loan.note }
+
   loan.type = patch.type ?? loan.type
   loan.date = patch.date ?? loan.date
   loan.counterparty = patch.counterparty ?? loan.counterparty
   loan.amount = patch.amount !== undefined ? toNumber(patch.amount) : loan.amount
   loan.note = patch.note ?? loan.note
 
+  const changes = {}
+  const after = { type: loan.type, date: loan.date, counterparty: loan.counterparty, amount: loan.amount, note: loan.note }
+  Object.keys(after).forEach((key) => {
+    if (before[key] !== after[key]) {
+      changes[key] = { before: before[key], after: after[key] }
+    }
+  })
+
   saveToLocalStorage()
-  addOperationLog('finance_update_loan', `编辑借贷`, {
+  addOperationLog('finance_update_loan', `编辑借贷: ${loan.counterparty || '-'}`, {
     loanId,
+    counterparty: loan.counterparty,
+    changedFields: Object.keys(changes),
+    changes,
   })
   return loan
 }
@@ -88,10 +128,16 @@ export function updateLoanRecord(loanId, patch = {}) {
 export function deleteLoanRecord(loanId) {
   const idx = store.loanRecords.findIndex((x) => x.id === loanId)
   if (idx < 0) return false
+  const loan = store.loanRecords[idx]
 
   store.loanRecords.splice(idx, 1)
   saveToLocalStorage()
-  addOperationLog('finance_delete_loan', `删除借贷`, { loanId })
+  addOperationLog('finance_delete_loan', `删除借贷: ${loan.counterparty || '-'}`, {
+    counterparty: loan.counterparty,
+    type: loan.type,
+    amount: loan.amount,
+    loanId,
+  })
   return true
 }
 

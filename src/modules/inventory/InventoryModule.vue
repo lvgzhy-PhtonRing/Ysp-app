@@ -484,6 +484,8 @@ function submitLongTermMark() {
   const target = store.items.filter(
     (i) => i.status === 'inventory' && i.category === longTermForm.category && i.batch === longTermForm.batch,
   )
+  // 捕获实际变更 isLongTerm 状态的商品名称
+  const changedNames = target.filter((item) => item.isLongTerm !== sidSet.has(item.sid)).map((item) => item.name)
   target.forEach((item) => {
     item.isLongTerm = sidSet.has(item.sid)
   })
@@ -492,6 +494,7 @@ function submitLongTermMark() {
     category: longTermForm.category,
     batch: longTermForm.batch,
     count: longTermForm.selectedSids.length,
+    itemNames: changedNames,
   })
   showLongTermModal.value = false
 }
@@ -668,6 +671,7 @@ function submitUnlist() {
 
   saveToLocalStorage()
   addOperationLog('inventory_unlist', `${scope === 'transfer' ? '批量' : '当前条目'}下架回采购: ${item.name}`, {
+    name: item.name,
     sid: item.sid,
     transferId: item?.purchaseDetails?.transferId,
     transferBatch: item?.purchaseDetails?.transferBatch,

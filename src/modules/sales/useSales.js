@@ -59,7 +59,7 @@ export function submitSell(itemId, saleData = {}, options = {}) {
 
   saveToLocalStorage()
   if (!options?.skipLog) {
-    addOperationLog('sales_submit', `记录销售: ${item.name} x1`, { sid: item.sid, qty: 1, price })
+    addOperationLog('sales_submit', `记录销售: ${item.name} x1`, { name: item.name, sid: item.sid, qty: 1, price })
   }
   return item
 }
@@ -75,7 +75,7 @@ export function unlistItem(itemId, unlistData = {}) {
   }
 
   saveToLocalStorage()
-  addOperationLog('sales_unlist', `下架商品: ${item.name}`, { sid: item.sid, reason: unlistData.reason })
+  addOperationLog('sales_unlist', `下架商品: ${item.name}`, { name: item.name, sid: item.sid, reason: unlistData.reason })
   return item
 }
 
