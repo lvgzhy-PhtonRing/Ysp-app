@@ -2,7 +2,7 @@
 
 import { reactive } from 'vue'
 
-const APP_VERSION = '3.1.1'
+const APP_VERSION = '3.2.0'
 const CLOUD_SYNC_DEBOUNCE_MS = 800
 const MAX_UNDO_STEPS = 20
 const HISTORY_META_EXPIRE_MS = 3000
@@ -100,6 +100,7 @@ export const state = reactive({
   undoStack: [],
   redoStack: [],
   operationLogs: [],
+  snapshots: [],
 })
 
 const UI_STORAGE_KEY = 'ysp_ui'
@@ -315,6 +316,13 @@ export function loadData(jsonObject = {}) {
 
   // 侧边栏版本固定显示程序版本，不受导入 JSON 中 version 字段影响
   state.version = APP_VERSION
+
+  // 恢复快照
+  if (Array.isArray(data.snapshots)) {
+    state.snapshots = data.snapshots
+  } else if (!state.snapshots) {
+    state.snapshots = []
+  }
 }
 
 export function exportData() {
@@ -333,10 +341,65 @@ export function exportData() {
     },
     rushcar: normalizeRushCarData(state.rushcar),
     version: state.version,
+    snapshots: state.snapshots ? clone(state.snapshots) : [],
   }
 }
 
+function todayDateStr() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+/**
+ * 记录当日快照（每天最多一次），记录 8 个关键指标用于历史回溯。
+ * 快照存储在 state.snapshots 中，随 exportData 持久化到 localStorage 和云同步。
+ */
+function takeDailySnapshot() {
+  const today = todayDateStr()
+  if (state.snapshots?.some(s => s.date === today)) return
+
+  const loanBalance = state.loanRecords.reduce((s, l) => {
+    if (l?.isRepaid || l?.repaid) return s
+    return s + (l?.type === 'borrow' ? Number(l.amount || 0) : -Number(l.amount || 0))
+  }, 0)
+
+  const publicExpense = state.financeRecords
+    .filter(r => r?.type === 'expense')
+    .reduce((s, r) => s + Number(r?.amount || 0), 0)
+
+  const soldItems = state.items.filter(i => i?.status === 'sold')
+  const inventoryItems = state.items.filter(i => i?.status === 'inventory')
+  const purchaseItems = state.items.filter(i => i?.status === 'purchase')
+
+  const snapshot = {
+    date: today,
+    createdAt: new Date().toISOString(),
+    calc: { ...state.calc },
+    finance: { loanBalance, publicExpense },
+    profit: {
+      totalActualProfit: soldItems.reduce((s, i) => s + Number(i?.saleDetails?.profit || 0), 0),
+    },
+    inventory: {
+      value: inventoryItems.reduce((s, i) => s + Number(i?.cost || 0), 0),
+      count: inventoryItems.length,
+    },
+    purchase: {
+      totalCost: purchaseItems.reduce((s, i) => s + Number(i?.cost || 0), 0),
+      count: purchaseItems.length,
+    },
+    payton: {
+      yebBalance: Number(state.paytonAccounts?.yeb?.balance || 0),
+    },
+  }
+
+  state.snapshots.push(snapshot)
+}
+
 export function saveToLocalStorage() {
+  takeDailySnapshot()
   const currentData = exportData()
   const serialized = JSON.stringify(currentData)
 
@@ -484,6 +547,62 @@ export function addOperationLog(type, message, detail = {}) {
 export function clearOperationLogs() {
   state.operationLogs.splice(0, state.operationLogs.length)
   saveUiStateToLocalStorage()
+}
+
+/**
+ * 回溯指定时间点的 calc 字段值
+ * @param {string} field - calc 字段名 (debt|wechat|publicExp|unconfirmed|fund)
+ * @param {string|Date} targetDate - 目标时间点
+ * @returns {number} 该字段在目标时间点的值
+ *
+ * 原理：从当前值出发，逆序回放 targetDate 之后的 calc_update 日志，
+ * 将每次 after 替换成 before，最终得到 targetDate 时的值。
+ *
+ * 限制：仅对 calc_update 类型生效；旧日志（home_calc 类型）不含 before，
+ * 会被跳过，新旧日志混合使用正常。
+ */
+export function reconstructCalcField(field, targetDate) {
+  const target = new Date(targetDate).getTime()
+  if (isNaN(target)) throw new Error('Invalid targetDate')
+
+  let value = state.calc[field]
+
+  const logs = state.operationLogs
+    .filter(l => l.type === 'calc_update' && l.detail?.field === field)
+    .filter(l => new Date(l.time).getTime() > target)
+    .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
+
+  for (const log of logs) {
+    if (log.detail.before !== undefined) {
+      value = log.detail.before
+    }
+  }
+
+  return value
+}
+
+/**
+ * 获取离目标日期最近的每日快照
+ * @param {string} targetDate - 日期 "2026-06-02"
+ * @returns {object|null} 快照对象，若无则返回 null
+ */
+export function getSnapshotByDate(targetDate) {
+  const snapshots = state.snapshots || []
+  const exact = snapshots.find(s => s.date === targetDate)
+  if (exact) return exact
+
+  // 模糊匹配：找最近的（不超过 targetDate ± 7天）
+  const target = new Date(targetDate).getTime()
+  let closest = null
+  let minDiff = Infinity
+  for (const s of snapshots) {
+    const diff = Math.abs(new Date(s.date).getTime() - target)
+    if (diff < minDiff) {
+      minDiff = diff
+      closest = s
+    }
+  }
+  return minDiff <= 7 * 86400000 ? closest : null
 }
 
 export function saveUiStateToLocalStorage() {

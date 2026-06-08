@@ -82,9 +82,20 @@ function fmtNum(v) {
   return Number(v || 0).toFixed(2)
 }
 
+// 记录修改前的值（在 @focus 时捕捉），用于操作日志回溯
+const calcBeforeValues = {}
+function onCalcFocus(field) {
+  calcBeforeValues[field] = store.calc[field]
+}
+
 function persistCalc(field) {
+  const before = calcBeforeValues[field] ?? store.calc[field]
   saveToLocalStorage()
-  addOperationLog('home_calc', `更新支付宝计算参数: ${field}`, { field, value: store.calc[field] })
+  addOperationLog('calc_update', `更新支付宝计算参数: ${field}`, {
+    field,
+    before,
+    after: store.calc[field],
+  })
 }
 
 function returnRateStyle(rate) {
@@ -220,13 +231,13 @@ function statusText(status) {
       <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <div>
           <label class="text-xs text-gray-500">挖财总负债</label>
-          <input type="number" v-model.number="store.calc.debt" class="apple-input mt-1" @change="persistCalc('debt')" />
+          <input type="number" v-model.number="store.calc.debt" class="apple-input mt-1" @focus="onCalcFocus('debt')" @change="persistCalc('debt')" />
         </div>
         <div><label class="text-xs text-gray-500">借贷余额</label><div class="mt-2 text-lg font-bold text-gray-700">{{ fmtMoney(financeLoanBalance) }}</div></div>
         <div><label class="text-xs text-gray-500">公共支出</label><div class="mt-2 text-lg font-bold text-gray-700">{{ fmtMoney(financePublicExpense) }}</div></div>
         <div>
           <label class="text-xs text-gray-500">未确认交易</label>
-          <input type="number" v-model.number="store.calc.unconfirmed" class="apple-input mt-1" @change="persistCalc('unconfirmed')" />
+          <input type="number" v-model.number="store.calc.unconfirmed" class="apple-input mt-1" @focus="onCalcFocus('unconfirmed')" @change="persistCalc('unconfirmed')" />
         </div>
         <div><label class="text-xs text-gray-500">Payton's基金</label><div class="mt-2 text-lg font-bold text-gray-600">{{ fmtMoney(paytonYebBalance) }}</div></div>
       </div>
