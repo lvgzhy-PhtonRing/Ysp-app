@@ -95,7 +95,7 @@ function handleSelect(tab) {
         class="w-full text-left px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg flex items-center gap-2"
         @click="emit('cloud')"
       >
-        <i class="fa-solid fa-database mr-1" />
+        <i class="fa-solid fa-database" />
         <span class="flex-1">云端同步</span>
         <i v-if="cloudUnhealthy" class="fa-solid fa-circle text-amber-400 text-[8px] animate-pulse" title="云端未连接" />
       </button>

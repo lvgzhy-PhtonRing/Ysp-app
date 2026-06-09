@@ -377,16 +377,14 @@ function confirmRemovePaymentCard(id) {
 
 <template>
   <div class="space-y-5">
-    <div class="apple-card bg-gradient-to-r from-cyan-50 to-white border-cyan-100">
-      <div class="flex items-center justify-between gap-4">
-        <div>
-          <h2 class="text-3xl font-extrabold">美淘记录</h2>
-          <span class="text-base text-gray-400 font-light">US Import Records</span>
-        </div>
-        <div class="text-right text-xs text-gray-500">
-          <div>数据源：{{ state.sourceLoadedFrom }}</div>
-          <div>加载日期：{{ state.loadedAt }}</div>
-        </div>
+    <div class="flex justify-between items-end mb-6">
+      <div class="flex items-baseline gap-3">
+        <h2 class="text-3xl font-extrabold">美淘记录</h2>
+        <span class="text-base text-gray-400 font-light">US Import Records</span>
+      </div>
+      <div class="text-right text-xs text-gray-500">
+        <div>数据源：{{ state.sourceLoadedFrom }}</div>
+        <div>加载日期：{{ state.loadedAt }}</div>
       </div>
     </div>
 

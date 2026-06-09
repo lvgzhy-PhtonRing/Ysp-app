@@ -546,7 +546,7 @@ function submitEdit() {
     batch: editForm.batch,
     isDefect: editForm.isDefect,
     isLongTerm: editForm.isLongTerm,
-    ...(editForm.isManual ? { cost: editForm.cost } : {}),
+    cost: editForm.cost,
   })
   showEditModal.value = false
 }
@@ -1040,13 +1040,9 @@ watch(invFilterMode, (val) => {
                 <option v-for="b in allBrands.filter(x => x !== '全部')" :key="b">{{ b }}</option>
               </select>
             </div>
-            <div v-if="editForm.isManual">
+            <div>
               <label class="block text-sm mb-1 text-gray-600">成本(RMB)</label>
               <input type="number" step="0.01" v-model.number="editForm.cost" class="apple-input" />
-            </div>
-            <div v-else>
-              <label class="block text-sm mb-1 text-gray-600">成本(RMB)</label>
-              <div class="apple-input bg-gray-100 text-gray-700 py-2 px-3">¥ {{ fmtNum(editForm.cost) }}</div>
             </div>
           </div>
           <div class="flex items-center gap-2">
