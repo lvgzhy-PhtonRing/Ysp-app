@@ -161,6 +161,10 @@ function buildChartConfig(fiveMonthData) {
       plugins: {
         tooltip: {
           callbacks: {
+            label(ctx) {
+              const val = Number(ctx.raw || 0)
+              return `${ctx.dataset.label}: ${val.toFixed(2)}`
+            },
             footer(items) {
               const i = items[0]?.dataIndex ?? -1
               if (i < 0) return ''
