@@ -38,12 +38,12 @@ describe('getCashflowData', () => {
     expect(result.current.inventoryDigestion).toBe(300)
   })
 
-  it('computes procurement from purchaseDate month', () => {
+  it('computes procurement from purchase date month', () => {
     const store = makeStore({
       items: [
-        { cost: 100, purchaseDetails: { purchaseDate: '2026-06-05' } },
-        { cost: 200, purchaseDetails: { purchaseDate: '2026-06-18' } },
-        { cost: 50, purchaseDetails: { purchaseDate: '2026-05-01' } },
+        { cost: 100, purchaseDetails: { date: '2026-06-05' } },
+        { cost: 200, purchaseDetails: { date: '2026-06-18' } },
+        { cost: 50, purchaseDetails: { date: '2026-05-01' } },
         { cost: 999, purchaseDetails: {} },
       ],
     })

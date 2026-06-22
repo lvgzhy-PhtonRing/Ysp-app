@@ -53,10 +53,10 @@ export function getCashflowData(store, now = new Date()) {
       .reduce((s, i) => s + Number(i?.cost || 0), 0)
   }
 
-  // 当月采购总投入（按 purchaseDate 聚合，日淘+美淘+国内统算）
+  // 当月采购总投入（按 purchaseDetails.date 聚合，日淘+美淘+国内统算）
   function procurement(year, month) {
     return items
-      .filter(i => monthMatch(i?.purchaseDetails?.purchaseDate, year, month))
+      .filter(i => monthMatch(i?.purchaseDetails?.date, year, month))
       .reduce((s, i) => s + Number(i?.cost || 0), 0)
   }
 
