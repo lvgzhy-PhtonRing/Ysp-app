@@ -32,7 +32,6 @@ function momChange(current, previous) {
 
 const miniBarConfigs = [
   { key: 'netCollection', label: '净回款', color: '#16a34a' },
-  { key: 'inventoryDigestion', label: '库存消化', color: '#f59e0b' },
   { key: 'procurement', label: '采购总投入', color: '#f97316' },
   { key: 'debt', label: '负债规模', color: '#3b82f6' },
 ]
@@ -44,7 +43,7 @@ function miniBarData(config) {
   return months.map((m, i) => ({
     label: `${m.month}月`,
     value: values[i],
-    height: (values[i] / maxV) * 24,
+    width: (values[i] / maxV) * 100,
     isCurrent: i === months.length - 1,
   }))
 }
@@ -189,8 +188,8 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
   <div class="apple-card space-y-5">
     <h3 class="text-lg font-semibold mb-4 text-gray-800"><i class="fa-solid fa-coins text-blue-500 mr-2"></i>现金流与负债监控</h3>
 
-    <!-- 四指标卡片 -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <!-- 三指标卡片 -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <div
         v-for="cfg in miniBarConfigs"
         :key="cfg.key"
@@ -201,22 +200,24 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
           {{ fmtMoney(cashflow.current[cfg.key]) }}
         </div>
 
-        <!-- 迷你柱状条 -->
-        <div class="flex items-end gap-2 h-10 mt-1">
+        <!-- 迷你横向柱状条 -->
+        <div class="flex flex-col gap-1.5 mt-1">
           <div
             v-for="(bar, bi) in miniBarData(cfg)"
             :key="bi"
-            class="flex flex-col items-center gap-1 flex-1"
+            class="flex items-center gap-2"
           >
-            <div
-              class="w-2.5 rounded-t-sm transition-all"
-              :style="{
-                height: bar.height + 'px',
-                backgroundColor: bar.isCurrent ? cfg.color : '#e5e7eb',
-              }"
-            />
-            <span class="text-[10px] text-gray-400">{{ bar.label }}</span>
-            <span class="text-[10px] text-gray-500">{{ fmtShort(bar.value) }}</span>
+            <span class="text-[10px] text-gray-400 w-7 shrink-0">{{ bar.label }}</span>
+            <div class="flex-1 h-3 bg-gray-200 rounded-sm overflow-hidden">
+              <div
+                class="h-full rounded-sm transition-all"
+                :style="{
+                  width: bar.width + '%',
+                  backgroundColor: bar.isCurrent ? cfg.color : '#d1d5db',
+                }"
+              />
+            </div>
+            <span class="text-[10px] text-gray-500 w-10 text-right shrink-0">{{ fmtShort(bar.value) }}</span>
           </div>
         </div>
 
