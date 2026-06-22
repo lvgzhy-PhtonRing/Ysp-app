@@ -15,7 +15,7 @@ const DEFAULT_BATCHES = {
   '2025JAPAN': ['2025JAPAN'],
 }
 const CATEGORY_ORDER = ['日淘', '美淘', '国内', '2025JAPAN']
-const BRAND_ORDER = ['hotwheels', 'minigt', 'tlv', 'kyosho', 'tomica', 'matchbox', 'ar box', 'kingmodel', 'mortal', '红白盒', '其它']
+const BRAND_ORDER = ['hotwheels', 'minigt', 'tlv', 'kyosho', 'tomica', 'matchbox', 'ar box', 'kingmodel', 'mortal', '其它']
 
 function normalizeBrand(brand) {
   return String(brand || '').trim().toLowerCase()
