@@ -140,7 +140,7 @@ function statusText(status) {
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <div class="apple-card">
-        <h3 class="text-lg font-semibold mb-4 text-gray-800">本月数据</h3>
+        <h3 class="text-lg font-semibold mb-4 text-gray-800"><i class="fa-solid fa-calendar-check text-blue-400 mr-2"></i>本月数据</h3>
         <div class="grid grid-cols-2 gap-4">
           <div class="bg-gray-50 p-4 rounded-xl border-l-4 border-primary">
             <div class="text-xs text-gray-500 mb-1">月销售额</div>
@@ -153,14 +153,19 @@ function statusText(status) {
         </div>
         <div class="mt-4 bg-gray-50 p-4 rounded-xl border-l-4 border-gray-400">
           <div class="text-xs text-gray-500 mb-1">月利润</div>
-          <div class="text-3xl font-bold" :class="monthStats.profit >= 0 ? 'text-gray-700' : 'text-danger'">
-            {{ fmtMoney(monthStats.profit) }}
+          <div class="flex items-baseline gap-3">
+            <span class="text-3xl font-bold" :class="monthStats.profit >= 0 ? 'text-gray-700' : 'text-danger'">
+              {{ fmtMoney(monthStats.profit) }}
+            </span>
+            <span class="text-sm text-gray-400">
+              利润率 {{ monthStats.cost > 0 ? fmtNum((monthStats.profit / monthStats.cost) * 100) + '%' : '--' }}
+            </span>
           </div>
         </div>
       </div>
 
       <div class="apple-card">
-        <h3 class="text-lg font-semibold mb-4 text-gray-800">近三个月销售数据</h3>
+        <h3 class="text-lg font-semibold mb-4 text-gray-800"><i class="fa-solid fa-chart-simple text-blue-400 mr-2"></i>近三个月销售数据</h3>
         <div class="overflow-x-auto">
           <table class="apple-table text-sm">
             <thead>
