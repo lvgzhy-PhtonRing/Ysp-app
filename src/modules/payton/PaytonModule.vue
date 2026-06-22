@@ -194,7 +194,7 @@ const editRecordForm = reactive({
   carBrand: '',
 })
 
-const brandOptions = ['Hotwheels', 'MINIGT', 'Tomica', 'TLV', 'Kyosho', '其它']
+const brandOptions = ['Hotwheels', 'MINIGT', 'TLV', 'Kyosho', 'Tomica', 'Matchbox', 'AR BOX', 'KingModel', 'Mortal', '其它']
 
 const accountEntries = computed(() => Object.entries(store.paytonAccounts || {}))
 const accountOptions = computed(() => accountEntries.value.map(([k, v]) => ({ key: k, name: v?.name || k })))

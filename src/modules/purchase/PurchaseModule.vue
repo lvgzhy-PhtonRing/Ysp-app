@@ -11,7 +11,7 @@ import {
 import { calcItemCost, calcPreTransferCost, calcTransferCost } from '../../utils/calc'
 import { addOperationLog, saveToLocalStorage, state as store } from '../../data/store'
 
-const BRANDS = ['Hotwheels', 'MINIGT', 'Tomica', 'TLV', 'Kyosho', '其它']
+const BRANDS = ['Hotwheels', 'MINIGT', 'TLV', 'Kyosho', 'Tomica', 'Matchbox', 'AR BOX', 'KingModel', 'Mortal', '其它']
 const PURCHASE_TABS = ['日淘', '美淘', '国内']
 const CATEGORY_BATCHES = {
   美淘: ['26下半年', '26上半年', 'B组下半年', 'B组上半年', 'A组下半年', 'A组上半年', '美淘现货'],

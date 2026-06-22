@@ -15,7 +15,7 @@ const DEFAULT_BATCHES = {
   '2025JAPAN': ['2025JAPAN'],
 }
 const CATEGORY_ORDER = ['日淘', '美淘', '国内', '2025JAPAN']
-const BRAND_ORDER = ['hotwheels', 'minigt', 'tlv', 'kyosho', '红白盒', '其它']
+const BRAND_ORDER = ['hotwheels', 'minigt', 'tlv', 'kyosho', 'tomica', 'matchbox', 'ar box', 'kingmodel', 'mortal', '红白盒', '其它']
 
 function normalizeBrand(brand) {
   return String(brand || '').trim().toLowerCase()
@@ -126,7 +126,7 @@ const longTermForm = reactive({
 })
 
 const allBrands = computed(() => {
-  const set = new Set(['Hotwheels', 'MINIGT', 'Tomica', 'TLV', 'Kyosho', '其它'])
+  const set = new Set(['Hotwheels', 'MINIGT', 'TLV', 'Kyosho', 'Tomica', 'Matchbox', 'AR BOX', 'KingModel', 'Mortal', '其它'])
   store.items.forEach((item) => {
     if (item?.brand) set.add(item.brand)
   })

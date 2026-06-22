@@ -12,7 +12,7 @@ const salesCollapseStorageKey = 'ysp_ui_sales_collapse'
 const salesViewModeStorageKey = 'ysp_ui_sales_view_mode'
 const salesFiltersStorageKey = 'ysp_ui_sales_filters'
 const CATEGORY_ORDER = ['日淘', '美淘', '国内', '2025JAPAN']
-const BRAND_ORDER = ['hotwheels', 'minigt', 'tlv', 'kyosho', '红白盒', '其它']
+const BRAND_ORDER = ['hotwheels', 'minigt', 'tlv', 'kyosho', 'tomica', 'matchbox', 'ar box', 'kingmodel', 'mortal', '红白盒', '其它']
 
 function normalizeBrand(brand) {
   return String(brand || '').trim().toLowerCase()
