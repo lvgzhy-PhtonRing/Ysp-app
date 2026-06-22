@@ -33,7 +33,7 @@ function momChange(current, previous) {
 const miniBarConfigs = [
   { key: 'netCollection', label: '每月净回款', color: '#16a34a' },
   { key: 'procurement', label: '每月采购投入', color: '#f97316' },
-  { key: 'debt', label: '负债规模', color: '#3b82f6' },
+  { key: 'debt', label: '每月新增负债', color: '#3b82f6' },
 ]
 
 function miniBarData(config) {
@@ -136,7 +136,7 @@ function buildChartConfig(fiveMonthData) {
           order: 1,
         },
         {
-          label: '负债规模',
+          label: '每月新增负债',
           data: debtData,
           type: 'line',
           borderColor: '#3b82f6',

@@ -19,7 +19,7 @@ describe('getCashflowData', () => {
     expect(result.current.netCollection).toBe(0)
     expect(result.current.inventoryDigestion).toBe(0)
     expect(result.current.procurement).toBe(0)
-    expect(result.current.debt).toBe(0)
+    expect(result.current.debt).toBeNull() // 无上月快照 → null
   })
 
   it('computes netCollection and inventoryDigestion from sold items this month', () => {
@@ -32,9 +32,7 @@ describe('getCashflowData', () => {
       ],
     })
     const result = getCashflowData(store, now)
-    // netCollection = (100+50) + (200+80) = 430
     expect(result.current.netCollection).toBe(430)
-    // inventoryDigestion = 100 + 200 = 300
     expect(result.current.inventoryDigestion).toBe(300)
   })
 
@@ -51,18 +49,23 @@ describe('getCashflowData', () => {
     expect(result.current.procurement).toBe(300)
   })
 
-  it('computes current debt from calc + loanBalance', () => {
+  it('computes new debt as month-over-month delta', () => {
     const store = makeStore({
       calc: { debt: 5000 },
       loanRecords: [
         { type: 'borrow', amount: 1000, isRepaid: false },
         { type: 'lend', amount: 300, isRepaid: false },
-        { type: 'borrow', amount: 2000, repaid: true },
+      ],
+      snapshots: [
+        // May: absolute debt = 4000
+        { date: '2026-05-28', calc: { debt: 3600 }, finance: { loanBalance: 400 } },
       ],
     })
     const result = getCashflowData(store, now)
-    // 5000 + 1000 - 300 = 5700
-    expect(result.current.debt).toBe(5700)
+    // current live debt = 5000 + 1000 - 300 = 5700
+    // May absolute debt = 3600 + 400 = 4000
+    // 新增负债 = 5700 - 4000 = 1700
+    expect(result.current.debt).toBe(1700)
   })
 
   it('returns 5 months in chronological order', () => {
@@ -73,24 +76,31 @@ describe('getCashflowData', () => {
     expect(result.last5Months[4]).toMatchObject({ year: 2026, month: 6 })
   })
 
-  it('reads debt history from snapshots when available', () => {
+  it('computes monthly debt delta from consecutive snapshots', () => {
     const store = makeStore({
       snapshots: [
-        { date: '2026-05-15', calc: { debt: 3000 }, finance: { loanBalance: 400 } },
+        { date: '2026-04-25', calc: { debt: 3000 }, finance: { loanBalance: 200 } },
         { date: '2026-05-25', calc: { debt: 3100 }, finance: { loanBalance: 400 } },
       ],
     })
     const result = getCashflowData(store, now)
-    // May debt from last snapshot: 3100 + 400 = 3500
+    // Apr absolute = 3000 + 200 = 3200
+    // May absolute = 3100 + 400 = 3500
+    // May delta = 3500 - 3200 = 300
     const mayData = result.last5Months.find(m => m.month === 5)
-    expect(mayData?.debt).toBe(3500)
+    expect(mayData?.debt).toBe(300)
   })
 
-  it('returns null debt for months without snapshots', () => {
-    const store = makeStore({ snapshots: [] })
+  it('returns null debt when previous month snapshot missing', () => {
+    const store = makeStore({
+      snapshots: [
+        { date: '2026-05-25', calc: { debt: 3100 }, finance: { loanBalance: 400 } },
+      ],
+    })
     const result = getCashflowData(store, now)
-    const febData = result.last5Months.find(m => m.month === 2)
-    expect(febData?.debt).toBeNull()
+    // May has data but April doesn't → delta = null
+    const mayData = result.last5Months.find(m => m.month === 5)
+    expect(mayData?.debt).toBeNull()
   })
 
   it('handles cross-year boundary (Dec→Jan)', () => {
