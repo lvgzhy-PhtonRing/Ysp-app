@@ -186,18 +186,15 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
 </script>
 
 <template>
-  <div class="space-y-5">
-    <div class="flex items-center gap-2">
-      <h3 class="text-lg font-semibold text-gray-800">现金流与负债监控</h3>
-      <span class="text-xs text-gray-400">Cashflow &amp; Debt Monitor</span>
-    </div>
+  <div class="apple-card space-y-5">
+    <h3 class="text-lg font-semibold mb-4 text-gray-800"><i class="fa-solid fa-coins text-blue-500 mr-2"></i>现金流与负债监控</h3>
 
     <!-- 四指标卡片 -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
       <div
         v-for="cfg in miniBarConfigs"
         :key="cfg.key"
-        class="apple-card flex flex-col gap-2"
+        class="bg-gray-50 rounded-xl p-4 border border-gray-100 flex flex-col gap-2"
       >
         <div class="text-xs text-gray-500">{{ cfg.label }}</div>
         <div class="text-2xl font-extrabold text-gray-800">
@@ -240,7 +237,7 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
     </div>
 
     <!-- Chart.js 混合图 -->
-    <div class="apple-card">
+    <div>
       <h4 class="text-sm font-semibold text-gray-700 mb-3">6 个月趋势</h4>
       <div class="relative" style="height: 320px;">
         <canvas ref="chartCanvas"></canvas>
