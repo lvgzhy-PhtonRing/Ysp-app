@@ -25,7 +25,7 @@ function getLastNMonths(now, n) {
  * 主函数：按月聚合净回款、库存消化、采购投入、负债规模
  * @param {object} store - reactive state from store.js
  * @param {Date}   now   - 当前日期
- * @returns {{ current, last3Months, last6Months }}
+ * @returns {{ current, last5Months }}
  */
 export function getCashflowData(store, now = new Date()) {
   const items = store.items || []
@@ -88,13 +88,9 @@ export function getCashflowData(store, now = new Date()) {
   const current = buildMonth(curYear, curMonth)
   current.debt = currentDebt
 
-  // 最近 3 个月（旧→新），当月负债用 live 值
-  const last3Months = getLastNMonths(now, 3).map(m => buildMonth(m.year, m.month))
-  if (last3Months.length > 0) last3Months[last3Months.length - 1].debt = currentDebt
+  // 最近 5 个月（旧→新），当月负债用 live 值
+  const last5Months = getLastNMonths(now, 5).map(m => buildMonth(m.year, m.month))
+  if (last5Months.length > 0) last5Months[last5Months.length - 1].debt = currentDebt
 
-  // 最近 6 个月（旧→新）
-  const last6Months = getLastNMonths(now, 6).map(m => buildMonth(m.year, m.month))
-  if (last6Months.length > 0) last6Months[last6Months.length - 1].debt = currentDebt
-
-  return { current, last3Months, last6Months }
+  return { current, last5Months }
 }

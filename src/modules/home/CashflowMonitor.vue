@@ -37,7 +37,7 @@ const miniBarConfigs = [
 ]
 
 function miniBarData(config) {
-  const months = cashflow.value.last3Months
+  const months = cashflow.value.last5Months
   const values = months.map(m => Number(m?.[config.key] || 0))
   const maxV = Math.max(...values, 0.01)
   return months.map((m, i) => ({
@@ -49,7 +49,7 @@ function miniBarData(config) {
 }
 
 function momFor(config) {
-  const months = cashflow.value.last3Months
+  const months = cashflow.value.last5Months
   if (months.length < 2) return null
   const cur = Number(months[months.length - 1]?.[config.key] || 0)
   const prev = Number(months[months.length - 2]?.[config.key] || 0)
@@ -174,7 +174,7 @@ function renderChart() {
     chartInstance.destroy()
     chartInstance = null
   }
-  const data = cashflow.value?.last6Months
+  const data = cashflow.value?.last5Months
   if (!chartCanvas.value || !data?.length) return
   chartInstance = new Chart(chartCanvas.value, buildChartConfig(data))
 }
@@ -239,7 +239,7 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
 
     <!-- Chart.js 混合图 -->
     <div>
-      <h4 class="text-sm font-semibold text-gray-700 mb-3">6 个月趋势</h4>
+      <h4 class="text-sm font-semibold text-gray-700 mb-3">5 个月趋势</h4>
       <div class="relative" style="height: 320px;">
         <canvas ref="chartCanvas"></canvas>
       </div>

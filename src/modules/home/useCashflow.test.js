@@ -65,19 +65,12 @@ describe('getCashflowData', () => {
     expect(result.current.debt).toBe(5700)
   })
 
-  it('returns 6 months in chronological order', () => {
+  it('returns 5 months in chronological order', () => {
     const store = makeStore()
     const result = getCashflowData(store, now)
-    expect(result.last6Months).toHaveLength(6)
-    expect(result.last6Months[0]).toMatchObject({ year: 2026, month: 1 })
-    expect(result.last6Months[5]).toMatchObject({ year: 2026, month: 6 })
-  })
-
-  it('returns 3 months for mini bars', () => {
-    const store = makeStore()
-    const result = getCashflowData(store, now)
-    expect(result.last3Months).toHaveLength(3)
-    expect(result.last3Months[2]).toMatchObject({ year: 2026, month: 6 })
+    expect(result.last5Months).toHaveLength(5)
+    expect(result.last5Months[0]).toMatchObject({ year: 2026, month: 2 })
+    expect(result.last5Months[4]).toMatchObject({ year: 2026, month: 6 })
   })
 
   it('reads debt history from snapshots when available', () => {
@@ -89,21 +82,21 @@ describe('getCashflowData', () => {
     })
     const result = getCashflowData(store, now)
     // May debt from last snapshot: 3100 + 400 = 3500
-    const mayData = result.last6Months.find(m => m.month === 5)
+    const mayData = result.last5Months.find(m => m.month === 5)
     expect(mayData?.debt).toBe(3500)
   })
 
   it('returns null debt for months without snapshots', () => {
     const store = makeStore({ snapshots: [] })
     const result = getCashflowData(store, now)
-    const janData = result.last6Months.find(m => m.month === 1)
-    expect(janData?.debt).toBeNull()
+    const febData = result.last5Months.find(m => m.month === 2)
+    expect(febData?.debt).toBeNull()
   })
 
   it('handles cross-year boundary (Dec→Jan)', () => {
     const dec = new Date('2025-12-15')
     const result = getCashflowData(makeStore(), dec)
-    expect(result.last6Months[0]).toMatchObject({ year: 2025, month: 7 })
-    expect(result.last6Months[5]).toMatchObject({ year: 2025, month: 12 })
+    expect(result.last5Months[0]).toMatchObject({ year: 2025, month: 8 })
+    expect(result.last5Months[4]).toMatchObject({ year: 2025, month: 12 })
   })
 })
