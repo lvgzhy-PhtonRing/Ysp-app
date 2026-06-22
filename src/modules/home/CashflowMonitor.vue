@@ -31,8 +31,8 @@ function momChange(current, previous) {
 // ── 迷你柱状条配置 ──
 
 const miniBarConfigs = [
-  { key: 'netCollection', label: '净回款', color: '#16a34a' },
-  { key: 'procurement', label: '采购总投入', color: '#f97316' },
+  { key: 'netCollection', label: '每月净回款', color: '#16a34a' },
+  { key: 'procurement', label: '每月采购投入', color: '#f97316' },
   { key: 'debt', label: '负债规模', color: '#3b82f6' },
 ]
 
@@ -102,7 +102,7 @@ function buildChartConfig(fiveMonthData) {
       labels,
       datasets: [
         {
-          label: '净回款',
+          label: '每月净回款',
           data: netData,
           backgroundColor: 'rgba(22,163,74,0.35)',
           borderRadius: 4,
@@ -111,7 +111,7 @@ function buildChartConfig(fiveMonthData) {
           order: 2,
         },
         {
-          label: '采购投入',
+          label: '每月采购投入',
           data: procData,
           backgroundColor: 'rgba(245,158,11,0.35)',
           borderRadius: 4,
