@@ -65,12 +65,12 @@ let chartInstance = null
 const diffPlugin = {
   id: 'cashflowDiff',
   afterDatasetsDraw(chart) {
-    const { ctx, scales: { x, y } } = chart
+    const { ctx } = chart
     const meta0 = chart.getDatasetMeta(0)
     const meta1 = chart.getDatasetMeta(1)
     if (!meta0?.data?.length || !meta1?.data?.length) return
 
-    ctx.font = '11px "Microsoft YaHei", sans-serif'
+    ctx.font = '10px "Microsoft YaHei", sans-serif'
     ctx.textAlign = 'center'
 
     for (let i = 0; i < meta0.data.length; i++) {
@@ -89,11 +89,12 @@ const diffPlugin = {
   },
 }
 
-function buildChartConfig(sixMonthData) {
-  const labels = sixMonthData.map(m => `${m.month}月`)
-  const netData = sixMonthData.map(m => m.netCollection)
-  const procData = sixMonthData.map(m => m.procurement)
-  const debtData = sixMonthData.map(m => (m.debt != null ? m.debt : NaN))
+function buildChartConfig(fiveMonthData) {
+  const labels = fiveMonthData.map(m => `${m.month}月`)
+  const netData = fiveMonthData.map(m => m.netCollection)
+  const procData = fiveMonthData.map(m => m.procurement)
+  const diffData = fiveMonthData.map(m => m.netCollection - m.procurement)
+  const debtData = fiveMonthData.map(m => (m.debt != null ? m.debt : NaN))
 
   return {
     type: 'bar',
@@ -103,31 +104,53 @@ function buildChartConfig(sixMonthData) {
         {
           label: '净回款',
           data: netData,
-          backgroundColor: '#16a34a',
+          backgroundColor: 'rgba(22,163,74,0.35)',
           borderRadius: 4,
           yAxisID: 'y',
           barPercentage: 0.6,
+          order: 2,
         },
         {
           label: '采购投入',
           data: procData,
-          backgroundColor: '#f59e0b',
+          backgroundColor: 'rgba(245,158,11,0.35)',
           borderRadius: 4,
           yAxisID: 'y',
           barPercentage: 0.6,
+          order: 2,
+        },
+        {
+          label: '现金流差额',
+          data: diffData,
+          type: 'line',
+          borderColor: '#8b5cf6',
+          backgroundColor: 'rgba(139,92,246,0.08)',
+          borderWidth: 2.5,
+          fill: true,
+          yAxisID: 'y',
+          tension: 0.3,
+          pointRadius: 5,
+          pointBackgroundColor: '#8b5cf6',
+          pointBorderColor: '#fff',
+          pointBorderWidth: 2,
+          order: 1,
         },
         {
           label: '负债规模',
           data: debtData,
           type: 'line',
           borderColor: '#3b82f6',
-          backgroundColor: 'rgba(59,130,246,0.1)',
+          backgroundColor: 'rgba(59,130,246,0.06)',
+          borderWidth: 2.5,
           fill: true,
           yAxisID: 'y1',
           tension: 0.3,
-          pointRadius: 4,
+          pointRadius: 5,
           pointBackgroundColor: '#3b82f6',
+          pointBorderColor: '#fff',
+          pointBorderWidth: 2,
           spanGaps: false,
+          order: 1,
         },
       ],
     },
@@ -143,7 +166,7 @@ function buildChartConfig(sixMonthData) {
               if (i < 0) return ''
               const diff = netData[i] - procData[i]
               const sign = diff >= 0 ? '+' : ''
-              return `差额: ${sign}${fmtMoney(diff)}`
+              return `现金流差额: ${sign}${fmtMoney(diff)}`
             },
           },
         },
@@ -239,7 +262,7 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
 
     <!-- Chart.js 混合图 -->
     <div>
-      <h4 class="text-sm font-semibold text-gray-700 mb-3">5 个月趋势</h4>
+      <h4 class="text-sm font-semibold text-gray-700 mb-3">5 个月现金流与负债趋势</h4>
       <div class="relative" style="height: 320px;">
         <canvas ref="chartCanvas"></canvas>
       </div>
