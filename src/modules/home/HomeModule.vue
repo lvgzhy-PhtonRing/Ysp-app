@@ -9,6 +9,7 @@ import {
   getPurchaseStatus,
   searchItems,
 } from './useHomeInsights'
+import CashflowMonitor from './CashflowMonitor.vue'
 
 const now = computed(() => new Date())
 const todayDate = computed(() => now.value.toISOString().slice(0, 10))
@@ -246,6 +247,9 @@ function statusText(status) {
         <div class="text-2xl font-bold text-primary">{{ fmtMoney(alipayBalance) }}</div>
       </div>
     </div>
+
+    <!-- 现金流与负债监控 -->
+    <CashflowMonitor />
 
     <div class="apple-card">
       <h3 class="text-lg font-semibold mb-4 text-gray-800"><i class="fa-solid fa-magnifying-glass text-blue-500 mr-2"></i>商品查询器</h3>
