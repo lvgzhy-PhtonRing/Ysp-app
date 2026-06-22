@@ -1,0 +1,100 @@
+// 现金流与负债数据按月聚合（纯函数，无副作用）
+
+/**
+ * 判断日期字符串是否匹配指定年/月
+ */
+function monthMatch(dateStr, year, month) {
+  if (!dateStr) return false
+  const d = new Date(dateStr)
+  return !isNaN(d.getTime()) && d.getFullYear() === year && d.getMonth() + 1 === month
+}
+
+/**
+ * 生成最近 n 个月的年/月数组（按时间顺序，旧→新）
+ */
+function getLastNMonths(now, n) {
+  const months = []
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    months.push({ year: d.getFullYear(), month: d.getMonth() + 1 })
+  }
+  return months
+}
+
+/**
+ * 主函数：按月聚合净回款、库存消化、采购投入、负债规模
+ * @param {object} store - reactive state from store.js
+ * @param {Date}   now   - 当前日期
+ * @returns {{ current, last3Months, last6Months }}
+ */
+export function getCashflowData(store, now = new Date()) {
+  const items = store.items || []
+  const snapshots = store.snapshots || []
+
+  // 当月借贷余额（从 live state 实时计算）
+  const loanBalance = (store.loanRecords || []).reduce((sum, l) => {
+    if (l?.isRepaid || l?.repaid) return sum
+    return sum + (l?.type === 'borrow' ? Number(l?.amount || 0) : -Number(l?.amount || 0))
+  }, 0)
+  // 当月负债 = 挖财总负债 + 借贷余额
+  const currentDebt = Number(store.calc?.debt || 0) + loanBalance
+
+  // 当月净回款（profit + cost，利用已有利润结果避免重复计算费率/扣减）
+  function netCollection(year, month) {
+    return items
+      .filter(i => i?.status === 'sold' && monthMatch(i?.saleDetails?.date, year, month))
+      .reduce((s, i) => s + Number(i?.saleDetails?.profit || 0) + Number(i?.cost || 0), 0)
+  }
+
+  // 当月库存消化（售出商品 cost 总和）
+  function inventoryDigestion(year, month) {
+    return items
+      .filter(i => i?.status === 'sold' && monthMatch(i?.saleDetails?.date, year, month))
+      .reduce((s, i) => s + Number(i?.cost || 0), 0)
+  }
+
+  // 当月采购总投入（按 purchaseDate 聚合，日淘+美淘+国内统算）
+  function procurement(year, month) {
+    return items
+      .filter(i => monthMatch(i?.purchaseDetails?.purchaseDate, year, month))
+      .reduce((s, i) => s + Number(i?.cost || 0), 0)
+  }
+
+  // 历史负债（从快照取月最后一条记录的 calc.debt + finance.loanBalance）
+  function debtFromSnapshots(year, month) {
+    const monthSnaps = snapshots
+      .filter(s => monthMatch(s?.date, year, month))
+      .sort((a, b) => (b?.date || '').localeCompare(a?.date || ''))
+    if (monthSnaps.length === 0) return null
+    const last = monthSnaps[0]
+    return Number(last.calc?.debt || 0) + Number(last.finance?.loanBalance || 0)
+  }
+
+  // 构建单月数据对象
+  function buildMonth(year, month) {
+    return {
+      year,
+      month,
+      netCollection: netCollection(year, month),
+      inventoryDigestion: inventoryDigestion(year, month),
+      procurement: procurement(year, month),
+      debt: debtFromSnapshots(year, month),
+    }
+  }
+
+  // 当月值（负债用 live 值覆盖快照值，因为当天可能还没快照）
+  const curYear = now.getFullYear()
+  const curMonth = now.getMonth() + 1
+  const current = buildMonth(curYear, curMonth)
+  current.debt = currentDebt
+
+  // 最近 3 个月（旧→新），当月负债用 live 值
+  const last3Months = getLastNMonths(now, 3).map(m => buildMonth(m.year, m.month))
+  if (last3Months.length > 0) last3Months[last3Months.length - 1].debt = currentDebt
+
+  // 最近 6 个月（旧→新）
+  const last6Months = getLastNMonths(now, 6).map(m => buildMonth(m.year, m.month))
+  if (last6Months.length > 0) last6Months[last6Months.length - 1].debt = currentDebt
+
+  return { current, last3Months, last6Months }
+}
