@@ -87,8 +87,11 @@ export function getCashflowData(store, now = new Date()) {
     return cur - prev
   }
 
-  // 构建单月数据对象（debt 字段 = 新增负债）
+  // 构建单月数据对象
+  //   debt      = 新增负债（月环比增量，供迷你卡片）
+  //   totalDebt = 负债总规模（绝对值，供大图折线）
   function buildMonth(year, month, liveDebt) {
+    const abs = (liveDebt !== undefined) ? liveDebt : absoluteDebt(year, month)
     return {
       year,
       month,
@@ -96,6 +99,7 @@ export function getCashflowData(store, now = new Date()) {
       inventoryDigestion: inventoryDigestion(year, month),
       procurement: procurement(year, month),
       debt: newDebt(year, month, liveDebt),
+      totalDebt: abs,
     }
   }
 

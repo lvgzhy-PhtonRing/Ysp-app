@@ -94,7 +94,7 @@ function buildChartConfig(fiveMonthData) {
   const netData = fiveMonthData.map(m => m.netCollection)
   const procData = fiveMonthData.map(m => m.procurement)
   const diffData = fiveMonthData.map(m => m.netCollection - m.procurement)
-  const debtData = fiveMonthData.map(m => (m.debt != null ? m.debt : NaN))
+  const debtData = fiveMonthData.map(m => (m.totalDebt != null ? m.totalDebt : NaN))
 
   return {
     type: 'bar',
@@ -136,7 +136,7 @@ function buildChartConfig(fiveMonthData) {
           order: 1,
         },
         {
-          label: '每月新增负债',
+          label: '负债总规模',
           data: debtData,
           type: 'line',
           borderColor: '#3b82f6',
