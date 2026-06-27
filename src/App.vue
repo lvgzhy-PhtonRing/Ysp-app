@@ -56,6 +56,7 @@ const fileInputRef = ref(null)
 const showLogsModal = ref(false)
 const showLogDetailModal = ref(false)
 const selectedLog = ref(null)
+var expandedLogId = ref(null)
 var showLogMeta = ref(false)
 const logTypeMeta = {
   app_import: { label: '系统导入', color: 'text-teal-600', icon: 'fa-solid fa-upload', pillClass: 'bg-teal-100 text-teal-700' },
@@ -229,6 +230,14 @@ function openLogDetail(log) {
   selectedLog.value = log || null
   showLogDetailModal.value = true
   showLogMeta.value = false
+}
+
+function toggleExpand(log) {
+  if (expandedLogId.value === log.id) {
+    expandedLogId.value = null
+  } else {
+    expandedLogId.value = log.id
+  }
 }
 
 function formatLogDetailValue(value) {
@@ -746,31 +755,35 @@ watch(
         <div
           v-for="log in store.operationLogs.slice(0, 100)"
           :key="log.id"
-          class="p-3 rounded-lg bg-gray-50 hover:bg-gray-100 cursor-pointer"
-          @click="openLogDetail(log)"
+          class="p-3 rounded-lg cursor-pointer transition-colors"
+          :class="expandedLogId === log.id ? 'bg-blue-50 ring-1 ring-blue-200' : 'bg-gray-50 hover:bg-gray-100'"
+          @click="toggleExpand(log)"
         >
           <div class="flex justify-between items-start">
-            <div class="flex items-start gap-2">
+            <div class="flex items-start gap-2 min-w-0">
               <span class="inline-block px-2 py-0.5 rounded text-xs font-medium shrink-0" :class="getLogMeta(log.type).pillClass">
                 {{ getLogMeta(log.type).label }}
               </span>
-              <div>
-                <span class="text-sm text-gray-800">{{ log.message }}</span>
-                <div v-if="log.detail && Object.keys(log.detail).length > 0" class="mt-1 text-xs text-gray-400">
-                  <span v-if="log.detail.qty">数量: {{ log.detail.qty }}</span>
-                  <span v-if="log.detail.price" class="ml-2">单价: {{ log.detail.price }}</span>
-                  <span v-if="log.detail.cost" class="ml-2">成本: {{ log.detail.cost }}</span>
-                  <span v-if="log.detail.profit" class="ml-2">利润: {{ log.detail.profit }}</span>
-                  <span v-if="log.detail.sid" class="ml-2">SID: {{ log.detail.sid }}</span>
-                  <span v-if="log.detail.amount" class="ml-2">金额: {{ log.detail.amount }}</span>
-                  <span v-if="log.detail.account" class="ml-2">账户: {{ log.detail.account }}</span>
-                  <span v-if="log.detail.changedFields?.length" class="ml-2 text-indigo-500">修改字段: {{ log.detail.changedFields.length }}</span>
-                </div>
-                <div class="mt-1 text-[11px] text-blue-500">点击查看详情</div>
+              <div class="min-w-0">
+                <span class="text-sm text-gray-800 break-words">{{ log.message }}</span>
               </div>
             </div>
-            <span class="text-xs text-gray-400 whitespace-nowrap ml-2">{{ new Date(log.time).toLocaleString() }}</span>
+            <span class="text-xs text-gray-400 whitespace-nowrap ml-2 shrink-0">{{ new Date(log.time).toLocaleString() }}</span>
           </div>
+
+          <div v-if="expandedLogId === log.id && getLogMeta(log.type).summary" class="mt-2 border-t border-blue-100 pt-2">
+            <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+              <span v-for="(line, i) in getLogMeta(log.type).summary(log.detail)" :key="i">{{ line }}</span>
+            </div>
+            <div class="mt-2 flex items-center gap-3">
+              <button class="text-[11px] text-blue-600 hover:text-blue-800 font-medium" @click.stop="openLogDetail(log)">
+                <i class="fa-solid fa-magnifying-glass mr-1" />查看详情
+              </button>
+              <span class="text-[11px] text-gray-300">收起 ▲</span>
+            </div>
+          </div>
+
+          <div v-if="expandedLogId !== log.id" class="mt-1 text-[11px] text-blue-500">点击查看详情</div>
         </div>
       </div>
     </GlassModal>
