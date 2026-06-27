@@ -941,10 +941,13 @@ function submitAdd() {
         const sid = String(item?.sid || '').trim()
         if (!sid) return m
         if (!m.has(sid)) {
+          var pd = item.purchaseDetails || {}
           m.set(sid, {
-            sid,
-            name: item?.name || '未命名商品',
+            sid: sid,
+            name: item.name || '未命名商品',
             qty: 0,
+            originalPrice: Number(pd.originalPrice || 0),
+            cost: Number(item.cost || 0),
           })
         }
         m.get(sid).qty += 1
