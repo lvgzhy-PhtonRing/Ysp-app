@@ -1,6 +1,6 @@
 // 公共收支模块逻辑层（无 UI）
 
-import { addOperationLog, saveToLocalStorage, state as store } from '../../data/store'
+import { addOperationLog, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
 
 function toNumber(value, fallback = 0) {
   const n = Number(value)
@@ -65,11 +65,12 @@ export function updateFinanceRecord(recordId, patch = {}) {
   })
 
   saveToLocalStorage()
-  addOperationLog('finance_update_record', `编辑收支: ${record.item}`, {
+  var changesText = formatChangesSummary(changes)
+  addOperationLog('finance_update_record', '编辑收支: ' + record.item + (changesText ? ' ← ' + changesText : ''), {
     type: record.type,
     amount: record.amount,
     changedFields: Object.keys(changes),
-    changes,
+    changes: changes,
   })
   return record
 }
@@ -116,11 +117,12 @@ export function updateLoanRecord(loanId, patch = {}) {
   })
 
   saveToLocalStorage()
-  addOperationLog('finance_update_loan', `编辑借贷: ${loan.counterparty || '-'}`, {
-    loanId,
+  var changesText = formatChangesSummary(changes)
+  addOperationLog('finance_update_loan', '编辑借贷: ' + (loan.counterparty || '-') + (changesText ? ' ← ' + changesText : ''), {
+    loanId: loanId,
     counterparty: loan.counterparty,
     changedFields: Object.keys(changes),
-    changes,
+    changes: changes,
   })
   return loan
 }

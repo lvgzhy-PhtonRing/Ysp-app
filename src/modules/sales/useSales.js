@@ -1,7 +1,7 @@
 // 销售模块逻辑层（无 UI）
 
 import { calcProfit } from '../../utils/calc'
-import { addOperationLog, saveToLocalStorage, state as store } from '../../data/store'
+import { addOperationLog, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
 
 function toNumber(value, fallback = 0) {
   const n = Number(value)
@@ -119,10 +119,11 @@ export function editSaleRecord(itemId, newSaleData = {}) {
   })
 
   saveToLocalStorage()
-  addOperationLog('sales_edit', `编辑销售记录: ${item.name}`, {
+  var changesText = formatChangesSummary(changes)
+  addOperationLog('sales_edit', '编辑销售: ' + item.name + (changesText ? ' ← ' + changesText : ''), {
     sid: item.sid,
     changedFields: Object.keys(changes),
-    changes,
+    changes: changes,
   })
   return item
 }

@@ -1,6 +1,6 @@
 // Payton 基金模块逻辑层（无 UI）
 
-import { addOperationLog, saveToLocalStorage, state as store } from '../../data/store'
+import { addOperationLog, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
 
 function toNumber(value, fallback = 0) {
   const n = Number(value)
@@ -331,13 +331,14 @@ export function editPaytonRecord(recordId, newData = {}) {
   })
 
   saveToLocalStorage()
-  addOperationLog('payton_edit_record', `编辑基金流水: ${record.category || '-'}${record.carName ? ' | ' + record.carName : ''}`, {
-    recordId,
+  var changesText = formatChangesSummary(changes)
+  addOperationLog('payton_edit_record', '编辑流水: ' + (record.category || '-') + (record.carName ? ' | ' + record.carName : '') + (changesText ? ' ← ' + changesText : ''), {
+    recordId: recordId,
     category: record.category,
     carName: record.carName,
     account: record.account,
     changedFields: Object.keys(changes),
-    changes,
+    changes: changes,
   })
   return record
 }

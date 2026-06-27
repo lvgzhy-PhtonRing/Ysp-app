@@ -1,6 +1,6 @@
 // 库存模块逻辑层（无 UI）
 
-import { addOperationLog, saveToLocalStorage, state as store } from '../../data/store'
+import { addOperationLog, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
 
 function toNumber(value, fallback = 0) {
   const n = Number(value)
@@ -116,12 +116,13 @@ export function editItem(itemId, updateData = {}) {
   })
 
   saveToLocalStorage()
-  addOperationLog('inventory_edit', `编辑库存`, {
+  var changesText = formatChangesSummary(changes)
+  addOperationLog('inventory_edit', '编辑库存: ' + item.name + (changesText ? ' ← ' + changesText : '') + (targets.length > 1 ? ' (影响' + targets.length + '件)' : ''), {
     name: item.name,
     sid: item.sid,
     affected: targets.length,
     changedFields: Object.keys(changes),
-    changes,
+    changes: changes,
   })
   return item
 }
