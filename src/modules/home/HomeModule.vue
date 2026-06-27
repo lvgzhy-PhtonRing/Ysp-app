@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import GlassModal from '../../components/GlassModal.vue'
-import { addOperationLog, saveToLocalStorage, state as store } from '../../data/store'
+import { addOperationLog, FIELD_LABEL_MAP, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
 import {
   getBatchReturnStats,
   getLast3MonthsStats,
@@ -92,9 +92,10 @@ function onCalcFocus(field) {
 function persistCalc(field) {
   const before = calcBeforeValues[field] ?? store.calc[field]
   saveToLocalStorage()
-  addOperationLog('calc_update', `更新支付宝计算参数: ${field}`, {
-    field,
-    before,
+  var fieldLabel = FIELD_LABEL_MAP[field] || field
+  addOperationLog('calc_update', '更新参数: ' + fieldLabel + ':\xA5' + Number(before || 0).toFixed(0) + '→\xA5' + Number(store.calc[field] || 0).toFixed(0), {
+    field: field,
+    before: before,
     after: store.calc[field],
   })
 }

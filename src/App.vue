@@ -56,6 +56,7 @@ const fileInputRef = ref(null)
 const showLogsModal = ref(false)
 const showLogDetailModal = ref(false)
 const selectedLog = ref(null)
+var showLogMeta = ref(false)
 const logTypeMeta = {
   app_import: { label: '系统导入', color: 'text-teal-600', icon: 'fa-solid fa-upload', pillClass: 'bg-teal-100 text-teal-700' },
   app_export: { label: '系统导出', color: 'text-blue-600', icon: 'fa-solid fa-download', pillClass: 'bg-blue-100 text-blue-700' },
@@ -66,33 +67,128 @@ const logTypeMeta = {
   cloud_signout: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-user-slash', pillClass: 'bg-cyan-100 text-cyan-700' },
   cloud_sync: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-arrows-rotate', pillClass: 'bg-cyan-100 text-cyan-700' },
   cloud_pull: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-cloud-arrow-down', pillClass: 'bg-cyan-100 text-cyan-700' },
-  purchase_add: { label: '采购新增', color: 'text-yellow-600', icon: 'fa-solid fa-plus', pillClass: 'bg-yellow-100 text-yellow-700' },
-  purchase_transfer: { label: '采购转运', color: 'text-amber-600', icon: 'fa-solid fa-truck', pillClass: 'bg-amber-100 text-amber-700' },
+  purchase_add: { label: '采购新增', color: 'text-yellow-600', icon: 'fa-solid fa-plus', pillClass: 'bg-yellow-100 text-yellow-700',
+    summary: function (d) {
+      var lines = []
+      if (d.totalItems) lines.push(d.totalItems + '件')
+      if (d.batch) lines.push('批次:' + d.batch)
+      if (d.paymentBatch) lines.push('支付:' + d.paymentBatch)
+      if (Array.isArray(d.sidSummary) && d.sidSummary.length > 0) {
+        lines.push('商品:' + d.sidSummary.map(function (s) { return s.sid + '(' + s.qty + '件)' }).join('、'))
+      }
+      return lines
+    },
+  },
+  purchase_transfer: { label: '采购转运', color: 'text-amber-600', icon: 'fa-solid fa-truck', pillClass: 'bg-amber-100 text-amber-700',
+    summary: function (d) {
+      var parts = []
+      if (d.count) parts.push(d.count + '件')
+      if (d.totalRMB) parts.push('总RMB:\xA5' + Number(d.totalRMB).toFixed(0))
+      return parts
+    },
+  },
   purchase_transfer_delete: { label: '采购转运', color: 'text-amber-600', icon: 'fa-solid fa-truck-ramp-box', pillClass: 'bg-amber-100 text-amber-700' },
-  purchase_edit: { label: '采购编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700' },
-  purchase_delete: { label: '采购删除', color: 'text-red-600', icon: 'fa-solid fa-trash', pillClass: 'bg-red-100 text-red-700' },
+  purchase_edit: { label: '采购编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700',
+    summary: function (d) {
+      var parts = []
+      if (d.sid) parts.push('SID:' + d.sid)
+      if (d.changedFields && d.changedFields.length) parts.push('改' + d.changedFields.length + '字段')
+      return parts
+    },
+  },
+  purchase_delete: { label: '采购删除', color: 'text-red-600', icon: 'fa-solid fa-trash', pillClass: 'bg-red-100 text-red-700',
+    summary: function (d) {
+      var parts = []
+      if (d.sid) parts.push('SID:' + d.sid)
+      if (d.deletedCount > 1) parts.push('共' + d.deletedCount + '件')
+      return parts
+    },
+  },
   purchase_to_inventory: { label: '采购入库', color: 'text-green-600', icon: 'fa-solid fa-box', pillClass: 'bg-green-100 text-green-700' },
-  purchase_batch_to_inventory: { label: '采购入库', color: 'text-green-600', icon: 'fa-solid fa-boxes-stacked', pillClass: 'bg-green-100 text-green-700' },
+  purchase_batch_to_inventory: { label: '采购入库', color: 'text-green-600', icon: 'fa-solid fa-boxes-stacked', pillClass: 'bg-green-100 text-green-700',
+    summary: function (d) {
+      var parts = []
+      if (d.count) parts.push(d.count + '件')
+      return parts
+    },
+  },
   purchase_group_edit: { label: '购买组编辑', color: 'text-blue-600', icon: 'fa-solid fa-diagram-project', pillClass: 'bg-blue-100 text-blue-700' },
   inventory_manual_add: { label: '库存新增', color: 'text-blue-600', icon: 'fa-solid fa-bolt', pillClass: 'bg-blue-100 text-blue-700' },
-  inventory_edit: { label: '库存编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700' },
+  inventory_edit: { label: '库存编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700',
+    summary: function (d) {
+      var parts = []
+      if (d.sid) parts.push('SID:' + d.sid)
+      if (d.affected > 1) parts.push('影响' + d.affected + '件')
+      if (d.changedFields && d.changedFields.length) parts.push('改' + d.changedFields.length + '字段')
+      return parts
+    },
+  },
   inventory_unlist: { label: '库存下架', color: 'text-amber-600', icon: 'fa-solid fa-arrow-down', pillClass: 'bg-amber-100 text-amber-700' },
-  inventory_delete: { label: '库存删除', color: 'text-red-600', icon: 'fa-solid fa-trash', pillClass: 'bg-red-100 text-red-700' },
+  inventory_delete: { label: '库存删除', color: 'text-red-600', icon: 'fa-solid fa-trash', pillClass: 'bg-red-100 text-red-700',
+    summary: function (d) {
+      var parts = []
+      if (d.sid) parts.push('SID:' + d.sid)
+      if (d.deletedCount > 1) parts.push('共' + d.deletedCount + '件')
+      return parts
+    },
+  },
   inventory_long_term: { label: '库存长线', color: 'text-purple-600', icon: 'fa-solid fa-infinity', pillClass: 'bg-purple-100 text-purple-700' },
   inventory_sales_sync: { label: '库存销售同步', color: 'text-green-600', icon: 'fa-solid fa-arrows-rotate', pillClass: 'bg-green-100 text-green-700' },
-  sales_submit: { label: '销售新增', color: 'text-green-600', icon: 'fa-solid fa-cash-register', pillClass: 'bg-green-100 text-green-700' },
-  sales_edit: { label: '销售编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700' },
+  sales_submit: { label: '销售新增', color: 'text-green-600', icon: 'fa-solid fa-cash-register', pillClass: 'bg-green-100 text-green-700',
+    summary: function (d) {
+      var parts = []
+      if (d.price) parts.push('售价:\xA5' + Number(d.price).toFixed(0))
+      return parts
+    },
+  },
+  sales_edit: { label: '销售编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700',
+    summary: function (d) {
+      var parts = []
+      if (d.sid) parts.push('SID:' + d.sid)
+      if (d.changedFields && d.changedFields.length) parts.push('改' + d.changedFields.length + '字段')
+      return parts
+    },
+  },
   sales_rollback: { label: '销售回滚', color: 'text-red-600', icon: 'fa-solid fa-rotate-left', pillClass: 'bg-red-100 text-red-700' },
-  finance_add_record: { label: '收支新增', color: 'text-indigo-600', icon: 'fa-solid fa-receipt', pillClass: 'bg-indigo-100 text-indigo-700' },
+  finance_add_record: { label: '收支新增', color: 'text-indigo-600', icon: 'fa-solid fa-receipt', pillClass: 'bg-indigo-100 text-indigo-700',
+    summary: function (d) {
+      var parts = []
+      if (d.type) parts.push(d.type === 'income' ? '收入' : '支出')
+      if (d.amount) parts.push('\xA5' + Number(d.amount).toFixed(0))
+      return parts
+    },
+  },
   finance_delete_record: { label: '收支删除', color: 'text-red-600', icon: 'fa-solid fa-trash', pillClass: 'bg-red-100 text-red-700' },
   finance_add_loan: { label: '借贷新增', color: 'text-yellow-600', icon: 'fa-solid fa-hand-holding-dollar', pillClass: 'bg-yellow-100 text-yellow-700' },
-  finance_update_record: { label: '收支编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700' },
+  finance_update_record: { label: '收支编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700',
+    summary: function (d) {
+      var parts = []
+      if (d.type) parts.push(d.type === 'income' ? '收入' : '支出')
+      if (d.amount) parts.push('\xA5' + Number(d.amount).toFixed(0))
+      return parts
+    },
+  },
   finance_update_loan: { label: '借贷编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700' },
   finance_repaid: { label: '借贷归还', color: 'text-gray-600', icon: 'fa-solid fa-check', pillClass: 'bg-gray-100 text-gray-700' },
   finance_delete_loan: { label: '借贷删除', color: 'text-red-600', icon: 'fa-solid fa-trash', pillClass: 'bg-red-100 text-red-700' },
   payton: { label: "Payton's", color: 'text-teal-600', icon: 'fa-solid fa-wallet', pillClass: 'bg-teal-100 text-teal-700' },
-  payton_add_record: { label: "Payton's新增", color: 'text-teal-600', icon: 'fa-solid fa-wallet', pillClass: 'bg-teal-100 text-teal-700' },
-  payton_edit_record: { label: "Payton's编辑", color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700' },
+  payton_add_record: { label: "Payton's新增", color: 'text-teal-600', icon: 'fa-solid fa-wallet', pillClass: 'bg-teal-100 text-teal-700',
+    summary: function (d) {
+      var parts = []
+      if (d.type) parts.push(d.type === 'income' ? '收入' : '支出')
+      if (d.amount) parts.push('\xA5' + Number(d.amount).toFixed(0))
+      if (d.account) parts.push(d.account)
+      return parts
+    },
+  },
+  payton_edit_record: { label: "Payton's编辑", color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700',
+    summary: function (d) {
+      var parts = []
+      if (d.account) parts.push(d.account)
+      if (d.changedFields && d.changedFields.length) parts.push('改' + d.changedFields.length + '字段')
+      return parts
+    },
+  },
   payton_delete_record: { label: "Payton's删除", color: 'text-red-600', icon: 'fa-solid fa-trash', pillClass: 'bg-red-100 text-red-700' },
   payton_add_car: { label: "Payton's新增小车", color: 'text-green-600', icon: 'fa-solid fa-car', pillClass: 'bg-green-100 text-green-700' },
   payton_buy_car: { label: "Payton's买车", color: 'text-green-600', icon: 'fa-solid fa-car-side', pillClass: 'bg-green-100 text-green-700' },
@@ -101,7 +197,14 @@ const logTypeMeta = {
   payton_move_sell: { label: "Payton's移出售", color: 'text-orange-600', icon: 'fa-solid fa-arrow-right-arrow-left', pillClass: 'bg-orange-100 text-orange-700' },
   purchase_transfer_edit: { label: '采购转运编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen-to-square', pillClass: 'bg-blue-100 text-blue-700' },
   sales_unlist: { label: '销售下架', color: 'text-amber-600', icon: 'fa-solid fa-arrow-down', pillClass: 'bg-amber-100 text-amber-700' },
-  home_calc: { label: '计算器', color: 'text-blue-600', icon: 'fa-solid fa-calculator', pillClass: 'bg-blue-100 text-blue-700' },
+  home_calc: { label: '计算器', color: 'text-blue-600', icon: 'fa-solid fa-calculator', pillClass: 'bg-blue-100 text-blue-700',
+    summary: function (d) {
+      if (d.before !== undefined && d.after !== undefined) {
+        return ['\xA5' + Number(d.before).toFixed(0) + ' → \xA5' + Number(d.after).toFixed(0)]
+      }
+      return []
+    },
+  },
 }
 
 function getLogMeta(type) {
@@ -111,6 +214,7 @@ function getLogMeta(type) {
       color: 'text-gray-500',
       icon: 'fa-solid fa-circle-info',
       pillClass: 'bg-gray-100 text-gray-700',
+      summary: function () { return [] },
     }
   )
 }
@@ -124,23 +228,26 @@ function formatLogKey(key) {
 function openLogDetail(log) {
   selectedLog.value = log || null
   showLogDetailModal.value = true
+  showLogMeta.value = false
 }
 
 function formatLogDetailValue(value) {
   if (value === null || value === undefined || value === '') return '-'
   if (typeof value === 'object') {
-    try {
-      return JSON.stringify(value, null, 2)
-    } catch (_) {
-      return String(value)
-    }
+    return '[复杂数据，请查看上方明细]'
   }
   return String(value)
 }
 
 function getLogDetailEntries(detail) {
   if (!detail || typeof detail !== 'object') return []
-  return Object.entries(detail).filter(([key]) => key !== 'changes')
+  var userFields = ['sid', 'name', 'affected', 'deletedCount', 'count', 'totalItems', 'totalSids',
+    'batch', 'purchaseGroupId', 'paymentBatch', 'category', 'transferId', 'inStockDate']
+  return Object.entries(detail).filter(function (entry) {
+    var key = entry[0]
+    if (key === 'changes' || key === 'sidSummary' || key === 'deletedNames' || key === 'deletedItemIds' || key === 'changedFields' || key === 'itemId' || key === 'itemNames' || key === 'qty' || key === 'price' || key === 'cost' || key === 'profit' || key === 'amount' || key === 'account' || key === 'recordId' || key === 'loanId') return false
+    return userFields.indexOf(key) >= 0
+  })
 }
 
 function getLogModule(type) {
@@ -724,6 +831,40 @@ watch(
                 </div>
               </div>
             </template>
+            <!-- 商品清单（购买组新增） -->
+            <template v-if="selectedLog?.detail?.sidSummary && selectedLog.detail.sidSummary.length > 0">
+              <div class="bg-green-50 text-green-700 px-3 py-2 text-xs font-medium border-b border-green-100">商品清单</div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-xs">
+                  <thead>
+                    <tr class="bg-gray-50 text-gray-500">
+                      <th class="px-3 py-1.5 text-left font-medium">SID</th>
+                      <th class="px-3 py-1.5 text-left font-medium">名称</th>
+                      <th class="px-3 py-1.5 text-right font-medium">日元原价</th>
+                      <th class="px-3 py-1.5 text-center font-medium">件数</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(s, si) in selectedLog.detail.sidSummary" :key="si" class="border-b border-gray-50">
+                      <td class="px-3 py-1.5 text-gray-500 font-mono">{{ s.sid }}</td>
+                      <td class="px-3 py-1.5">{{ s.name }}</td>
+                      <td class="px-3 py-1.5 text-right">{{ s.originalPrice ? '\xA5' + s.originalPrice : '-' }}</td>
+                      <td class="px-3 py-1.5 text-center">{{ s.qty }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </template>
+
+            <!-- 删除清单 -->
+            <template v-if="selectedLog?.detail?.deletedNames && selectedLog.detail.deletedNames.length > 0">
+              <div class="bg-red-50 text-red-700 px-3 py-2 text-xs font-medium border-b border-red-100">
+                已删除 {{ selectedLog.detail.deletedCount || selectedLog.detail.deletedNames.length }} 件商品
+              </div>
+              <div class="px-3 py-2 text-xs text-gray-600">
+                {{ selectedLog.detail.deletedNames.join('、') }}
+              </div>
+            </template>
             <div
               v-for="([k, v]) in getLogDetailEntries(selectedLog.detail)"
               :key="k"
@@ -735,9 +876,17 @@ watch(
           </div>
           <div v-else class="text-gray-400">无详细字段</div>
         </div>
-        <div>
-          <div class="text-xs text-gray-500 mb-2">原始明细 JSON</div>
-          <pre class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-700 whitespace-pre-wrap break-all max-h-56 overflow-auto m-0">{{ getLogRawJson(selectedLog?.detail) }}</pre>
+        <!-- 数据追踪（默认折叠） -->
+        <div class="border-t border-gray-100 pt-3">
+          <button class="text-xs text-gray-400 hover:text-gray-600 w-full text-left" @click="showLogMeta = !showLogMeta">
+            <i :class="showLogMeta ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'" class="mr-1" />
+            数据追踪
+          </button>
+          <div v-if="showLogMeta" class="mt-2 text-xs text-gray-400 space-y-1">
+            <div>type: {{ selectedLog?.type || '-' }}</div>
+            <div>id: {{ selectedLog?.id || '-' }}</div>
+            <div>time: {{ selectedLog?.time || '-' }}</div>
+          </div>
         </div>
       </div>
       <div class="px-5 py-4 border-t border-gray-100 flex justify-end">

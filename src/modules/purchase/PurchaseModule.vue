@@ -9,7 +9,7 @@ import {
   generatePurchaseGroupMetadata,
 } from './usePurchase'
 import { calcItemCost, calcPreTransferCost, calcTransferCost } from '../../utils/calc'
-import { addOperationLog, saveToLocalStorage, state as store } from '../../data/store'
+import { addOperationLog, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
 
 const BRANDS = ['Hotwheels', 'MINIGT', 'TLV', 'Kyosho', 'Tomica', 'Matchbox', 'AR BOX', 'KingModel', 'Mortal', '其它']
 const PURCHASE_TABS = ['日淘', '美淘', '国内']
@@ -941,10 +941,13 @@ function submitAdd() {
         const sid = String(item?.sid || '').trim()
         if (!sid) return m
         if (!m.has(sid)) {
+          var pd = item.purchaseDetails || {}
           m.set(sid, {
-            sid,
-            name: item?.name || '未命名商品',
+            sid: sid,
+            name: item.name || '未命名商品',
             qty: 0,
+            originalPrice: Number(pd.originalPrice || 0),
+            cost: Number(item.cost || 0),
           })
         }
         m.get(sid).qty += 1
@@ -1306,7 +1309,8 @@ function submitEditPurchaseGroup() {
     }
 
     saveToLocalStorage()
-    addOperationLog('purchase_group_edit', `编辑购买组`, {
+    var changedItemCount = Object.keys(groupEditChanges).length
+    addOperationLog('purchase_group_edit', '编辑购买组: ' + editGroupForm.purchaseGroupId + (changedItemCount > 0 ? ' ← ' + changedItemCount + '个商品变更' : ''), {
       category: editGroupForm.category,
       batch: editGroupForm.batch,
       count: lines.length,
@@ -1430,10 +1434,11 @@ function submitEditTransfer() {
     if (beforeRecord.date !== record.date) changes.日期 = { before: beforeRecord.date, after: record.date }
     if (Number(beforeRecord.totalRMB) !== record.totalRMB) changes.总费用RMB = { before: beforeRecord.totalRMB, after: record.totalRMB }
     if (beforeRecord.paymentAccount !== record.paymentAccount) changes.支付账户 = { before: beforeRecord.paymentAccount, after: record.paymentAccount }
-    addOperationLog('purchase_transfer_edit', `编辑转运记录: ${record.transferBatch || record.transferId}`, {
+    var changesText = formatChangesSummary(changes)
+    addOperationLog('purchase_transfer_edit', '编辑转运: ' + (record.transferBatch || record.transferId) + (changesText ? ' ← ' + changesText : ''), {
       transferId: record.transferId,
       totalRMB: record.totalRMB,
-      changes,
+      changes: changes,
     })
     showEditTransferModal.value = false
   } finally {
@@ -1517,10 +1522,11 @@ function submitEdit() {
   })
 
   saveToLocalStorage()
-  addOperationLog('purchase_edit', `编辑采购商品: ${item.name}`, {
+  var changesText = formatChangesSummary(changes)
+  addOperationLog('purchase_edit', '编辑采购商品: ' + item.name + (changesText ? ' ← ' + changesText : ''), {
     sid: item.sid,
     changedFields: Object.keys(changes),
-    changes,
+    changes: changes,
   })
   showEditModal.value = false
 }
