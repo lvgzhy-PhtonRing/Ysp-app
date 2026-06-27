@@ -282,7 +282,12 @@ export function deletePurchaseItem(itemId) {
   }
 
   saveToLocalStorage()
-  addOperationLog('purchase_delete', `删除采购商品: ${target?.name || itemId}`, { name: target?.name, sid: target?.sid, transferId })
+  addOperationLog('purchase_delete', '删除采购商品: ' + (target ? target.name : itemId), {
+    name: target ? target.name : '',
+    sid: target ? target.sid : '',
+    transferId: transferId,
+    itemId: itemId,
+  })
   return true
 }
 

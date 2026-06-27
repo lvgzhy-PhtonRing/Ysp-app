@@ -6,6 +6,8 @@ const APP_VERSION = '3.3.0'
 const CLOUD_SYNC_DEBOUNCE_MS = 800
 const MAX_UNDO_STEPS = 20
 const HISTORY_META_EXPIRE_MS = 3000
+var DELETE_MERGE_WINDOW_MS = 500
+var DELETE_LOG_TYPES = { inventory_delete: true, purchase_delete: true }
 
 // 操作日志：字段名→中文映射（编辑日志内联摘要用）
 export const FIELD_LABEL_MAP = {
@@ -563,7 +565,36 @@ export function setCloudLoadError(message = '') {
   saveUiStateToLocalStorage()
 }
 
-export function addOperationLog(type, message, detail = {}) {
+export function addOperationLog(type, message, detail) {
+  if (detail === undefined) detail = {}
+
+  // 删除聚合：同一SID在 500ms 内连续删除 → 合并为 1 条日志
+  if (DELETE_LOG_TYPES[type] && state.operationLogs.length > 0) {
+    var last = state.operationLogs[0]
+    var timeGap = Date.now() - new Date(last.time).getTime()
+    if (
+      last.type === type &&
+      last.detail && last.detail.sid === detail.sid &&
+      timeGap < DELETE_MERGE_WINDOW_MS
+    ) {
+      var prevCount = last.detail.deletedCount || 1
+      var newCount = prevCount + 1
+      var prevNames = Array.isArray(last.detail.deletedNames) ? last.detail.deletedNames : [last.detail.name || '']
+      var prevIds = Array.isArray(last.detail.deletedItemIds) ? last.detail.deletedItemIds : [last.detail.itemId]
+
+      last.detail = Object.assign({}, last.detail, {
+        deletedCount: newCount,
+        deletedItemIds: prevIds.concat([detail.itemId || detail.sid]),
+        deletedNames: prevNames.concat([detail.name || '']),
+      })
+      last.message = '删除商品: ' + (detail.name || '') + ' x' + newCount
+      last.time = new Date().toISOString()
+      last.id = Date.now() + Math.floor(Math.random() * 1000)
+      saveUiStateToLocalStorage()
+      return
+    }
+  }
+
   attachHistoryMetaFromOperationLog(type, message)
 
   state.operationLogs.unshift({

@@ -133,7 +133,11 @@ export function deleteItem(itemId) {
   const target = store.items[idx]
   store.items.splice(idx, 1)
   saveToLocalStorage()
-  addOperationLog('inventory_delete', `删除商品: ${target?.name || itemId}`, { name: target?.name, sid: target?.sid, itemId })
+  addOperationLog('inventory_delete', '删除商品: ' + (target ? target.name : itemId), {
+    name: target ? target.name : '',
+    sid: target ? target.sid : '',
+    itemId: itemId,
+  })
   return true
 }
 
