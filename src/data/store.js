@@ -7,6 +7,50 @@ const CLOUD_SYNC_DEBOUNCE_MS = 800
 const MAX_UNDO_STEPS = 20
 const HISTORY_META_EXPIRE_MS = 3000
 
+// 操作日志：字段名→中文映射（编辑日志内联摘要用）
+export const FIELD_LABEL_MAP = {
+  name: '名称', brand: '品牌', cost: '成本', category: '大类', batch: '批次',
+  amount: '金额', type: '类型', date: '日期', account: '账户', note: '备注',
+  isDefect: '品相', isLongTerm: '长线',
+  price: '售价', express: '运费', feeRate: '费率', deduction: '扣减',
+  totalRMB: '总RMB', paymentBatch: '支付批次', paymentAccount: '支付账户',
+  exchangeRate: '汇率', originalPrice: '日元原价', domesticShipping: '国内运费',
+  transferCoefficient: '分摊系数',
+  item: '项目', counterparty: '对方',
+  debt: '总负债', wechat: '微信余额', publicExp: '公摊支出',
+  unconfirmed: '未确认款', fund: '备用金',
+  website: '网站', discount: '折扣', fee: '手续费',
+  transferBatch: '转运批次', inStockDate: '入库日期',
+}
+
+function fmtBrief(v) {
+  if (v === null || v === undefined || v === '') return '-'
+  if (typeof v === 'number') return '¥' + Number(v).toFixed(0)
+  if (typeof v === 'boolean') return v ? '是' : '否'
+  return String(v).slice(0, 20)
+}
+
+/**
+ * 将 changes 对象转为可读摘要字符串
+ * @param {object} changes — { fieldName: { before, after } }
+ * @returns {string} 如 "名称, 成本:¥80→¥87"
+ */
+export function formatChangesSummary(changes) {
+  if (!changes || typeof changes !== 'object') return ''
+  var entries = Object.entries(changes)
+  if (entries.length === 0) return ''
+  var parts = entries.map(function (entry) {
+    var key = entry[0]
+    var val = entry[1]
+    var label = FIELD_LABEL_MAP[key] || key
+    if (val && typeof val === 'object' && 'before' in val && 'after' in val) {
+      return label + ':' + fmtBrief(val.before) + '→' + fmtBrief(val.after)
+    }
+    return label
+  })
+  return parts.join(', ')
+}
+
 const DEFAULT_CALC = {
   debt: 0,
   wechat: 0,
