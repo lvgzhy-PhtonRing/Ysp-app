@@ -56,6 +56,7 @@ const fileInputRef = ref(null)
 const showLogsModal = ref(false)
 const showLogDetailModal = ref(false)
 const selectedLog = ref(null)
+var showLogMeta = ref(false)
 const logTypeMeta = {
   app_import: { label: '系统导入', color: 'text-teal-600', icon: 'fa-solid fa-upload', pillClass: 'bg-teal-100 text-teal-700' },
   app_export: { label: '系统导出', color: 'text-blue-600', icon: 'fa-solid fa-download', pillClass: 'bg-blue-100 text-blue-700' },
@@ -227,23 +228,26 @@ function formatLogKey(key) {
 function openLogDetail(log) {
   selectedLog.value = log || null
   showLogDetailModal.value = true
+  showLogMeta.value = false
 }
 
 function formatLogDetailValue(value) {
   if (value === null || value === undefined || value === '') return '-'
   if (typeof value === 'object') {
-    try {
-      return JSON.stringify(value, null, 2)
-    } catch (_) {
-      return String(value)
-    }
+    return '[复杂数据，请查看上方明细]'
   }
   return String(value)
 }
 
 function getLogDetailEntries(detail) {
   if (!detail || typeof detail !== 'object') return []
-  return Object.entries(detail).filter(([key]) => key !== 'changes')
+  var userFields = ['sid', 'name', 'affected', 'deletedCount', 'count', 'totalItems', 'totalSids',
+    'batch', 'purchaseGroupId', 'paymentBatch', 'category', 'transferId', 'inStockDate']
+  return Object.entries(detail).filter(function (entry) {
+    var key = entry[0]
+    if (key === 'changes' || key === 'sidSummary' || key === 'deletedNames' || key === 'deletedItemIds' || key === 'changedFields' || key === 'itemId' || key === 'itemNames' || key === 'qty' || key === 'price' || key === 'cost' || key === 'profit' || key === 'amount' || key === 'account' || key === 'recordId' || key === 'loanId') return false
+    return userFields.indexOf(key) >= 0
+  })
 }
 
 function getLogModule(type) {
@@ -827,6 +831,40 @@ watch(
                 </div>
               </div>
             </template>
+            <!-- 商品清单（购买组新增） -->
+            <template v-if="selectedLog?.detail?.sidSummary && selectedLog.detail.sidSummary.length > 0">
+              <div class="bg-green-50 text-green-700 px-3 py-2 text-xs font-medium border-b border-green-100">商品清单</div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-xs">
+                  <thead>
+                    <tr class="bg-gray-50 text-gray-500">
+                      <th class="px-3 py-1.5 text-left font-medium">SID</th>
+                      <th class="px-3 py-1.5 text-left font-medium">名称</th>
+                      <th class="px-3 py-1.5 text-right font-medium">日元原价</th>
+                      <th class="px-3 py-1.5 text-center font-medium">件数</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(s, si) in selectedLog.detail.sidSummary" :key="si" class="border-b border-gray-50">
+                      <td class="px-3 py-1.5 text-gray-500 font-mono">{{ s.sid }}</td>
+                      <td class="px-3 py-1.5">{{ s.name }}</td>
+                      <td class="px-3 py-1.5 text-right">{{ s.originalPrice ? '\xA5' + s.originalPrice : '-' }}</td>
+                      <td class="px-3 py-1.5 text-center">{{ s.qty }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </template>
+
+            <!-- 删除清单 -->
+            <template v-if="selectedLog?.detail?.deletedNames && selectedLog.detail.deletedNames.length > 0">
+              <div class="bg-red-50 text-red-700 px-3 py-2 text-xs font-medium border-b border-red-100">
+                已删除 {{ selectedLog.detail.deletedCount || selectedLog.detail.deletedNames.length }} 件商品
+              </div>
+              <div class="px-3 py-2 text-xs text-gray-600">
+                {{ selectedLog.detail.deletedNames.join('、') }}
+              </div>
+            </template>
             <div
               v-for="([k, v]) in getLogDetailEntries(selectedLog.detail)"
               :key="k"
@@ -838,9 +876,17 @@ watch(
           </div>
           <div v-else class="text-gray-400">无详细字段</div>
         </div>
-        <div>
-          <div class="text-xs text-gray-500 mb-2">原始明细 JSON</div>
-          <pre class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-700 whitespace-pre-wrap break-all max-h-56 overflow-auto m-0">{{ getLogRawJson(selectedLog?.detail) }}</pre>
+        <!-- 数据追踪（默认折叠） -->
+        <div class="border-t border-gray-100 pt-3">
+          <button class="text-xs text-gray-400 hover:text-gray-600 w-full text-left" @click="showLogMeta = !showLogMeta">
+            <i :class="showLogMeta ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'" class="mr-1" />
+            数据追踪
+          </button>
+          <div v-if="showLogMeta" class="mt-2 text-xs text-gray-400 space-y-1">
+            <div>type: {{ selectedLog?.type || '-' }}</div>
+            <div>id: {{ selectedLog?.id || '-' }}</div>
+            <div>time: {{ selectedLog?.time || '-' }}</div>
+          </div>
         </div>
       </div>
       <div class="px-5 py-4 border-t border-gray-100 flex justify-end">
