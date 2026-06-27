@@ -66,33 +66,128 @@ const logTypeMeta = {
   cloud_signout: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-user-slash', pillClass: 'bg-cyan-100 text-cyan-700' },
   cloud_sync: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-arrows-rotate', pillClass: 'bg-cyan-100 text-cyan-700' },
   cloud_pull: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-cloud-arrow-down', pillClass: 'bg-cyan-100 text-cyan-700' },
-  purchase_add: { label: '采购新增', color: 'text-yellow-600', icon: 'fa-solid fa-plus', pillClass: 'bg-yellow-100 text-yellow-700' },
-  purchase_transfer: { label: '采购转运', color: 'text-amber-600', icon: 'fa-solid fa-truck', pillClass: 'bg-amber-100 text-amber-700' },
+  purchase_add: { label: '采购新增', color: 'text-yellow-600', icon: 'fa-solid fa-plus', pillClass: 'bg-yellow-100 text-yellow-700',
+    summary: function (d) {
+      var lines = []
+      if (d.totalItems) lines.push(d.totalItems + '件')
+      if (d.batch) lines.push('批次:' + d.batch)
+      if (d.paymentBatch) lines.push('支付:' + d.paymentBatch)
+      if (Array.isArray(d.sidSummary) && d.sidSummary.length > 0) {
+        lines.push('商品:' + d.sidSummary.map(function (s) { return s.sid + '(' + s.qty + '件)' }).join('、'))
+      }
+      return lines
+    },
+  },
+  purchase_transfer: { label: '采购转运', color: 'text-amber-600', icon: 'fa-solid fa-truck', pillClass: 'bg-amber-100 text-amber-700',
+    summary: function (d) {
+      var parts = []
+      if (d.count) parts.push(d.count + '件')
+      if (d.totalRMB) parts.push('总RMB:\xA5' + Number(d.totalRMB).toFixed(0))
+      return parts
+    },
+  },
   purchase_transfer_delete: { label: '采购转运', color: 'text-amber-600', icon: 'fa-solid fa-truck-ramp-box', pillClass: 'bg-amber-100 text-amber-700' },
-  purchase_edit: { label: '采购编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700' },
-  purchase_delete: { label: '采购删除', color: 'text-red-600', icon: 'fa-solid fa-trash', pillClass: 'bg-red-100 text-red-700' },
+  purchase_edit: { label: '采购编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700',
+    summary: function (d) {
+      var parts = []
+      if (d.sid) parts.push('SID:' + d.sid)
+      if (d.changedFields && d.changedFields.length) parts.push('改' + d.changedFields.length + '字段')
+      return parts
+    },
+  },
+  purchase_delete: { label: '采购删除', color: 'text-red-600', icon: 'fa-solid fa-trash', pillClass: 'bg-red-100 text-red-700',
+    summary: function (d) {
+      var parts = []
+      if (d.sid) parts.push('SID:' + d.sid)
+      if (d.deletedCount > 1) parts.push('共' + d.deletedCount + '件')
+      return parts
+    },
+  },
   purchase_to_inventory: { label: '采购入库', color: 'text-green-600', icon: 'fa-solid fa-box', pillClass: 'bg-green-100 text-green-700' },
-  purchase_batch_to_inventory: { label: '采购入库', color: 'text-green-600', icon: 'fa-solid fa-boxes-stacked', pillClass: 'bg-green-100 text-green-700' },
+  purchase_batch_to_inventory: { label: '采购入库', color: 'text-green-600', icon: 'fa-solid fa-boxes-stacked', pillClass: 'bg-green-100 text-green-700',
+    summary: function (d) {
+      var parts = []
+      if (d.count) parts.push(d.count + '件')
+      return parts
+    },
+  },
   purchase_group_edit: { label: '购买组编辑', color: 'text-blue-600', icon: 'fa-solid fa-diagram-project', pillClass: 'bg-blue-100 text-blue-700' },
   inventory_manual_add: { label: '库存新增', color: 'text-blue-600', icon: 'fa-solid fa-bolt', pillClass: 'bg-blue-100 text-blue-700' },
-  inventory_edit: { label: '库存编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700' },
+  inventory_edit: { label: '库存编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700',
+    summary: function (d) {
+      var parts = []
+      if (d.sid) parts.push('SID:' + d.sid)
+      if (d.affected > 1) parts.push('影响' + d.affected + '件')
+      if (d.changedFields && d.changedFields.length) parts.push('改' + d.changedFields.length + '字段')
+      return parts
+    },
+  },
   inventory_unlist: { label: '库存下架', color: 'text-amber-600', icon: 'fa-solid fa-arrow-down', pillClass: 'bg-amber-100 text-amber-700' },
-  inventory_delete: { label: '库存删除', color: 'text-red-600', icon: 'fa-solid fa-trash', pillClass: 'bg-red-100 text-red-700' },
+  inventory_delete: { label: '库存删除', color: 'text-red-600', icon: 'fa-solid fa-trash', pillClass: 'bg-red-100 text-red-700',
+    summary: function (d) {
+      var parts = []
+      if (d.sid) parts.push('SID:' + d.sid)
+      if (d.deletedCount > 1) parts.push('共' + d.deletedCount + '件')
+      return parts
+    },
+  },
   inventory_long_term: { label: '库存长线', color: 'text-purple-600', icon: 'fa-solid fa-infinity', pillClass: 'bg-purple-100 text-purple-700' },
   inventory_sales_sync: { label: '库存销售同步', color: 'text-green-600', icon: 'fa-solid fa-arrows-rotate', pillClass: 'bg-green-100 text-green-700' },
-  sales_submit: { label: '销售新增', color: 'text-green-600', icon: 'fa-solid fa-cash-register', pillClass: 'bg-green-100 text-green-700' },
-  sales_edit: { label: '销售编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700' },
+  sales_submit: { label: '销售新增', color: 'text-green-600', icon: 'fa-solid fa-cash-register', pillClass: 'bg-green-100 text-green-700',
+    summary: function (d) {
+      var parts = []
+      if (d.price) parts.push('售价:\xA5' + Number(d.price).toFixed(0))
+      return parts
+    },
+  },
+  sales_edit: { label: '销售编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700',
+    summary: function (d) {
+      var parts = []
+      if (d.sid) parts.push('SID:' + d.sid)
+      if (d.changedFields && d.changedFields.length) parts.push('改' + d.changedFields.length + '字段')
+      return parts
+    },
+  },
   sales_rollback: { label: '销售回滚', color: 'text-red-600', icon: 'fa-solid fa-rotate-left', pillClass: 'bg-red-100 text-red-700' },
-  finance_add_record: { label: '收支新增', color: 'text-indigo-600', icon: 'fa-solid fa-receipt', pillClass: 'bg-indigo-100 text-indigo-700' },
+  finance_add_record: { label: '收支新增', color: 'text-indigo-600', icon: 'fa-solid fa-receipt', pillClass: 'bg-indigo-100 text-indigo-700',
+    summary: function (d) {
+      var parts = []
+      if (d.type) parts.push(d.type === 'income' ? '收入' : '支出')
+      if (d.amount) parts.push('\xA5' + Number(d.amount).toFixed(0))
+      return parts
+    },
+  },
   finance_delete_record: { label: '收支删除', color: 'text-red-600', icon: 'fa-solid fa-trash', pillClass: 'bg-red-100 text-red-700' },
   finance_add_loan: { label: '借贷新增', color: 'text-yellow-600', icon: 'fa-solid fa-hand-holding-dollar', pillClass: 'bg-yellow-100 text-yellow-700' },
-  finance_update_record: { label: '收支编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700' },
+  finance_update_record: { label: '收支编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700',
+    summary: function (d) {
+      var parts = []
+      if (d.type) parts.push(d.type === 'income' ? '收入' : '支出')
+      if (d.amount) parts.push('\xA5' + Number(d.amount).toFixed(0))
+      return parts
+    },
+  },
   finance_update_loan: { label: '借贷编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700' },
   finance_repaid: { label: '借贷归还', color: 'text-gray-600', icon: 'fa-solid fa-check', pillClass: 'bg-gray-100 text-gray-700' },
   finance_delete_loan: { label: '借贷删除', color: 'text-red-600', icon: 'fa-solid fa-trash', pillClass: 'bg-red-100 text-red-700' },
   payton: { label: "Payton's", color: 'text-teal-600', icon: 'fa-solid fa-wallet', pillClass: 'bg-teal-100 text-teal-700' },
-  payton_add_record: { label: "Payton's新增", color: 'text-teal-600', icon: 'fa-solid fa-wallet', pillClass: 'bg-teal-100 text-teal-700' },
-  payton_edit_record: { label: "Payton's编辑", color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700' },
+  payton_add_record: { label: "Payton's新增", color: 'text-teal-600', icon: 'fa-solid fa-wallet', pillClass: 'bg-teal-100 text-teal-700',
+    summary: function (d) {
+      var parts = []
+      if (d.type) parts.push(d.type === 'income' ? '收入' : '支出')
+      if (d.amount) parts.push('\xA5' + Number(d.amount).toFixed(0))
+      if (d.account) parts.push(d.account)
+      return parts
+    },
+  },
+  payton_edit_record: { label: "Payton's编辑", color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700',
+    summary: function (d) {
+      var parts = []
+      if (d.account) parts.push(d.account)
+      if (d.changedFields && d.changedFields.length) parts.push('改' + d.changedFields.length + '字段')
+      return parts
+    },
+  },
   payton_delete_record: { label: "Payton's删除", color: 'text-red-600', icon: 'fa-solid fa-trash', pillClass: 'bg-red-100 text-red-700' },
   payton_add_car: { label: "Payton's新增小车", color: 'text-green-600', icon: 'fa-solid fa-car', pillClass: 'bg-green-100 text-green-700' },
   payton_buy_car: { label: "Payton's买车", color: 'text-green-600', icon: 'fa-solid fa-car-side', pillClass: 'bg-green-100 text-green-700' },
@@ -101,7 +196,14 @@ const logTypeMeta = {
   payton_move_sell: { label: "Payton's移出售", color: 'text-orange-600', icon: 'fa-solid fa-arrow-right-arrow-left', pillClass: 'bg-orange-100 text-orange-700' },
   purchase_transfer_edit: { label: '采购转运编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen-to-square', pillClass: 'bg-blue-100 text-blue-700' },
   sales_unlist: { label: '销售下架', color: 'text-amber-600', icon: 'fa-solid fa-arrow-down', pillClass: 'bg-amber-100 text-amber-700' },
-  home_calc: { label: '计算器', color: 'text-blue-600', icon: 'fa-solid fa-calculator', pillClass: 'bg-blue-100 text-blue-700' },
+  home_calc: { label: '计算器', color: 'text-blue-600', icon: 'fa-solid fa-calculator', pillClass: 'bg-blue-100 text-blue-700',
+    summary: function (d) {
+      if (d.before !== undefined && d.after !== undefined) {
+        return ['\xA5' + Number(d.before).toFixed(0) + ' → \xA5' + Number(d.after).toFixed(0)]
+      }
+      return []
+    },
+  },
 }
 
 function getLogMeta(type) {
@@ -111,6 +213,7 @@ function getLogMeta(type) {
       color: 'text-gray-500',
       icon: 'fa-solid fa-circle-info',
       pillClass: 'bg-gray-100 text-gray-700',
+      summary: function () { return [] },
     }
   )
 }
