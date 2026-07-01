@@ -267,6 +267,42 @@ export async function saveCloudState(rawConfig = {}, payload = {}, options = {})
   }
 }
 
+/**
+ * 读取 car 程序写入的基金余额（公开数据，无需登录）
+ * car 程序 stateId="car"，payload 结构: { balance: number, updatedAt: ISO string }
+ */
+export async function fetchCarFundBalance(rawConfig = {}) {
+  const config = normalizeCloudConfig(rawConfig)
+  // 复用 buildStateQuery 的查询逻辑，stateId 设为 "car"
+  const carConfig = { ...config, stateId: 'car' }
+  if (!config.supabaseUrl || !config.supabaseAnonKey) return null
+
+  const params = new URLSearchParams()
+  params.set('id', 'eq.car')
+  params.set('select', 'payload,updated_at')
+  params.set('limit', '1')
+  const target = `${config.supabaseUrl}/rest/v1/ysp_state?${params.toString()}`
+
+  const resp = await fetch(target, {
+    method: 'GET',
+    headers: {
+      apikey: config.supabaseAnonKey,
+      Authorization: `Bearer ${config.supabaseAnonKey}`,
+    },
+    cache: 'no-store',
+  })
+
+  if (!resp.ok) return null
+  const data = await resp.json()
+  const rows = Array.isArray(data) ? data : []
+  if (!rows.length) return null
+
+  return {
+    balance: Number(rows[0]?.payload?.balance || 0),
+    updatedAt: rows[0]?.updated_at || '',
+  }
+}
+
 export async function readCloudConfigFromPublic(basePath = '/') {
   const safeBasePath = String(basePath || '/')
   const path = safeBasePath.endsWith('/') ? safeBasePath : `${safeBasePath}/`

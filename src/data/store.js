@@ -2,7 +2,7 @@
 
 import { reactive } from 'vue'
 
-const APP_VERSION = '3.3.1'
+const APP_VERSION = '3.4.0'
 const CLOUD_SYNC_DEBOUNCE_MS = 800
 const MAX_UNDO_STEPS = 20
 const HISTORY_META_EXPIRE_MS = 3000
@@ -126,9 +126,6 @@ export const state = reactive({
   financeRecords: [],
   loanRecords: [],
   transfers: [],
-  paytonAccounts: {},
-  paytonRecords: [],
-  paytonInventory: [],
   rushcar: clone(DEFAULT_RUSHCAR),
   version: APP_VERSION,
   cloudSettings: {
@@ -354,10 +351,6 @@ export function loadData(jsonObject = {}) {
 
   replaceArray(state.transfers, data.transfers)
 
-  replaceObject(state.paytonAccounts, data.payton?.accounts || {})
-  replaceArray(state.paytonRecords, data.payton?.records)
-  replaceArray(state.paytonInventory, data.payton?.inventory)
-
   replaceObject(state.rushcar, normalizeRushCarData(data.rushcar))
 
   // 侧边栏版本固定显示程序版本，不受导入 JSON 中 version 字段影响
@@ -380,11 +373,6 @@ export function exportData() {
       loans: clone(state.loanRecords),
     },
     transfers: clone(state.transfers),
-    payton: {
-      accounts: clone(state.paytonAccounts),
-      records: clone(state.paytonRecords),
-      inventory: clone(state.paytonInventory),
-    },
     rushcar: normalizeRushCarData(state.rushcar),
     version: state.version,
     snapshots: state.snapshots ? clone(state.snapshots) : [],
@@ -435,9 +423,6 @@ function takeDailySnapshot() {
     purchase: {
       totalCost: purchaseItems.reduce((s, i) => s + Number(i?.cost || 0), 0),
       count: purchaseItems.length,
-    },
-    payton: {
-      yebBalance: Number(state.paytonAccounts?.yeb?.balance || 0),
     },
   }
 

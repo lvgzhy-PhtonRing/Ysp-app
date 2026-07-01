@@ -8,7 +8,6 @@ import InventoryAgingModule from './modules/inventory/InventoryAgingModule.vue'
 import PurchaseModule from './modules/purchase/PurchaseModule.vue'
 import SalesModule from './modules/sales/SalesModule.vue'
 import FinanceModule from './modules/finance/FinanceModule.vue'
-import PaytonModule from './modules/payton/PaytonModule.vue'
 import RushCarPrototypeModule from './modules/rushcar/RushCarPrototypeModule.vue'
 import {
   addOperationLog,
@@ -48,7 +47,6 @@ const tabs = [
   { id: 'purchase', name: '采购管理' },
   { id: 'finance', name: '公共收支' },
   { id: 'rushcar', name: '美淘记录' },
-  { id: 'payton', name: "Payton's基金" },
 ]
 
 const currentTab = ref('home')
@@ -172,30 +170,6 @@ const logTypeMeta = {
   finance_update_loan: { label: '借贷编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700' },
   finance_repaid: { label: '借贷归还', color: 'text-gray-600', icon: 'fa-solid fa-check', pillClass: 'bg-gray-100 text-gray-700' },
   finance_delete_loan: { label: '借贷删除', color: 'text-red-600', icon: 'fa-solid fa-trash', pillClass: 'bg-red-100 text-red-700' },
-  payton: { label: "Payton's", color: 'text-teal-600', icon: 'fa-solid fa-wallet', pillClass: 'bg-teal-100 text-teal-700' },
-  payton_add_record: { label: "Payton's新增", color: 'text-teal-600', icon: 'fa-solid fa-wallet', pillClass: 'bg-teal-100 text-teal-700',
-    summary: function (d) {
-      var parts = []
-      if (d.type) parts.push(d.type === 'income' ? '收入' : '支出')
-      if (d.amount) parts.push('\xA5' + Number(d.amount).toFixed(0))
-      if (d.account) parts.push(d.account)
-      return parts
-    },
-  },
-  payton_edit_record: { label: "Payton's编辑", color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700',
-    summary: function (d) {
-      var parts = []
-      if (d.account) parts.push(d.account)
-      if (d.changedFields && d.changedFields.length) parts.push('改' + d.changedFields.length + '字段')
-      return parts
-    },
-  },
-  payton_delete_record: { label: "Payton's删除", color: 'text-red-600', icon: 'fa-solid fa-trash', pillClass: 'bg-red-100 text-red-700' },
-  payton_add_car: { label: "Payton's新增小车", color: 'text-green-600', icon: 'fa-solid fa-car', pillClass: 'bg-green-100 text-green-700' },
-  payton_buy_car: { label: "Payton's买车", color: 'text-green-600', icon: 'fa-solid fa-car-side', pillClass: 'bg-green-100 text-green-700' },
-  payton_sell_car: { label: "Payton's卖车", color: 'text-purple-600', icon: 'fa-solid fa-coins', pillClass: 'bg-purple-100 text-purple-700' },
-  payton_move_keep: { label: "Payton's转自留", color: 'text-indigo-600', icon: 'fa-solid fa-box-archive', pillClass: 'bg-indigo-100 text-indigo-700' },
-  payton_move_sell: { label: "Payton's移出售", color: 'text-orange-600', icon: 'fa-solid fa-arrow-right-arrow-left', pillClass: 'bg-orange-100 text-orange-700' },
   purchase_transfer_edit: { label: '采购转运编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen-to-square', pillClass: 'bg-blue-100 text-blue-700' },
   sales_unlist: { label: '销售下架', color: 'text-amber-600', icon: 'fa-solid fa-arrow-down', pillClass: 'bg-amber-100 text-amber-700' },
   home_calc: { label: '计算器', color: 'text-blue-600', icon: 'fa-solid fa-calculator', pillClass: 'bg-blue-100 text-blue-700',
@@ -269,7 +243,6 @@ function getLogModule(type) {
     inventory: '库存',
     sales: '销售',
     finance: '公共收支',
-    payton: "Payton's",
     home: '数据透视',
   }
   return map[mod] || mod
@@ -673,7 +646,6 @@ watch(
         <PurchaseModule v-else-if="currentTab === 'purchase'" />
         <FinanceModule v-else-if="currentTab === 'finance'" />
         <RushCarPrototypeModule v-else-if="currentTab === 'rushcar'" :source-data="store" />
-        <PaytonModule v-else-if="currentTab === 'payton'" />
 
         <div
           v-else

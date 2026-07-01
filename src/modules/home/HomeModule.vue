@@ -1,7 +1,8 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import GlassModal from '../../components/GlassModal.vue'
 import { addOperationLog, FIELD_LABEL_MAP, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
+import { fetchCarFundBalance } from '../../services/cloudStore'
 import {
   getBatchReturnStats,
   getLast3MonthsStats,
@@ -51,7 +52,24 @@ const financePublicExpense = computed(() =>
     .reduce((s, r) => s + Number(r?.amount || 0), 0),
 )
 
-const paytonYebBalance = computed(() => Number(store.paytonAccounts?.yeb?.balance || 0))
+const carFundBalance = ref(0)
+const carFundUpdatedAt = ref('')
+
+async function refreshCarFundBalance() {
+  try {
+    const data = await fetchCarFundBalance(store.cloudSettings)
+    if (data) {
+      carFundBalance.value = data.balance
+      carFundUpdatedAt.value = data.updatedAt
+    }
+  } catch (_) {
+    // 基金数据读取失败时保持旧值
+  }
+}
+
+onMounted(() => {
+  refreshCarFundBalance()
+})
 
 const alipayBalance = computed(() => {
   return (
@@ -61,7 +79,7 @@ const alipayBalance = computed(() => {
     inventoryValue.value -
     financePublicExpense.value -
     Number(store.calc.unconfirmed || 0) +
-    paytonYebBalance.value -
+    carFundBalance.value -
     purchaseStats.value.totalCost
   )
 })
@@ -246,7 +264,11 @@ function statusText(status) {
           <label class="text-xs text-gray-500">未确认交易</label>
           <input type="number" v-model.number="store.calc.unconfirmed" class="apple-input mt-1" @focus="onCalcFocus('unconfirmed')" @change="persistCalc('unconfirmed')" />
         </div>
-        <div><label class="text-xs text-gray-500">Payton's基金</label><div class="mt-2 text-lg font-bold text-gray-600">{{ fmtMoney(paytonYebBalance) }}</div></div>
+        <div>
+          <label class="text-xs text-gray-500">Payton's基金</label>
+          <div class="mt-2 text-lg font-bold text-gray-600">{{ fmtMoney(carFundBalance) }}</div>
+          <div v-if="carFundUpdatedAt" class="text-[10px] text-gray-400 mt-0.5">更新于 {{ new Date(carFundUpdatedAt).toLocaleString() }}</div>
+        </div>
       </div>
       <div class="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-blue-50">
         <div class="text-sm font-medium text-gray-700">应有支付宝余额</div>

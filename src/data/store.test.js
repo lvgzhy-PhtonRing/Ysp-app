@@ -41,8 +41,5 @@ describe('data store', () => {
 
     // transfers
     expect(output.transfers.length).toBe(original.transfers.length)
-
-    // payton.inventory
-    expect(output.payton.inventory.length).toBe(original.payton.inventory.length)
   })
 })

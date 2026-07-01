@@ -199,25 +199,7 @@ function run() {
   const transferDiffs = deepStrictEqualArrayByIndex(oldData.transfers || [], newData.transfers || [], 'transfers')
   report('transfers 对比', transferDiffs.length === 0, transferDiffs)
 
-  // 6) payton.records 长度
-  const oldPaytonRecords = oldData.payton?.records || []
-  const newPaytonRecords = newData.payton?.records || []
-  report(
-    'payton.records 长度',
-    oldPaytonRecords.length === newPaytonRecords.length,
-    [`old=${oldPaytonRecords.length}, new=${newPaytonRecords.length}`],
-  )
-
-  // 7) payton.inventory 长度
-  const oldPaytonInventory = oldData.payton?.inventory || []
-  const newPaytonInventory = newData.payton?.inventory || []
-  report(
-    'payton.inventory 长度',
-    oldPaytonInventory.length === newPaytonInventory.length,
-    [`old=${oldPaytonInventory.length}, new=${newPaytonInventory.length}`],
-  )
-
-  // 8) calc 字段
+  // 6) calc 字段
   const calcDiffs = []
   const calcKeys = new Set([...Object.keys(oldData.calc || {}), ...Object.keys(newData.calc || {})])
   calcKeys.forEach((k) => {

@@ -39,14 +39,10 @@ function getTabStyle(tab, currentTab) {
   }
 
   if (currentTab === tab.id) {
-    return tab.id === 'payton'
-      ? 'background:#dbeafe;color:#1d4ed8;'
-      : 'background:#eff6ff;color:#0066cc;'
+    return 'background:#eff6ff;color:#0066cc;'
   }
 
-  return tab.id === 'payton'
-    ? 'color:#2563eb;'
-    : 'color:#4b5563;'
+  return 'color:#4b5563;'
 }
 
 function handleSelect(tab) {
@@ -72,7 +68,7 @@ function handleSelect(tab) {
           :disabled="isTabDisabled(tab)"
           @click="handleSelect(tab)"
         >
-          <i v-if="tab.id !== 'payton'" :class="(iconMap[tab.id] || 'fa-solid fa-circle') + ' w-5 text-center'" />
+          <i :class="(iconMap[tab.id] || 'fa-solid fa-circle') + ' w-5 text-center'" />
           {{ tab.name }}
         </button>
       </nav>
