@@ -58,7 +58,7 @@ const actualBalance = computed(() => alipayBalance.value - (store.calc.forwarder
 
 async function refreshCarFundBalance() {
   try {
-    const data = await fetchCarFundBalance(store.cloudSettings)
+    const data = await fetchCarFundBalance()
     if (data) {
       carFundBalance.value = data.balance
       carFundUpdatedAt.value = data.updatedAt
