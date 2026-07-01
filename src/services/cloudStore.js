@@ -292,7 +292,7 @@ export async function fetchCarFundBalance() {
     if (!rows.length) return null
     return {
       balance: Number(rows[0]?.payload?.balance || 0),
-      updatedAt: rows[0]?.updated_at || '',
+      updatedAt: rows[0]?.payload?.updatedAt || rows[0]?.updated_at || '',
     }
   } catch (_) {
     return null
