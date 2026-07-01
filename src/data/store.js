@@ -59,6 +59,8 @@ const DEFAULT_CALC = {
   publicExp: 0,
   unconfirmed: 0,
   fund: 0,
+  forwarderBalance: 0,
+  watchBalance: 0,
 }
 
 const DEFAULT_RUSHCAR = {
@@ -343,6 +345,14 @@ export function loadData(jsonObject = {}) {
       Object.prototype.hasOwnProperty.call(incomingCalc, 'fund')
         ? incomingCalc.fund
         : DEFAULT_CALC.fund,
+    forwarderBalance:
+      Object.prototype.hasOwnProperty.call(incomingCalc, 'forwarderBalance')
+        ? incomingCalc.forwarderBalance
+        : DEFAULT_CALC.forwarderBalance,
+    watchBalance:
+      Object.prototype.hasOwnProperty.call(incomingCalc, 'watchBalance')
+        ? incomingCalc.watchBalance
+        : DEFAULT_CALC.watchBalance,
   }
   replaceObject(state.calc, nextCalc)
 

@@ -37,11 +37,7 @@ function getTabStyle(tab, currentTab) {
   if (isTabDisabled(tab)) {
     return 'color:#9ca3af;background:#f8fafc;cursor:not-allowed;'
   }
-
-  if (currentTab === tab.id) {
-    return 'background:#eff6ff;color:#0066cc;'
-  }
-
+  if (currentTab === tab.id) return 'background:#eff6ff;color:#0066cc;'
   return 'color:#4b5563;'
 }
 

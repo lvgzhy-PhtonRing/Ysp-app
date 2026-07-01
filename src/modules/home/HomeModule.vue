@@ -54,6 +54,7 @@ const financePublicExpense = computed(() =>
 
 const carFundBalance = ref(0)
 const carFundUpdatedAt = ref('')
+const actualBalance = computed(() => alipayBalance.value - (store.calc.forwarderBalance || 0) - (store.calc.watchBalance || 0))
 
 async function refreshCarFundBalance() {
   try {
@@ -82,6 +83,10 @@ const alipayBalance = computed(() => {
     carFundBalance.value -
     purchaseStats.value.totalCost
   )
+})
+
+const alipayFormula = computed(() => {
+  return `挖财总负债(${fmtMoney(store.calc.debt)}) + 借贷余额(${fmtMoney(financeLoanBalance.value)}) + 总实盈利润(${fmtMoney(totalActualProfit.value)}) - 库存总货值(${fmtMoney(inventoryValue.value)}) - 公共支出(${fmtMoney(financePublicExpense.value)}) - 未确认交易(${fmtMoney(store.calc.unconfirmed)}) + Payton's基金(${fmtMoney(carFundBalance.value)}) - 采购中金额(${fmtMoney(purchaseStats.value.totalCost)}) = ${fmtMoney(alipayBalance.value)}`
 })
 
 const searchKeyword = ref('')
@@ -270,9 +275,20 @@ function statusText(status) {
           <div v-if="carFundUpdatedAt" class="text-[10px] text-gray-400 mt-0.5">更新于 {{ new Date(carFundUpdatedAt).toLocaleString() }}</div>
         </div>
       </div>
-      <div class="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-blue-50">
-        <div class="text-sm font-medium text-gray-700">应有支付宝余额</div>
-        <div class="text-2xl font-bold text-primary">{{ fmtMoney(alipayBalance) }}</div>
+      <div class="bg-white p-4 rounded-xl shadow-sm border border-blue-50">
+        <div class="flex items-center justify-between">
+          <div class="text-sm font-bold text-gray-700">应有支付宝余额</div>
+          <div class="text-2xl font-bold text-primary">{{ fmtMoney(alipayBalance) }}</div>
+        </div>
+        <div class="mt-1 text-[11px] text-gray-400 leading-relaxed">{{ alipayFormula }}</div>
+      </div>
+      <div class="flex items-center gap-2 mt-2 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-100 text-xs text-gray-400">
+        <span class="shrink-0">应有支付宝余额<span class="font-medium text-gray-600">{{ fmtMoney(alipayBalance) }}</span>元中包括</span>
+        <label class="shrink-0">转运公司余额</label>
+        <input type="number" v-model.number="store.calc.forwarderBalance" class="w-16 px-1.5 py-0.5 border border-gray-200 rounded text-xs" @change="saveToLocalStorage()" />
+        <label class="shrink-0">皮蛋手表账户余额</label>
+        <input type="number" v-model.number="store.calc.watchBalance" class="w-16 px-1.5 py-0.5 border border-gray-200 rounded text-xs" @change="saveToLocalStorage()" />
+        <span class="shrink-0">故实际<span class="font-semibold text-gray-700">{{ fmtMoney(actualBalance) }}</span>元</span>
       </div>
     </div>
 

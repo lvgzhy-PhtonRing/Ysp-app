@@ -41,5 +41,6 @@ describe('data store', () => {
 
     // transfers
     expect(output.transfers.length).toBe(original.transfers.length)
+
   })
 })
