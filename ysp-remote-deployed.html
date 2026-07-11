@@ -433,7 +433,7 @@ input, select { font-family: inherit; }
       <!-- Page: 财务 -->
       <div class="page" id="page-finance">
         <div class="page-header">
-          <div class="page-title">收支 / Payton</div>
+          <div class="page-title">收支</div>
           <div class="page-subtitle" id="finance-subtitle"></div>
         </div>
         <div id="finance-content"></div>
@@ -465,7 +465,7 @@ input, select { font-family: inherit; }
 // ===== Global State =====
 const APP = {
   data: null,       // raw JSON data
-  calc: {},         // editable calc fields (debt, unconfirmed)
+  calc: {},         // editable calc fields (debt, unconfirmed, forwarderBalance, watchBalance)
   // UI state
   currentPage: 'home',
   invViewMode: 'batch',       // all/category/batch/brand
@@ -476,10 +476,11 @@ const APP = {
   purchaseTab: '日淘',        // 日淘/美淘/国内
   purchaseTransferTab: 'purchase', // purchase/transfer
   collapsedGroups: {},        // key -> bool
-  financeTab: 'records',      // records/loans/payton
-  paytonTab: 'records',       // records/inventory
+  financeTab: 'records',      // records/loans
   searchKeyword: '',
   batchStatsCollapsed: true,
+  carFundBalance: 0,          // Payton's基金余额（云端读取）
+  carFundUpdatedAt: '',       // 基金余额更新时间
 };
 
 // ===== Utility =====
@@ -638,17 +639,14 @@ function initApp(json) {
   APP.data.finance.records = APP.data.finance.records || [];
   APP.data.finance.loans = APP.data.finance.loans || [];
   APP.data.transfers = APP.data.transfers || [];
-  APP.data.payton = APP.data.payton || {};
-  APP.data.payton.accounts = APP.data.payton.accounts || {};
-  APP.data.payton.records = APP.data.payton.records || [];
-  APP.data.payton.inventory = APP.data.payton.inventory || [];
-  APP.calc = Object.assign({ debt:0, wechat:0, publicExp:0, unconfirmed:0, fund:0 }, APP.data.calc || {});
+  APP.calc = Object.assign({ debt:0, wechat:0, publicExp:0, unconfirmed:0, fund:0, forwarderBalance:0, watchBalance:0 }, APP.data.calc || {});
 
   document.getElementById('load-screen').style.display = 'none';
   const mainApp = document.getElementById('main-app');
   mainApp.style.display = 'flex';
 
   renderAll();
+  fetchCarFundBalance().then(() => renderHome());
 }
 
 // ===== Page Navigation =====
@@ -1615,48 +1613,12 @@ function getLoanStatus(g) {
   return { text:'未还', color:'#ff3b30' };
 }
 
-function getPaytonStats() {
-  const accounts = APP.data.payton.accounts;
-  const records = APP.data.payton.records;
-  const inventory = APP.data.payton.inventory;
-  const totalBalance = Object.values(accounts).reduce((s,a)=>s+toNum(a.balance),0);
-  const inventoryValue = inventory.reduce((s,c)=>s+toNum(c.totalCost),0);
-  const totalModels = inventory.length;
-  const totalCars = inventory.reduce((s,c)=>s+toNum(c.qty),0);
-  const sellPool = inventory.filter(c=>String(c.pool||'sell')==='sell');
-  const keepPool = inventory.filter(c=>String(c.pool||'sell')==='keep');
-  const poolStats = list => ({
-    models:list.length,
-    cars:list.reduce((s,c)=>s+toNum(c.qty),0),
-    value:list.reduce((s,c)=>s+toNum(c.totalCost),0),
-  });
-  const totalIncome = records.reduce((s,r)=>r.type==='income'?s+toNum(r.amount):s,0);
-  const totalExpense = records.reduce((s,r)=>r.type==='expense'?s+toNum(r.amount):s,0);
-  return { totalBalance, inventoryValue, totalModels, totalCars, totalIncome, totalExpense,
-    sellStats:poolStats(sellPool), keepStats:poolStats(keepPool) };
-}
-
-function groupPaytonRecordsByMonth(records) {
-  const map = new Map();
-  const sorted = records.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
-  sorted.forEach(r => {
-    const month = String(r.date||'').slice(0,7) || '未知月份';
-    if (!map.has(month)) map.set(month, { month, records:[], income:0, expense:0 });
-    const g = map.get(month);
-    g.records.push(r);
-    if (r.type==='income') g.income += toNum(r.amount);
-    else if (r.type==='expense') g.expense += toNum(r.amount);
-  });
-  return Array.from(map.values());
-}
-
 function renderFinance() {
   const finTab = APP.financeTab;
   const fStats = getFinanceStats();
-  const pStats = getPaytonStats();
 
   document.getElementById('finance-subtitle').textContent =
-    `收支净额 ¥${fmtMoney(fStats.netBalance)} · Payton ¥${fmtMoney(pStats.totalBalance)}`;
+    `收支净额 ¥${fmtMoney(fStats.netBalance)}`;
 
   let html = '';
 
@@ -1664,7 +1626,6 @@ function renderFinance() {
   html += `<div class="view-tabs" style="margin-top:10px">
     <button class="view-tab ${finTab==='records'?'active':''}" onclick="setFinanceTab('records')">公共收支</button>
     <button class="view-tab ${finTab==='loans'?'active':''}" onclick="setFinanceTab('loans')">借贷关系</button>
-    <button class="view-tab ${finTab==='payton'?'active':''}" onclick="setFinanceTab('payton')">Payton基金</button>
   </div>`;
 
   if (finTab === 'records') {
@@ -1733,117 +1694,10 @@ function renderFinance() {
       });
     }
 
-  } else {
-    // Payton
-    const paytonTab = APP.paytonTab;
-    html += `<div class="view-tabs">
-      <button class="view-tab ${paytonTab==='records'?'active':''}" onclick="setPaytonTab('records')">流水记录</button>
-      <button class="view-tab ${paytonTab==='inventory'?'active':''}" onclick="setPaytonTab('inventory')">小车库存</button>
-    </div>`;
-
-    // Account cards
-    html += `<div class="account-cards">`;
-    Object.entries(APP.data.payton.accounts).forEach(([key, acc]) => {
-      const bal = toNum(acc.balance);
-      html += `<div class="account-card">
-        <div class="account-name">${esc(acc.name||key)}</div>
-        <div class="account-balance ${bal>=0?'pos':'neg'}">¥${fmtMoney(bal)}</div>
-      </div>`;
-    });
-    html += `</div>`;
-
-    // Stats
-    html += `<div class="stats-row" style="grid-template-columns:repeat(2,1fr)">
-      <div class="stat-card"><div class="stat-val blue">${fmtMoney(pStats.totalBalance)}</div><div class="stat-label">账户总余额</div></div>
-      <div class="stat-card"><div class="stat-val orange">${fmtMoney(pStats.inventoryValue)}</div><div class="stat-label">库存总价值</div></div>
-      <div class="stat-card"><div class="stat-val green">${fmtMoney(pStats.totalIncome)}</div><div class="stat-label">总收入</div></div>
-      <div class="stat-card"><div class="stat-val red">${fmtMoney(pStats.totalExpense)}</div><div class="stat-label">总支出</div></div>
-    </div>`;
-
-    if (paytonTab === 'records') {
-      const monthGroups = groupPaytonRecordsByMonth(APP.data.payton.records);
-      if (monthGroups.length === 0) {
-        html += `<div class="empty-state">暂无流水记录</div>`;
-      } else {
-        monthGroups.forEach(mg => {
-          const mgKey = 'payton_month_' + mg.month;
-          const mgExpanded = APP.collapsedGroups[mgKey] === true;
-          html += `<div class="group-section">
-            <div class="group-header ${mgExpanded?'expanded':''}" onclick="toggleFinanceGroup('${esc(mgKey)}')">
-              <div>
-                <div class="group-name">${esc(mg.month)}</div>
-                <div class="group-meta">收入¥${fmtMoney(mg.income)} · 支出¥${fmtMoney(mg.expense)} · ${mg.records.length}笔</div>
-              </div>
-              <span class="chevron ${mgExpanded?'open':''}">▶</span>
-            </div>`;
-          if (mgExpanded) {
-            html += `<div class="item-list">`;
-            mg.records.forEach(r => {
-              html += `<div class="finance-row">
-                <div>
-                  <div class="finance-item-name">${esc(r.note||r.category||'')}</div>
-                  <div class="finance-date">${esc(r.date||'')} · ${esc(r.category||'')} · ${esc(APP.data.payton.accounts[r.account]?.name||r.account||'')}</div>
-                </div>
-                <div class="finance-amount ${r.type}">${r.type==='income'?'+':'-'}¥${fmtMoney(r.amount)}</div>
-              </div>`;
-            });
-            html += `</div>`;
-          }
-          html += `</div>`;
-        });
-      }
-    } else {
-      // Payton inventory
-      const sellPool = APP.data.payton.inventory.filter(c=>String(c.pool||'sell')==='sell');
-      const keepPool = APP.data.payton.inventory.filter(c=>String(c.pool||'sell')==='keep');
-
-      html += `<div class="section-title">卖出池 (sell) — ${pStats.sellStats.models}款 ${pStats.sellStats.cars}辆 ¥${fmtMoney(pStats.sellStats.value)}</div>`;
-      if (sellPool.length === 0) {
-        html += `<div class="empty-state" style="padding:16px">暂无卖出池库存</div>`;
-      } else {
-        html += `<div class="card">`;
-        sellPool.forEach(car => {
-          html += `<div class="item-row">
-            <div class="item-main">
-              <div class="item-name">${esc(car.name)}</div>
-              <div class="item-sid">${esc(car.brand||'')} · 均价¥${fmtMoney(car.avgPrice)}</div>
-            </div>
-            <div class="item-right">
-              <div class="item-cost">¥${fmtMoney(car.totalCost)}</div>
-              <div class="item-qty">×${toNum(car.qty)}</div>
-            </div>
-          </div>`;
-        });
-        html += `</div>`;
-      }
-
-      html += `<div class="section-title">自留池 (keep) — ${pStats.keepStats.models}款 ${pStats.keepStats.cars}辆 ¥${fmtMoney(pStats.keepStats.value)}</div>`;
-      if (keepPool.length === 0) {
-        html += `<div class="empty-state" style="padding:16px">暂无自留池库存</div>`;
-      } else {
-        html += `<div class="card">`;
-        keepPool.forEach(car => {
-          html += `<div class="item-row">
-            <div class="item-main">
-              <div class="item-name">${esc(car.name)}</div>
-              <div class="item-sid">${esc(car.brand||'')} · 均价¥${fmtMoney(car.avgPrice)}</div>
-            </div>
-            <div class="item-right">
-              <div class="item-cost">¥${fmtMoney(car.totalCost)}</div>
-              <div class="item-qty">×${toNum(car.qty)}</div>
-            </div>
-          </div>`;
-        });
-        html += `</div>`;
-      }
-    }
-  }
-
   document.getElementById('finance-content').innerHTML = html;
 }
 
 function setFinanceTab(v) { APP.financeTab=v; renderFinance(); }
-function setPaytonTab(v) { APP.paytonTab=v; renderFinance(); }
 function toggleFinanceGroup(key) {
   APP.collapsedGroups[key] = !APP.collapsedGroups[key];
   renderFinance();
@@ -2082,7 +1936,6 @@ function calcAlipayBalance() {
   },0);
   const financePublicExpense=APP.data.finance.records
     .filter(r=>r.type==='expense').reduce((s,r)=>s+toNum(r.amount),0);
-  const paytonYeb=toNum(APP.data.payton.accounts.yeb?.balance);
   const purchaseTotalCost=APP.data.items.filter(i=>i.status==='purchase').reduce((s,i)=>s+toNum(i.cost),0);
 
   return toNum(APP.calc.debt)
@@ -2091,8 +1944,36 @@ function calcAlipayBalance() {
     - invValue
     - financePublicExpense
     - toNum(APP.calc.unconfirmed)
-    + paytonYeb
+    + toNum(APP.carFundBalance)
     - purchaseTotalCost;
+}
+
+async function fetchCarFundBalance() {
+  const SUPABASE_URL = 'https://mqdxmbsaddebxlallgos.supabase.co';
+  const ANON_KEY = 'sb_publishable_pwZYqYeBwpJbj4Pt1vaQyQ_av4QZZ-U';
+  const params = new URLSearchParams();
+  params.set('id', 'eq.car');
+  params.set('select', 'payload,updated_at');
+  params.set('limit', '1');
+  try {
+    const resp = await fetch(`${SUPABASE_URL}/rest/v1/ysp_state?${params}`, {
+      headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` },
+      cache: 'no-store',
+    });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const rows = Array.isArray(data) ? data : [];
+    if (!rows.length) return;
+    APP.carFundBalance = Number(rows[0]?.payload?.balance || 0);
+    APP.carFundUpdatedAt = rows[0]?.payload?.updatedAt || rows[0]?.updated_at || '';
+  } catch (_) {
+    // 基金数据读取失败时保持旧值
+  }
+}
+
+async function refreshCarFundBalance() {
+  await fetchCarFundBalance();
+  renderHome();
 }
 
 function renderHome() {
@@ -2207,9 +2088,20 @@ function renderHome() {
 
   // Alipay calculator
   const alipay = calcAlipayBalance();
+  const finLoanBal = APP.data.finance.loans.reduce((sum,l)=>{
+    if(l.type==='borrow') return sum+toNum(l.amount);
+    if(l.type==='lend') return sum-toNum(l.amount);
+    return sum;
+  },0);
+  const finPubExp = APP.data.finance.records.filter(r=>r.type==='expense').reduce((s,r)=>s+toNum(r.amount),0);
+  const purchaseTC = APP.data.items.filter(i=>i.status==='purchase').reduce((s,i)=>s+toNum(i.cost),0);
+  const actualBal = alipay - toNum(APP.calc.forwarderBalance) - toNum(APP.calc.watchBalance);
+  const formulaText = `挖财总负债(${fmtMoney(APP.calc.debt)}) + 借贷余额(${fmtMoney(finLoanBal)}) + 总实盈利润(${fmtMoney(totalActualProfit)}) - 库存总货值(${fmtMoney(invValue)}) - 公共支出(${fmtMoney(finPubExp)}) - 未确认交易(${fmtMoney(APP.calc.unconfirmed)}) + Payton's基金(${fmtMoney(APP.carFundBalance)}) - 采购中金额(${fmtMoney(purchaseTC)}) = ${fmtMoney(alipay)}`;
+
   html += `<div class="card" style="margin-top:10px">
     <div class="card-header">
       <div class="card-title">💙 支付宝余额计算器</div>
+      <button onclick="refreshCarFundBalance()" style="font-size:14px;padding:2px 6px;border-radius:6px;background:#e3f0ff;color:#007aff">🔄 刷新基金</button>
     </div>
     <div class="card-body">
       <div class="calc-grid">
@@ -2219,28 +2111,38 @@ function renderHome() {
         </div>
         <div class="calc-item">
           <label>借贷余额（自动）</label>
-          <div style="font-size:16px;font-weight:600;padding-top:4px">${fmtMoney(APP.data.finance.loans.reduce((sum,l)=>{
-            if(l.type==='borrow') return sum+toNum(l.amount);
-            if(l.type==='lend') return sum-toNum(l.amount); // lend=还款/归还
-            return sum;
-          },0))}</div>
+          <div style="font-size:16px;font-weight:600;padding-top:4px">${fmtMoney(finLoanBal)}</div>
         </div>
         <div class="calc-item">
           <label>公共支出（自动）</label>
-          <div style="font-size:16px;font-weight:600;padding-top:4px">${fmtMoney(APP.data.finance.records.filter(r=>r.type==='expense').reduce((s,r)=>s+toNum(r.amount),0))}</div>
+          <div style="font-size:16px;font-weight:600;padding-top:4px">${fmtMoney(finPubExp)}</div>
         </div>
         <div class="calc-item">
           <label>未确认交易</label>
           <input type="number" id="calc-unconfirmed" value="${APP.calc.unconfirmed}" oninput="updateCalc('unconfirmed',this.value)">
         </div>
         <div class="calc-item">
-          <label>Payton余额宝（自动）</label>
-          <div style="font-size:16px;font-weight:600;padding-top:4px">${fmtMoney(toNum(APP.data.payton.accounts.yeb?.balance))}</div>
+          <label>Payton's基金（云端）</label>
+          <div style="font-size:16px;font-weight:600;padding-top:4px;color:#007aff">${fmtMoney(APP.carFundBalance)}</div>
+          ${APP.carFundUpdatedAt ? `<div style="font-size:10px;color:#8e8e93;margin-top:1px">更新于 ${new Date(APP.carFundUpdatedAt).toLocaleString()}</div>` : ''}
+        </div>
+        <div class="calc-item">
+          <label>采购中金额（自动）</label>
+          <div style="font-size:16px;font-weight:600;padding-top:4px">${fmtMoney(purchaseTC)}</div>
         </div>
       </div>
       <div class="calc-result">
         <div class="calc-result-label">应有支付宝余额</div>
         <div class="calc-result-val" id="alipay-result">¥${fmtMoney(alipay)}</div>
+      </div>
+      <div style="margin-top:6px;padding:6px 10px;background:#f9f9f9;border-radius:8px;font-size:11px;color:#8e8e93;line-height:1.5;word-break:break-all">${formulaText}</div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;padding:8px 10px;background:#f0fdf4;border-radius:8px;font-size:12px;color:#8e8e93">
+        <span>应有<b style="color:#1c1c1e">¥${fmtMoney(alipay)}</b>中包括</span>
+        <label style="white-space:nowrap">转运余额</label>
+        <input type="number" id="calc-forwarderBalance" value="${APP.calc.forwarderBalance}" oninput="updateCalc('forwarderBalance',this.value)" style="width:68px;padding:3px 5px;border:1px solid #e5e5ea;border-radius:6px;font-size:12px">
+        <label style="white-space:nowrap">手表余额</label>
+        <input type="number" id="calc-watchBalance" value="${APP.calc.watchBalance}" oninput="updateCalc('watchBalance',this.value)" style="width:68px;padding:3px 5px;border:1px solid #e5e5ea;border-radius:6px;font-size:12px">
+        <span>故实际<b style="color:#007aff">¥${fmtMoney(actualBal)}</b>元</span>
       </div>
     </div>
   </div>`;
@@ -2290,9 +2192,7 @@ function renderHome() {
 
 function updateCalc(field, val) {
   APP.calc[field] = toNum(val);
-  const alipay = calcAlipayBalance();
-  const el = document.getElementById('alipay-result');
-  if (el) el.textContent = '¥' + fmtMoney(alipay);
+  renderHome(); // re-render to update formula display & actual balance
 }
 
 function updateSearch(kw) {
