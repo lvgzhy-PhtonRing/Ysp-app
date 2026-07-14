@@ -32,32 +32,42 @@ function toggleBrand(brand) {
   collapsedBrands.value = s
 }
 
-// ===== 同 SID 合并逻辑 =====
-function mergeItemsBySid(items) {
+// ===== 按名称合并逻辑 =====
+function mergeItemsByName(items) {
   const map = new Map()
   for (const item of items) {
-    const key = `${item?.sid || ''}|${item?.name || ''}`
+    const key = item?.name || ''
     if (!map.has(key)) {
       map.set(key, {
-        ...item,
+        name: item.name,
+        brand: item.brand,
+        sid: item.sid,
+        cost: item.cost,
+        batch: item.batch,
+        category: item.category,
+        isLongTerm: item.isLongTerm,
+        id: item.id,
+        isDefect: item.isDefect,
+        isManual: item.isManual,
+        // 保存所有原始 item 引用（用于展开明细）
+        rawItems: [item],
         qty: 1,
-        itemIds: [item.id],
         totalCost: Number(item?.cost || 0),
         avgCost: Number(item?.cost || 0),
-        // 取第一条有市价的记录作为合并后的市价
         mergedPrice: getCurrentPrice(item),
+        // 保留 marketPrices 用于历史时间线（取第一条有市价的）
+        marketPrices: item.marketPrices ? [...item.marketPrices] : [],
       })
       continue
     }
     const g = map.get(key)
     g.qty += 1
-    g.itemIds.push(item.id)
+    g.rawItems.push(item)
     g.totalCost += Number(item?.cost || 0)
     g.avgCost = g.totalCost / g.qty
-    // 优先取有市价的
     if (!g.mergedPrice && getCurrentPrice(item)) {
       g.mergedPrice = getCurrentPrice(item)
-      g.marketPrices = item.marketPrices
+      g.marketPrices = item.marketPrices ? [...item.marketPrices] : []
     }
   }
   return Array.from(map.values())
@@ -65,7 +75,7 @@ function mergeItemsBySid(items) {
 
 function getMergedChangeRate(item) {
   const price = item.mergedPrice
-  const cost = Number(item.qty > 1 ? item.avgCost : (item.cost || 0))
+  const cost = item.avgCost || 0
   if (price == null || cost === 0) return null
   return (price - cost) / cost
 }
@@ -94,7 +104,7 @@ function sortGroupItems(items) {
 const sortedGroups = computed(() => {
   const groups = groupByBrand(filteredItems.value)
   const entries = Array.from(groups.entries()).map(([brand, items]) => {
-    const merged = mergeItemsBySid(items)
+    const merged = mergeItemsByName(items)
     // 品牌组内默认按名称排序
     const sorted = sortGroupItems(merged)
     const priced = sorted.filter(i => i.mergedPrice != null)
@@ -159,6 +169,13 @@ function toggleHistory(item) {
   expandedItemId.value = expandedItemId.value === id ? null : id
 }
 
+// ===== 合并明细展开 =====
+const expandedMergeName = ref(null)
+
+function toggleMergeDetail(name) {
+  expandedMergeName.value = expandedMergeName.value === name ? null : name
+}
+
 function formatTime(ts) {
   if (!ts) return ''
   const d = new Date(ts)
@@ -167,6 +184,10 @@ function formatTime(ts) {
 
 function formatPrice(v) {
   return v != null ? '¥' + Number(v).toFixed(0) : '—'
+}
+
+function formatPriceAvg(v) {
+  return v != null ? '¥' + Number(v).toFixed(2) : '—'
 }
 
 function formatRate(v) {
@@ -189,7 +210,7 @@ function formatRate(v) {
       <!-- ===== 页面标题 ===== -->
       <div class="flex items-center justify-between mb-6">
         <div>
-          <h1 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+          <h1 class="text-lg font-bold text-gray-800 flex items-center gap-2">
             <i class="fa-solid fa-chart-line text-blue-500"></i> 市场价格
             <span class="text-sm font-normal text-gray-400">长线货品市值监控</span>
           </h1>
@@ -311,21 +332,24 @@ function formatRate(v) {
                   </span>
                 </td>
               </tr>
-              <!-- 货品行（折叠时隐藏） -->
+              <!-- 合并货品行 -->
               <tr
                 v-for="item in group.items"
-                :key="item.id || item.sid"
+                :key="item.name"
                 v-if="!collapsedBrands.has(group.brand)"
                 class="border-b border-gray-100 hover:bg-gray-50/50 transition-colors"
               >
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-2">
+                    <button class="bg-transparent border-0 p-0 text-gray-400 hover:text-gray-600 cursor-pointer text-xs" @click="toggleMergeDetail(item.name)" :title="item.rawItems?.length > 1 ? '展开明细' : ''">
+                      <i :class="expandedMergeName === item.name ? 'fa-solid fa-caret-down' : (item.rawItems?.length > 1 ? 'fa-solid fa-caret-right' : 'fa-solid fa-minus text-[8px]')"></i>
+                    </button>
                     <span class="font-semibold text-gray-800 text-sm">{{ item.name }}</span>
-                    <span v-if="item.qty > 1" class="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[11px] font-bold text-white bg-blue-500 rounded-full">{{ item.qty }}x</span>
+                    <span v-if="item.qty > 1" class="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 text-[11px] font-bold text-white bg-blue-500 rounded-full">{{ item.qty }}x</span>
                   </div>
-                  <div class="text-[11px] text-gray-400">
-                    <template v-if="item.qty > 1">均价 {{ formatPrice(item.totalCost / item.qty) }}</template>
-                    <template v-else-if="item.batch">批次: {{ item.batch }}</template>
+                  <div class="flex items-center gap-3 text-[11px] text-gray-400 mt-0.5 ml-5">
+                    <span v-if="item.qty > 1">均价 {{ formatPriceAvg(item.avgCost) }}</span>
+                    <span v-if="item.batch">批次: {{ item.batch }}</span>
                   </div>
                 </td>
                 <td class="px-4 py-3 text-sm font-mono text-gray-600">{{ item.qty > 1 ? formatPrice(item.totalCost) : formatPrice(item.cost) }}</td>
@@ -381,6 +405,17 @@ function formatRate(v) {
                     >
                       <i class="fa-solid fa-link"></i>
                     </span>
+                  </div>
+                </td>
+              </tr>
+              <!-- 合并明细展开行 -->
+              <tr v-if="expandedMergeName === item.name && item.rawItems?.length > 1" v-for="(raw, ri) in item.rawItems" :key="'raw-' + (raw.id || ri)" class="bg-gray-50/40 border-b border-gray-100">
+                <td colspan="6" class="px-4 py-2 pl-14">
+                  <div class="flex items-center gap-4 text-xs text-gray-600">
+                    <span class="font-mono text-gray-400">{{ raw.sid }}</span>
+                    <span>成本: {{ formatPrice(raw.cost) }}</span>
+                    <span v-if="raw.batch">批次: {{ raw.batch }}</span>
+                    <span v-if="raw.isDefect" class="text-amber-600">品相问题</span>
                   </div>
                 </td>
               </tr>
