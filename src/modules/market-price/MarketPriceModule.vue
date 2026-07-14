@@ -23,6 +23,57 @@ const searchKeyword = ref('')
 const brandFilter = ref('')
 const sortMode = ref('brand') // 'brand' | 'change' | 'value'
 
+// ===== 品牌折叠状态 =====
+const collapsedBrands = ref(new Set())
+
+function toggleBrand(brand) {
+  const s = new Set(collapsedBrands.value)
+  if (s.has(brand)) s.delete(brand); else s.add(brand)
+  collapsedBrands.value = s
+}
+
+// ===== 同 SID 合并逻辑 =====
+function mergeItemsBySid(items) {
+  const map = new Map()
+  for (const item of items) {
+    const key = `${item?.sid || ''}|${item?.name || ''}`
+    if (!map.has(key)) {
+      map.set(key, {
+        ...item,
+        qty: 1,
+        itemIds: [item.id],
+        totalCost: Number(item?.cost || 0),
+        avgCost: Number(item?.cost || 0),
+        // 取第一条有市价的记录作为合并后的市价
+        mergedPrice: getCurrentPrice(item),
+      })
+      continue
+    }
+    const g = map.get(key)
+    g.qty += 1
+    g.itemIds.push(item.id)
+    g.totalCost += Number(item?.cost || 0)
+    g.avgCost = g.totalCost / g.qty
+    // 优先取有市价的
+    if (!g.mergedPrice && getCurrentPrice(item)) {
+      g.mergedPrice = getCurrentPrice(item)
+      g.marketPrices = item.marketPrices
+    }
+  }
+  return Array.from(map.values())
+}
+
+function getMergedChangeRate(item) {
+  const price = item.mergedPrice
+  const cost = Number(item.qty > 1 ? item.avgCost : (item.cost || 0))
+  if (price == null || cost === 0) return null
+  return (price - cost) / cost
+}
+
+function isMergedPriced(item) {
+  return item.mergedPrice != null
+}
+
 const filteredItems = computed(() => {
   let list = allItems.value
   if (searchKeyword.value) {
@@ -38,11 +89,12 @@ const filteredItems = computed(() => {
 const sortedGroups = computed(() => {
   const groups = groupByBrand(filteredItems.value)
   const entries = Array.from(groups.entries()).map(([brand, items]) => {
-    const priced = items.filter(isPriced)
-    const totalValue = priced.reduce((s, i) => s + (getCurrentPrice(i) || 0), 0)
-    const totalCost = priced.reduce((s, i) => s + Number(i.cost || 0), 0)
+    const merged = mergeItemsBySid(items)
+    const priced = merged.filter(i => i.mergedPrice != null)
+    const totalValue = priced.reduce((s, i) => s + (i.mergedPrice || 0), 0)
+    const totalCost = merged.reduce((s, i) => s + i.totalCost, 0)
     const changeRate = totalCost > 0 ? (totalValue - totalCost) / totalCost : 0
-    return { brand, items, totalValue, changeRate, pricedCount: priced.length }
+    return { brand, items: merged, totalValue, totalCost, changeRate, pricedCount: priced.length, rawCount: items.length }
   })
 
   if (sortMode.value === 'change') {
@@ -69,7 +121,7 @@ const errorMsg = ref('')
 
 function openPriceModal(item) {
   editingItem.value = item
-  newPrice.value = getCurrentPrice(item) || 0
+  newPrice.value = item.mergedPrice || 0
   linkedCount.value = getLinkedItems(item).length
   errorMsg.value = ''
   showPriceModal.value = true
@@ -224,47 +276,54 @@ function formatRate(v) {
           </thead>
           <tbody>
             <template v-for="group in sortedGroups" :key="group.brand">
-              <!-- 分组标题行 -->
-              <tr class="bg-blue-50/60 border-b border-blue-100">
+              <!-- 分组标题行（可点击折叠） -->
+              <tr class="bg-blue-50/60 border-b border-blue-100 cursor-pointer select-none" @click="toggleBrand(group.brand)">
                 <td colspan="6" class="px-4 py-2 text-sm font-bold text-blue-800">
-                  <i class="fa-solid fa-caret-down mr-1.5 text-blue-400"></i>
+                  <i :class="['mr-1.5 text-blue-400', collapsedBrands.has(group.brand) ? 'fa-solid fa-caret-right' : 'fa-solid fa-caret-down']"></i>
                   {{ group.brand }}
                   <span class="text-xs font-normal text-gray-500 ml-3">
-                    {{ group.items.length }} 件 · 市值 {{ formatPrice(group.totalValue) }} ·
+                    {{ group.rawCount }} 件 · {{ group.items.length }} 款 · 市值 {{ formatPrice(group.totalValue) }} ·
                     <span :class="group.changeRate >= 0 ? 'text-green-600' : 'text-red-600'">
                       {{ formatRate(group.changeRate) }}
                     </span>
                   </span>
                 </td>
               </tr>
-              <!-- 货品行 -->
+              <!-- 货品行（折叠时隐藏） -->
               <tr
                 v-for="item in group.items"
                 :key="item.id || item.sid"
+                v-if="!collapsedBrands.has(group.brand)"
                 class="border-b border-gray-100 hover:bg-gray-50/50 transition-colors"
               >
                 <td class="px-4 py-3">
-                  <div class="font-semibold text-gray-800 text-sm">{{ item.name }}</div>
-                  <div class="text-[11px] text-gray-400" v-if="item.batch">批次: {{ item.batch }}</div>
+                  <div class="flex items-center gap-2">
+                    <span class="font-semibold text-gray-800 text-sm">{{ item.name }}</span>
+                    <span v-if="item.qty > 1" class="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[11px] font-bold text-white bg-blue-500 rounded-full">{{ item.qty }}x</span>
+                  </div>
+                  <div class="text-[11px] text-gray-400">
+                    <template v-if="item.qty > 1">均价 {{ formatPrice(item.totalCost / item.qty) }}</template>
+                    <template v-else-if="item.batch">批次: {{ item.batch }}</template>
+                  </div>
                 </td>
-                <td class="px-4 py-3 text-sm font-mono text-gray-600">{{ formatPrice(item.cost) }}</td>
+                <td class="px-4 py-3 text-sm font-mono text-gray-600">{{ item.qty > 1 ? formatPrice(item.totalCost) : formatPrice(item.cost) }}</td>
                 <td class="px-4 py-3">
-                  <span v-if="isPriced(item)" class="text-sm font-bold font-mono" :class="getChangeRate(item) >= 0 ? 'text-green-600' : 'text-red-600'">
-                    {{ formatPrice(getCurrentPrice(item)) }}
+                  <span v-if="isMergedPriced(item)" class="text-sm font-bold font-mono" :class="getMergedChangeRate(item) >= 0 ? 'text-green-600' : 'text-red-600'">
+                    {{ formatPrice(item.mergedPrice) }}
                   </span>
                   <span v-else class="text-sm text-gray-400">—</span>
                 </td>
                 <td class="px-4 py-3">
-                  <template v-if="isPriced(item)">
+                  <template v-if="isMergedPriced(item)">
                     <div class="flex items-center gap-2">
-                      <span :class="['text-sm font-bold font-mono', getChangeRate(item) >= 0 ? 'text-green-600' : 'text-red-600']">
-                        {{ formatRate(getChangeRate(item)) }}
+                      <span :class="['text-sm font-bold font-mono', getMergedChangeRate(item) >= 0 ? 'text-green-600' : 'text-red-600']">
+                        {{ formatRate(getMergedChangeRate(item)) }}
                       </span>
                       <div class="w-12 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                         <div
                           class="h-full rounded-full transition-all"
-                          :class="getChangeRate(item) >= 0 ? 'bg-green-500' : 'bg-red-500'"
-                          :style="{ width: Math.min(Math.abs(getChangeRate(item)) * 100, 100) + '%' }"
+                          :class="getMergedChangeRate(item) >= 0 ? 'bg-green-500' : 'bg-red-500'"
+                          :style="{ width: Math.min(Math.abs(getMergedChangeRate(item)) * 100, 100) + '%' }"
                         ></div>
                       </div>
                     </div>
@@ -273,20 +332,20 @@ function formatRate(v) {
                 </td>
                 <td class="px-4 py-3">
                   <span
-                    v-if="isPriced(item)"
-                    :class="['inline-block text-xs font-medium px-2 py-0.5 rounded-full', getChangeRate(item) > 0 ? 'bg-green-100 text-green-700' : getChangeRate(item) < 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600']"
+                    v-if="isMergedPriced(item)"
+                    :class="['inline-block text-xs font-medium px-2 py-0.5 rounded-full', getMergedChangeRate(item) > 0 ? 'bg-green-100 text-green-700' : getMergedChangeRate(item) < 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600']"
                   >
-                    {{ getChangeRate(item) > 0 ? '盈利' : getChangeRate(item) < 0 ? '亏损' : '持平' }}
+                    {{ getMergedChangeRate(item) > 0 ? '盈利' : getMergedChangeRate(item) < 0 ? '亏损' : '持平' }}
                   </span>
                   <span v-else class="inline-block text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">未标价</span>
                 </td>
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-1">
                     <button class="btn btn-outline btn-sm !text-xs !px-3" @click="openPriceModal(item)">
-                      <i class="fa-solid fa-pen mr-1"></i>{{ isPriced(item) ? '更新' : '标价' }}
+                      <i class="fa-solid fa-pen mr-1"></i>{{ isMergedPriced(item) ? '更新' : '标价' }}
                     </button>
                     <button
-                      v-if="isPriced(item)"
+                      v-if="isMergedPriced(item)"
                       class="btn btn-outline btn-sm !text-xs !px-2 !border-transparent hover:!bg-gray-100"
                       @click="toggleHistory(item)"
                       :title="'查看价格历史'"
@@ -303,9 +362,10 @@ function formatRate(v) {
                   </div>
                 </td>
               </tr>
-              <!-- 历史时间线（展开行） -->
+              <!-- 历史时间线（展开行，折叠时隐藏） -->
               <tr
                 v-for="item in [group.items.find(i => (i.id || i.sid) === expandedItemId)].filter(Boolean)"
+                v-if="!collapsedBrands.has(group.brand)"
                 :key="'h-' + (item?.id || item?.sid)"
                 class="bg-gray-50/80"
               >
@@ -412,7 +472,7 @@ function formatRate(v) {
 
       <div class="mb-4" v-if="editingItem">
         <div class="text-xs text-gray-500 mb-1">当前市价</div>
-        <div class="text-lg font-bold font-mono">{{ isPriced(editingItem) ? formatPrice(getCurrentPrice(editingItem)) : '未标价' }}</div>
+        <div class="text-lg font-bold font-mono">{{ isMergedPriced(editingItem) ? formatPrice(editingItem.mergedPrice) : '未标价' }}</div>
       </div>
 
       <div class="mb-3">
