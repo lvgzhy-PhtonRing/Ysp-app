@@ -108,7 +108,7 @@ const sortedGroups = computed(() => {
     // 品牌组内默认按名称排序
     const sorted = sortGroupItems(merged)
     const priced = sorted.filter(i => i.mergedPrice != null)
-    const totalValue = priced.reduce((s, i) => s + (i.mergedPrice || 0), 0)
+    const totalValue = priced.reduce((s, i) => s + (i.mergedPrice || 0) * i.qty, 0)
     const totalCost = sorted.reduce((s, i) => s + i.totalCost, 0)
     const changeRate = totalCost > 0 ? (totalValue - totalCost) / totalCost : 0
     return { brand, items: sorted, totalValue, totalCost, changeRate, pricedCount: priced.length, rawCount: items.length }
@@ -310,7 +310,7 @@ function formatRate(v) {
           <thead>
             <tr class="bg-gray-50 border-b border-gray-200">
               <th class="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">货品</th>
-              <th class="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">成本</th>
+              <th class="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">平均成本</th>
               <th class="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">最新市价</th>
               <th class="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">涨跌幅</th>
               <th class="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">状态</th>
@@ -340,18 +340,18 @@ function formatRate(v) {
                 >
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-2">
-                    <button class="bg-transparent border-0 p-0 text-gray-400 hover:text-gray-600 cursor-pointer text-xs" @click="toggleMergeDetail(item.name)" :title="item.rawItems?.length > 1 ? '展开明细' : ''">
-                      <i :class="expandedMergeName === item.name ? 'fa-solid fa-caret-down' : (item.rawItems?.length > 1 ? 'fa-solid fa-caret-right' : 'fa-solid fa-minus text-[8px]')"></i>
-                    </button>
-                    <span class="font-semibold text-gray-800 text-sm">{{ item.name }}</span>
+                    <span
+                      class="font-semibold text-gray-800 text-sm cursor-pointer hover:text-blue-600"
+                      @click="toggleMergeDetail(item.name)"
+                      :title="item.rawItems?.length > 1 ? '点击查看 ' + item.rawItems.length + ' 件明细' : ''"
+                    >{{ item.name }}</span>
                     <span v-if="item.qty > 1" class="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 text-[11px] font-bold text-white bg-blue-500 rounded-full">{{ item.qty }}x</span>
                   </div>
-                  <div class="flex items-center gap-3 text-[11px] text-gray-400 mt-0.5 ml-5">
-                    <span v-if="item.qty > 1">均价 {{ formatPriceAvg(item.avgCost) }}</span>
-                    <span v-if="item.batch">批次: {{ item.batch }}</span>
+                  <div v-if="item.qty > 1" class="text-[11px] text-gray-400 mt-0.5">
+                    总成本 {{ formatPrice(item.totalCost) }}
                   </div>
                 </td>
-                <td class="px-4 py-3 text-sm font-mono text-gray-600">{{ item.qty > 1 ? formatPrice(item.totalCost) : formatPrice(item.cost) }}</td>
+                <td class="px-4 py-3 text-sm font-mono text-gray-600">{{ formatPriceAvg(item.avgCost) }}</td>
                 <td class="px-4 py-3">
                   <span v-if="isMergedPriced(item)" class="text-sm font-bold font-mono" :class="getMergedChangeRate(item) >= 0 ? 'text-green-600' : 'text-red-600'">
                     {{ formatPrice(item.mergedPrice) }}
