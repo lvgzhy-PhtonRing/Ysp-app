@@ -332,13 +332,12 @@ function formatRate(v) {
                   </span>
                 </td>
               </tr>
-              <!-- 合并货品行 -->
-              <tr
-                v-for="item in group.items"
-                :key="item.name"
-                v-if="!collapsedBrands.has(group.brand)"
-                class="border-b border-gray-100 hover:bg-gray-50/50 transition-colors"
-              >
+              <!-- 合并货品行 + 展开明细 -->
+              <template v-for="item in group.items" :key="item.name">
+                <tr
+                  v-if="!collapsedBrands.has(group.brand)"
+                  class="border-b border-gray-100 hover:bg-gray-50/50 transition-colors"
+                >
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-2">
                     <button class="bg-transparent border-0 p-0 text-gray-400 hover:text-gray-600 cursor-pointer text-xs" @click="toggleMergeDetail(item.name)" :title="item.rawItems?.length > 1 ? '展开明细' : ''">
@@ -409,7 +408,7 @@ function formatRate(v) {
                 </td>
               </tr>
               <!-- 合并明细展开行 -->
-              <tr v-if="expandedMergeName === item.name && item.rawItems?.length > 1" v-for="(raw, ri) in item.rawItems" :key="'raw-' + (raw.id || ri)" class="bg-gray-50/40 border-b border-gray-100">
+              <tr v-for="(raw, ri) in (expandedMergeName === item.name ? (item.rawItems || []) : [])" :key="'raw-' + (raw.id || ri)" v-if="!collapsedBrands.has(group.brand)" class="bg-gray-50/40 border-b border-gray-100">
                 <td colspan="6" class="px-4 py-2 pl-14">
                   <div class="flex items-center gap-4 text-xs text-gray-600">
                     <span class="font-mono text-gray-400">{{ raw.sid }}</span>
@@ -420,20 +419,15 @@ function formatRate(v) {
                 </td>
               </tr>
               <!-- 历史时间线（展开行，折叠时隐藏） -->
-              <tr
-                v-for="item in [group.items.find(i => (i.id || i.sid) === expandedItemId)].filter(Boolean)"
-                v-if="!collapsedBrands.has(group.brand)"
-                :key="'h-' + (item?.id || item?.sid)"
-                class="bg-gray-50/80"
-              >
+              <tr v-for="hitem in [(expandedItemId && (item.id || item.sid) === expandedItemId) ? item : null].filter(Boolean)" :key="'h-' + (hitem?.id || hitem?.sid)" v-if="!collapsedBrands.has(group.brand)" class="bg-gray-50/80">
                 <td colspan="6" class="px-4 py-3 pl-12">
                   <div class="text-xs font-semibold text-gray-600 mb-2">
-                    <i class="fa-solid fa-clock-rotate-left mr-1.5"></i>市场价格历史 · {{ item?.name }}
+                    <i class="fa-solid fa-clock-rotate-left mr-1.5"></i>市场价格历史 · {{ hitem?.name }}
                   </div>
-                  <div class="relative pl-5" v-if="item?.marketPrices?.length">
+                  <div class="relative pl-5" v-if="hitem?.marketPrices?.length">
                     <div class="absolute left-1 top-1.5 bottom-1.5 w-0.5 bg-gray-300"></div>
                     <div
-                      v-for="(mp, mi) in item.marketPrices"
+                      v-for="(mp, mi) in hitem.marketPrices"
                       :key="mi"
                       class="relative pb-2 pl-4 text-sm flex items-center gap-3 last:pb-0"
                     >
@@ -444,15 +438,16 @@ function formatRate(v) {
                         {{ formatPrice(mp.price) }}
                       </span>
                       <span class="text-gray-400 text-xs">{{ formatTime(mp.timestamp) }}</span>
-                      <span v-if="mi > 0 && item.marketPrices[mi - 1]" class="text-xs" :class="mp.price <= item.marketPrices[mi - 1].price ? 'text-green-500' : 'text-red-500'">
-                        {{ mp.price <= item.marketPrices[mi - 1].price ? '↑' : '↓' }}{{ formatPrice(Math.abs(item.marketPrices[mi - 1].price - mp.price)) }}
+                      <span v-if="mi > 0 && hitem.marketPrices[mi - 1]" class="text-xs" :class="mp.price <= hitem.marketPrices[mi - 1].price ? 'text-green-500' : 'text-red-500'">
+                        {{ mp.price <= hitem.marketPrices[mi - 1].price ? '↑' : '↓' }}{{ formatPrice(Math.abs(hitem.marketPrices[mi - 1].price - mp.price)) }}
                       </span>
-                      <span v-if="mi === item.marketPrices.length - 1 && mi > 0" class="text-xs text-gray-400">首次标价</span>
+                      <span v-if="mi === hitem.marketPrices.length - 1 && mi > 0" class="text-xs text-gray-400">首次标价</span>
                     </div>
                   </div>
                   <div v-else class="text-xs text-gray-400 pl-4">暂无历史记录</div>
                 </td>
               </tr>
+              </template>
             </template>
             <!-- 搜索结果为空 -->
             <tr v-if="sortedGroups.length === 0">
