@@ -2,7 +2,7 @@
 
 import { reactive } from 'vue'
 
-const APP_VERSION = '3.4.2'
+const APP_VERSION = '3.5.0'
 const CLOUD_SYNC_DEBOUNCE_MS = 800
 const MAX_UNDO_STEPS = 20
 const HISTORY_META_EXPIRE_MS = 3000
@@ -14,6 +14,7 @@ export const FIELD_LABEL_MAP = {
   name: '名称', brand: '品牌', cost: '成本', category: '大类', batch: '批次',
   amount: '金额', type: '类型', date: '日期', account: '账户', note: '备注',
   isDefect: '品相', isLongTerm: '长线',
+  marketPrices: '市场价格',
   price: '售价', express: '运费', feeRate: '费率', deduction: '扣减',
   totalRMB: '总RMB', paymentBatch: '支付批次', paymentAccount: '支付账户',
   exchangeRate: '汇率', originalPrice: '日元原价', domesticShipping: '国内运费',

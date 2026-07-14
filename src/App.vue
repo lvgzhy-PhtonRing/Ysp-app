@@ -9,6 +9,7 @@ import PurchaseModule from './modules/purchase/PurchaseModule.vue'
 import SalesModule from './modules/sales/SalesModule.vue'
 import FinanceModule from './modules/finance/FinanceModule.vue'
 import RushCarPrototypeModule from './modules/rushcar/RushCarPrototypeModule.vue'
+import MarketPriceModule from './modules/market-price/MarketPriceModule.vue'
 import {
   addOperationLog,
   clearCloudSession,
@@ -47,6 +48,7 @@ const tabs = [
   { id: 'purchase', name: '采购管理' },
   { id: 'finance', name: '公共收支' },
   { id: 'rushcar', name: '美淘记录' },
+  { id: 'market-price', name: '市场价格' },
 ]
 
 const currentTab = ref('home')
@@ -178,6 +180,18 @@ const logTypeMeta = {
         return ['\xA5' + Number(d.before).toFixed(0) + ' → \xA5' + Number(d.after).toFixed(0)]
       }
       return []
+    },
+  },
+  market_price_update: {
+    label: '市价更新',
+    color: 'text-blue-600',
+    icon: 'fa-solid fa-chart-line',
+    pillClass: 'bg-blue-100 text-blue-700',
+    summary: function (d) {
+      var parts = []
+      if (d.price) parts.push('¥' + Number(d.price).toFixed(0))
+      if (d.linkedCount > 1) parts.push('联动' + d.linkedCount + '件')
+      return parts
     },
   },
 }
@@ -646,6 +660,7 @@ watch(
         <PurchaseModule v-else-if="currentTab === 'purchase'" />
         <FinanceModule v-else-if="currentTab === 'finance'" />
         <RushCarPrototypeModule v-else-if="currentTab === 'rushcar'" :source-data="store" />
+        <MarketPriceModule v-else-if="currentTab === 'market-price'" />
 
         <div
           v-else

@@ -27,6 +27,7 @@ const iconMap = {
   purchase: 'fa-solid fa-truck',
   finance: 'fa-solid fa-wallet',
   rushcar: 'fa-solid fa-car-side',
+  'market-price': 'fa-solid fa-chart-line',
 }
 
 function isTabDisabled(tab) {
