@@ -191,7 +191,7 @@ function formatTime(ts) {
 }
 
 function formatPrice(v) {
-  return v != null ? '¥' + Number(v).toFixed(0) : '—'
+  return v != null ? '¥' + Number(v).toFixed(2) : '—'
 }
 
 function formatPriceAvg(v) {
