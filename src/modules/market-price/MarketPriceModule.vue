@@ -9,7 +9,6 @@ import {
   groupByBrand,
   getBrandStats,
   getGlobalStats,
-  getTopChanges,
   getLinkedItems,
   updateMarketPrice,
 } from './useMarketPrice'
@@ -129,7 +128,16 @@ const brandOptions = computed(() => {
   return Array.from(brands).sort()
 })
 
-const rankings = computed(() => getTopChanges(allItems.value, 5))
+const rankings = computed(() => {
+  // 基于合并后商品（按名称）计算涨跌幅排行
+  const merged = mergeItemsByName(allItems.value)
+  const withRate = merged
+    .filter(i => isMergedPriced(i))
+    .map(i => ({ item: i, rate: getMergedChangeRate(i) || 0 }))
+  const gainers = [...withRate].sort((a, b) => b.rate - a.rate).slice(0, 5)
+  const losers = [...withRate].sort((a, b) => a.rate - b.rate).slice(0, 5)
+  return { gainers, losers }
+})
 
 // ===== 弹窗状态 =====
 const showPriceModal = ref(false)
@@ -479,7 +487,7 @@ function formatRate(v) {
               >{{ ri + 1 }}</span>
               <div class="flex-1 min-w-0">
                 <div class="text-sm font-semibold truncate">{{ r.item.name }}</div>
-                <div class="text-[11px] text-gray-400">{{ r.item.brand }}</div>
+                <div class="text-[11px] text-gray-400">{{ r.item.brand }} <span v-if="r.item.qty > 1" class="text-gray-300">· {{ r.item.qty }}件</span></div>
               </div>
               <span class="text-sm font-bold text-green-600">{{ formatRate(r.rate) }}</span>
             </div>
@@ -503,7 +511,7 @@ function formatRate(v) {
               >{{ ri + 1 }}</span>
               <div class="flex-1 min-w-0">
                 <div class="text-sm font-semibold truncate">{{ r.item.name }}</div>
-                <div class="text-[11px] text-gray-400">{{ r.item.brand }}</div>
+                <div class="text-[11px] text-gray-400">{{ r.item.brand }} <span v-if="r.item.qty > 1" class="text-gray-300">· {{ r.item.qty }}件</span></div>
               </div>
               <span class="text-sm font-bold text-red-600">{{ formatRate(r.rate) }}</span>
             </div>
