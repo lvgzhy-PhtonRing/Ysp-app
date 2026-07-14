@@ -33,7 +33,7 @@ export function isPriced(item) {
  * 获取所有应参与市场价格计算的长线货品（isLongTerm===true）
  */
 export function getMarketPriceItems() {
-  return store.items.filter(i => i?.isLongTerm === true)
+  return store.items.filter(i => i?.isLongTerm === true && i?.status === 'inventory')
 }
 
 /**

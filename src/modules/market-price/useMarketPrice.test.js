@@ -14,6 +14,7 @@ function makeItem(overrides = {}) {
     name: '测试货品',
     brand: 'TestBrand',
     cost: 100,
+    status: 'inventory',
     isLongTerm: true,
     marketPrices: [],
     ...overrides,
@@ -86,11 +87,12 @@ describe('useMarketPrice', () => {
   })
 
   describe('getMarketPriceItems', () => {
-    it('应只返回 isLongTerm=true 的货品', () => {
+    it('应只返回 isLongTerm=true 且 status=inventory 的货品', () => {
       resetItems([
-        makeItem({ id: '1', isLongTerm: true }),
-        makeItem({ id: '2', isLongTerm: false }),
-        makeItem({ id: '3', isLongTerm: true }),
+        makeItem({ id: '1', isLongTerm: true, status: 'inventory' }),
+        makeItem({ id: '2', isLongTerm: false, status: 'inventory' }),
+        makeItem({ id: '3', isLongTerm: true, status: 'inventory' }),
+        makeItem({ id: '4', isLongTerm: true, status: 'sold' }),
       ])
       const result = mod.getMarketPriceItems()
       expect(result).toHaveLength(2)
