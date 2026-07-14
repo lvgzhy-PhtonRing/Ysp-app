@@ -86,18 +86,27 @@ const filteredItems = computed(() => {
   return list
 })
 
+// ===== 品牌组内按名称排序 =====
+function sortGroupItems(items) {
+  return [...items].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-CN'))
+}
+
 const sortedGroups = computed(() => {
   const groups = groupByBrand(filteredItems.value)
   const entries = Array.from(groups.entries()).map(([brand, items]) => {
     const merged = mergeItemsBySid(items)
-    const priced = merged.filter(i => i.mergedPrice != null)
+    // 品牌组内默认按名称排序
+    const sorted = sortGroupItems(merged)
+    const priced = sorted.filter(i => i.mergedPrice != null)
     const totalValue = priced.reduce((s, i) => s + (i.mergedPrice || 0), 0)
-    const totalCost = merged.reduce((s, i) => s + i.totalCost, 0)
+    const totalCost = sorted.reduce((s, i) => s + i.totalCost, 0)
     const changeRate = totalCost > 0 ? (totalValue - totalCost) / totalCost : 0
-    return { brand, items: merged, totalValue, totalCost, changeRate, pricedCount: priced.length, rawCount: items.length }
+    return { brand, items: sorted, totalValue, totalCost, changeRate, pricedCount: priced.length, rawCount: items.length }
   })
 
-  if (sortMode.value === 'change') {
+  if (sortMode.value === 'brand') {
+    entries.sort((a, b) => a.brand.localeCompare(b.brand, 'zh-CN'))
+  } else if (sortMode.value === 'change') {
     entries.sort((a, b) => b.changeRate - a.changeRate)
   } else if (sortMode.value === 'value') {
     entries.sort((a, b) => b.totalValue - a.totalValue)
@@ -177,6 +186,19 @@ function formatRate(v) {
     </div>
 
     <template v-else>
+      <!-- ===== 页面标题 ===== -->
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h1 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+            <i class="fa-solid fa-chart-line text-blue-500"></i> 市场价格
+            <span class="text-sm font-normal text-gray-400">长线货品市值监控</span>
+          </h1>
+        </div>
+        <div class="text-xs text-gray-400">
+          <i class="fa-regular fa-clock mr-1"></i>{{ new Date().toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }}
+        </div>
+      </div>
+
       <!-- ===== 1. 统计摘要卡片 ===== -->
       <div class="grid grid-cols-4 gap-4 mb-5">
         <div class="apple-card px-5 py-4">
