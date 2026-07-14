@@ -325,7 +325,7 @@ function formatRate(v) {
                   <i :class="['mr-1.5 text-blue-400', collapsedBrands.has(group.brand) ? 'fa-solid fa-caret-right' : 'fa-solid fa-caret-down']"></i>
                   {{ group.brand }}
                   <span class="text-xs font-normal text-gray-500 ml-3">
-                    {{ group.rawCount }} 件 · {{ group.items.length }} 款 · 市值 {{ formatPrice(group.totalValue) }} ·
+                    {{ group.rawCount }} 件 · {{ group.items.length }} 款 · 总货值 {{ formatPrice(group.totalCost) }} · 预期市价 {{ formatPrice(group.totalValue) }} ·
                     <span :class="group.changeRate >= 0 ? 'text-green-600' : 'text-red-600'">
                       {{ formatRate(group.changeRate) }}
                     </span>
