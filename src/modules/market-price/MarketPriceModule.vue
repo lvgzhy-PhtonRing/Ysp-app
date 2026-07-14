@@ -95,17 +95,25 @@ const filteredItems = computed(() => {
   return list
 })
 
-// ===== 品牌组内按名称排序 =====
-function sortGroupItems(items) {
-  return [...items].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-CN'))
+// ===== 品牌组内排序 =====
+function sortGroupItems(items, mode) {
+  const list = [...items]
+  if (mode === 'change') {
+    return list.sort((a, b) => (getMergedChangeRate(b) || 0) - (getMergedChangeRate(a) || 0))
+  }
+  if (mode === 'value') {
+    return list.sort((a, b) => ((b.mergedPrice || 0) * b.qty) - ((a.mergedPrice || 0) * a.qty))
+  }
+  // 默认按名称
+  return list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-CN'))
 }
 
 const sortedGroups = computed(() => {
   const groups = groupByBrand(filteredItems.value)
   const entries = Array.from(groups.entries()).map(([brand, items]) => {
     const merged = mergeItemsByName(items)
-    // 品牌组内默认按名称排序
-    const sorted = sortGroupItems(merged)
+    // 品牌组内按当前排序模式排列（不跨组）
+    const sorted = sortGroupItems(merged, sortMode.value)
     const priced = sorted.filter(i => i.mergedPrice != null)
     const totalValue = priced.reduce((s, i) => s + (i.mergedPrice || 0) * i.qty, 0)
     const totalCost = sorted.reduce((s, i) => s + i.totalCost, 0)
@@ -474,7 +482,6 @@ function formatRate(v) {
         <div class="apple-card p-4">
           <h3 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
             <i class="fa-solid fa-arrow-trend-up text-green-500"></i> 涨幅 TOP 5
-            <span class="ml-auto text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded"><i class="fa-regular fa-clock mr-0.5"></i>近 30 天</span>
           </h3>
           <div v-if="rankings.gainers.length > 0" class="space-y-2">
             <div
@@ -498,7 +505,6 @@ function formatRate(v) {
         <div class="apple-card p-4">
           <h3 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
             <i class="fa-solid fa-arrow-trend-down text-red-500"></i> 跌幅 TOP 5
-            <span class="ml-auto text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded"><i class="fa-regular fa-clock mr-0.5"></i>近 30 天</span>
           </h3>
           <div v-if="rankings.losers.length > 0" class="space-y-2">
             <div
