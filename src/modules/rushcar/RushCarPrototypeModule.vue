@@ -45,7 +45,7 @@ const vpnNodeOptions = ['美国', '日本', '香港', '马来西亚', '新加坡
 const bankOptions = ['工商', '招商', '中行', '贝宝']
 const cardTypeOptions = ['Visa', 'Visa数字', 'Master', 'JCB', 'AE', '银联', 'Paypal']
 const domesticReceiverOptions = ['吕', '郑', '爷']
-const transferCompanyOptions = ['转运中国', '铭瑄海淘']
+const transferCompanyOptions = ['转运中国', '铭瑄海淘', '鼎丰转运', '顺丰集运', '星中转运', '天翼转运']
 const baseMattelAccountOptions = ['zhylvg@gmail.com', 'll_gg@yeah.net', 'Payton-pi@zohomail.com']
 const mattelAccountOptions = computed(() => {
   const options = [...baseMattelAccountOptions]
