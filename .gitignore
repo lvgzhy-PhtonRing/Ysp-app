@@ -28,3 +28,14 @@ dist-ssr
 # Sensitive personal data - must not be in public repo
 public/a.json
 public/cloud-config.json
+
+# Backup / data export files - DO NOT UPLOAD
+备份/
+
+# Other project artifacts
+ProjectsCAD-MCP/
+
+# Temporary / miscellaneous files
+market-price-preview.html
+新建 文本文档.txt
+nul
