@@ -47,6 +47,7 @@ const editTransferForm = reactive({
   totalRMB: 0,
   paymentAccount: '支付宝',
   itemIds: [],
+  company: '',
 })
 
 const editForm = reactive({
@@ -145,11 +146,14 @@ const addForm = reactive({
   items: [],
 })
 
+const TRANSFER_COMPANIES = ['鼎丰转运', '顺丰集运', '星中转运', '天翼转运']
+
 const transferForm = reactive({
   transferBatch: '',
   date: new Date().toISOString().slice(0, 10),
   paymentAccount: '支付宝',
   totalRMB: 0,
+  company: '',
 })
 
 const purchaseItems = computed(() => store.items.filter((i) => i?.status === 'purchase'))
@@ -1005,6 +1009,7 @@ function handleNewTransfer() {
   transferForm.date = new Date().toISOString().slice(0, 10)
   transferForm.paymentAccount = '支付宝'
   transferForm.totalRMB = 0
+  transferForm.company = ''
   transferCategoryBatch.value = transferBatchOptions.value[0] || ''
   selectedItemIds.value = filteredTransferItems.value.map((i) => i.id)
   showTransferModal.value = true
@@ -1394,6 +1399,7 @@ function editTransferRecord(record) {
   editTransferForm.totalRMB = Number(record?.totalRMB || 0)
   editTransferForm.paymentAccount = record?.paymentAccount || '支付宝'
   editTransferForm.itemIds = [...(record?.itemIds || [])]
+  editTransferForm.company = record?.company || ''
   showEditTransferModal.value = true
 }
 
@@ -1409,13 +1415,14 @@ function submitEditTransfer() {
   if (invalidCoefficient) return alert('存在非法转运系数（需在 0~10 之间），请先编辑购买组修正')
 
   // 捕获修改前的原始值
-  const beforeRecord = { date: record.date, totalRMB: record.totalRMB, paymentAccount: record.paymentAccount }
+  const beforeRecord = { date: record.date, totalRMB: record.totalRMB, paymentAccount: record.paymentAccount, company: record.company }
 
   isSubmittingEditTransfer.value = true
   try {
     record.date = editTransferForm.date
     record.totalRMB = Number(editTransferForm.totalRMB || 0)
     record.paymentAccount = editTransferForm.paymentAccount
+    record.company = editTransferForm.company
 
     const totalCoefficients = relatedItems.reduce(
       (sum, item) => sum + Number(item?.purchaseDetails?.transferCoefficient || 1),
@@ -1434,6 +1441,7 @@ function submitEditTransfer() {
     if (beforeRecord.date !== record.date) changes.日期 = { before: beforeRecord.date, after: record.date }
     if (Number(beforeRecord.totalRMB) !== record.totalRMB) changes.总费用RMB = { before: beforeRecord.totalRMB, after: record.totalRMB }
     if (beforeRecord.paymentAccount !== record.paymentAccount) changes.支付账户 = { before: beforeRecord.paymentAccount, after: record.paymentAccount }
+    if (beforeRecord.company !== record.company) changes.转运公司 = { before: beforeRecord.company, after: record.company }
     var changesText = formatChangesSummary(changes)
     addOperationLog('purchase_transfer_edit', '编辑转运: ' + (record.transferBatch || record.transferId) + (changesText ? ' ← ' + changesText : ''), {
       transferId: record.transferId,
@@ -1889,7 +1897,7 @@ watch(purchaseViewCategory, () => {
         </div>
 
         <div class="border-t border-gray-200 pt-3.5 mb-4">
-          <div class="grid grid-cols-2 gap-4">
+          <div class="grid grid-cols-3 gap-4">
             <div>
               <label class="block text-[12px] mb-1.5 text-gray-600">转运总费用 (¥)</label>
               <input type="number" v-model.number="transferForm.totalRMB" class="apple-input h-9 text-[13px]" placeholder="转运总费用">
@@ -1897,6 +1905,13 @@ watch(purchaseViewCategory, () => {
             <div>
               <label class="block text-[12px] mb-1.5 text-gray-600">付款账户</label>
               <select v-model="transferForm.paymentAccount" class="apple-select h-10 text-[13px] leading-6"><option>支付宝</option><option>信用卡</option><option>微信</option><option>现金</option></select>
+            </div>
+            <div>
+              <label class="block text-[12px] mb-1.5 text-gray-600">转运公司</label>
+              <select v-model="transferForm.company" class="apple-select h-10 text-[13px] leading-6">
+                <option value="">未指定</option>
+                <option v-for="c in TRANSFER_COMPANIES" :key="c" :value="c">{{ c }}</option>
+              </select>
             </div>
           </div>
           <div class="mt-2 text-[12px] text-gray-500" v-if="totalSelectedCoefficient > 0">
@@ -1928,7 +1943,7 @@ watch(purchaseViewCategory, () => {
             <div class="flex justify-between items-start mb-2">
               <div>
                 <div class="font-bold">{{ record.transferBatch }}</div>
-                <div class="text-sm text-gray-500">{{ record.date }} | {{ record.category }} | {{ record.batch }}</div>
+                <div class="text-sm text-gray-500">{{ record.date }} | {{ record.category }} | {{ record.batch }}{{ record.company ? ' | ' + record.company : '' }}</div>
               </div>
               <div class="text-right">
                 <div class="font-bold text-primary">转运费: ¥{{ fmtNum(record.totalRMB) }}</div>
@@ -1956,7 +1971,7 @@ watch(purchaseViewCategory, () => {
                   <div class="flex justify-between items-start mb-2">
                     <div>
                       <div class="font-bold">{{ record.transferBatch }}</div>
-                      <div class="text-sm text-gray-500">{{ record.date }} | {{ record.category }} | {{ record.batch }}</div>
+                      <div class="text-sm text-gray-500">{{ record.date }} | {{ record.category }} | {{ record.batch }}{{ record.company ? ' | ' + record.company : '' }}</div>
                     </div>
                     <div class="text-right">
                       <div class="font-bold text-primary">转运费: ¥{{ fmtNum(record.totalRMB) }}</div>
@@ -1986,6 +2001,7 @@ watch(purchaseViewCategory, () => {
           <div><label class="block text-sm mb-1 text-gray-600">转运日期</label><input type="date" v-model="editTransferForm.date" class="apple-input"></div>
           <div><label class="block text-sm mb-1 text-gray-600">转运总费用 (¥)</label><input type="number" v-model.number="editTransferForm.totalRMB" class="apple-input"></div>
           <div><label class="block text-sm mb-1 text-gray-600">付款账户</label><select v-model="editTransferForm.paymentAccount" class="apple-select"><option>支付宝</option><option>信用卡</option><option>微信</option><option>现金</option></select></div>
+          <div><label class="block text-sm mb-1 text-gray-600">转运公司</label><select v-model="editTransferForm.company" class="apple-select"><option value="">未指定</option><option v-for="c in TRANSFER_COMPANIES" :key="c" :value="c">{{ c }}</option></select></div>
           <div class="bg-gray-50 p-3 rounded-lg">
             <div class="text-sm text-gray-600 mb-2">关联商品 ({{ editTransferForm.itemIds?.length || 0 }} 件):</div>
             <div class="text-xs text-gray-500 space-y-1">
