@@ -880,12 +880,10 @@ function submitAdd() {
       addForm.category === '国内' ? calculatedTotalRMB.value : addForm.totalRMB || 0,
     )
 
-    const sharedSidByProductKey = new Map()
     const createdItems = []
 
     validItems.forEach((line) => {
-      const productKey = `${normalizeBrand(line.brand)}__${String(line.name || '').trim()}`
-      let sharedSid = sharedSidByProductKey.get(productKey) || ''
+      let sharedSid = ''
       const qty = Math.max(1, Number(line.qty || 1))
       for (let i = 0; i < qty; i += 1) {
         const preTransferCost =
@@ -935,7 +933,6 @@ function submitAdd() {
 
         if (!sharedSid && createdItem?.sid) {
           sharedSid = createdItem.sid
-          sharedSidByProductKey.set(productKey, sharedSid)
         }
       }
     })
