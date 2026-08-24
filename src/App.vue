@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AppSidebar from './components/AppSidebar.vue'
 import GlassModal from './components/GlassModal.vue'
 import HomeModule from './modules/home/HomeModule.vue'
@@ -15,6 +15,8 @@ import {
   clearCloudSession,
   clearOperationLogs,
   exportData,
+  getLocalModifiedAt,
+  getUnsyncedOperations,
   isCloudSyncUnhealthy,
   loadData,
   loadFromLocalStorage,
@@ -28,6 +30,7 @@ import {
   setCloudSettings,
   setHistorySuppressed,
   setCloudSyncSuppressed,
+  setLocalModifiedAt,
   state as store,
   redoLastChange,
   syncToCloudNow,
@@ -68,6 +71,7 @@ const logTypeMeta = {
   cloud_signout: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-user-slash', pillClass: 'bg-cyan-100 text-cyan-700' },
   cloud_sync: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-arrows-rotate', pillClass: 'bg-cyan-100 text-cyan-700' },
   cloud_pull: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-cloud-arrow-down', pillClass: 'bg-cyan-100 text-cyan-700' },
+  cloud_conflict: { label: '云端冲突', color: 'text-orange-600', icon: 'fa-solid fa-triangle-exclamation', pillClass: 'bg-orange-100 text-orange-700' },
   purchase_add: { label: '采购新增', color: 'text-yellow-600', icon: 'fa-solid fa-plus', pillClass: 'bg-yellow-100 text-yellow-700',
     summary: function (d) {
       var lines = []
@@ -283,7 +287,45 @@ const cloudForm = ref({
 })
 const cloudBusy = ref(false)
 
+// 云端冲突检测弹窗（本地数据比云端新时弹出，供用户选择数据源）
+const cloudConflict = ref(false)
+const cloudConflictInfo = ref({ localAt: '', cloudAt: '' })
+let cloudConflictResolver = null
+
+function tsToEpoch(t) {
+  const n = t ? new Date(t).getTime() : 0
+  return Number.isFinite(n) ? n : 0
+}
+
+function formatConflictTime(t) {
+  if (!t || t === '-') return '-'
+  const d = new Date(t)
+  if (isNaN(d.getTime())) return String(t)
+  return d.toLocaleString()
+}
+
+function askCloudConflict(cloudResult, localAt) {
+  cloudConflictInfo.value = {
+    localAt: localAt || '',
+    cloudAt: cloudResult?.updatedAt || '',
+  }
+  cloudConflict.value = true
+  return new Promise((resolve) => {
+    cloudConflictResolver = resolve
+  })
+}
+
+function resolveCloudConflict(choice) {
+  cloudConflict.value = false
+  if (typeof cloudConflictResolver === 'function') {
+    cloudConflictResolver(choice)
+    cloudConflictResolver = null
+  }
+}
+
 const cloudUnhealthy = computed(() => isCloudSyncUnhealthy())
+const showUnsyncedList = ref(false)
+const unsyncedLogs = computed(() => getUnsyncedOperations())
 
 watch(cloudUnhealthy, (unhealthy) => {
   if (!unhealthy) resetCloudUnhealthyWarning()
@@ -324,7 +366,8 @@ function applyCloudDataToStore(payload = {}, options = {}) {
   setHistorySuppressed(!trackHistory)
   try {
     loadData(payload)
-    saveToLocalStorage()
+    if (options.sourceUpdatedAt) setLocalModifiedAt(options.sourceUpdatedAt)
+    saveToLocalStorage({ bumpTimestamp: false })
   } finally {
     setHistorySuppressed(false)
     setCloudSyncSuppressed(false)
@@ -445,7 +488,7 @@ async function pullFromCloud() {
       alert('云端没有可用数据')
       return
     }
-    applyCloudDataToStore(result.payload)
+    applyCloudDataToStore(result.payload, { sourceUpdatedAt: result.updatedAt })
     setCloudLoadSuccess(result.updatedAt)
     addOperationLog('cloud_pull', '从云端加载数据成功', {
       updatedAt: result.updatedAt,
@@ -501,6 +544,28 @@ function getCloudLoadTimeText() {
   return new Date(store.cloudStatus.lastCloudLoadAt).toLocaleString()
 }
 
+/**
+ * 页面切走/关闭时静默兜底上传：用 keepalive 请求把最新数据补传云端。
+ * 尽力而为、不阻塞、不提示；有未同步操作且云同步可用时才触发。
+ */
+function syncSilentlyOnHidden() {
+  if (document.visibilityState !== 'hidden') return
+  if (!store.cloudSettings.enabled) return
+  if (!isCloudConfigReady(store.cloudSettings)) return
+  if (store.cloudStatus.syncing) return
+  if (getUnsyncedOperations().length === 0) return
+
+  const payload = exportData()
+  saveCloudState(store.cloudSettings, payload, {
+    session: store.cloudSession,
+    onSession: (session) => setCloudSession(session),
+    makePublic: store.cloudSettings.publicRead,
+    keepalive: true,
+  }).catch(() => {
+    // 静默失败：尽力而为，不打扰用户
+  })
+}
+
 async function loadCloudOnStartup() {
   if (!store.cloudSettings.enabled) return false
   if (!isCloudConfigReady(store.cloudSettings)) return false
@@ -512,7 +577,48 @@ async function loadCloudOnStartup() {
       publicOnly: false,
     })
     if (!result?.payload) return false
-    applyCloudDataToStore(result.payload, { trackHistory: false })
+
+    const cloudTs = tsToEpoch(result.updatedAt)
+    const localAt = getLocalModifiedAt()
+    const localTs = tsToEpoch(localAt)
+
+    // 本地数据比云端更新 → 弹窗让用户选择数据源，避免误覆盖本地新数据
+    if (cloudTs && localTs && localTs > cloudTs) {
+      const choice = await askCloudConflict(result, localAt)
+      if (choice === 'local') {
+        try {
+          const syncResult = await syncToCloudNow()
+          addOperationLog('cloud_conflict', '本地数据较新，已上传覆盖云端', {
+            updatedAt: syncResult?.updatedAt || result.updatedAt,
+          })
+          setCloudLoadSuccess(syncResult?.updatedAt || result.updatedAt)
+        } catch (err) {
+          addOperationLog('cloud_conflict', '本地数据较新，但上传云端失败，已保留本地', {
+            error: err.message,
+          })
+          setCloudLoadError(err.message)
+          alert(`上传云端失败：${err.message}\n本地数据已保留，请检查网络或云端登录。`)
+        }
+        return true
+      }
+      if (choice === 'cloud') {
+        applyCloudDataToStore(result.payload, { trackHistory: false, sourceUpdatedAt: result.updatedAt })
+        setCloudLoadSuccess(result.updatedAt)
+        addOperationLog('cloud_conflict', '云端数据较新，已用云端覆盖本地', {
+          updatedAt: result.updatedAt,
+        })
+        return true
+      }
+      // 手动对比：不自动覆盖，保持本地数据，用户可在云端设置里手动拉取/同步
+      addOperationLog('cloud_conflict', '本地与云端数据存在差异，已保留本地待手动处理', {
+        localUpdatedAt: localAt,
+        cloudUpdatedAt: result.updatedAt,
+      })
+      return false
+    }
+
+    // 云端较新或无法比较 → 用云端覆盖本地（原行为）
+    applyCloudDataToStore(result.payload, { trackHistory: false, sourceUpdatedAt: result.updatedAt })
     setCloudLoadSuccess(result.updatedAt)
     return true
   } catch (err) {
@@ -595,6 +701,8 @@ onMounted(async () => {
     }
   })
 
+  document.addEventListener('visibilitychange', syncSilentlyOnHidden)
+
   const cloudLoaded = await loadCloudOnStartup()
 
   if (!cloudLoaded && store.items.length === 0) {
@@ -609,6 +717,10 @@ onMounted(async () => {
       // ignore
     }
   }
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', syncSilentlyOnHidden)
 })
 
 watch(
@@ -646,11 +758,29 @@ watch(
       <!-- 云端未连接警告 -->
       <div
         v-if="cloudUnhealthy"
-        class="-mt-4 mb-4 mx-1 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700"
+        class="-mt-4 mb-4 mx-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700"
       >
-        <i class="fa-solid fa-triangle-exclamation text-amber-500"></i>
-        <span>云端同步未连接，数据仅保存在本地浏览器中。</span>
-        <button class="ml-auto shrink-0 underline hover:text-amber-800" @click="openCloudSettings">去登录</button>
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-triangle-exclamation text-amber-500"></i>
+          <span>云端同步未连接，数据仅保存在本地浏览器中。</span>
+          <button class="ml-auto shrink-0 underline hover:text-amber-800" @click="openCloudSettings">去登录</button>
+        </div>
+        <div v-if="unsyncedLogs.length" class="mt-2 border-t border-amber-200 pt-2">
+          <button class="text-xs underline hover:text-amber-900" @click="showUnsyncedList = !showUnsyncedList">
+            {{ showUnsyncedList ? '收起未同步明细' : '查看未同步明细（' + unsyncedLogs.length + ' 条）' }}
+          </button>
+          <div v-if="showUnsyncedList" class="mt-1 max-h-44 overflow-y-auto space-y-1">
+            <div
+              v-for="log in unsyncedLogs.slice(0, 30)"
+              :key="log.id"
+              class="flex items-start justify-between gap-3 text-xs text-amber-800"
+            >
+              <span class="min-w-0 truncate">{{ getLogMeta(log.type).label }} · {{ log.message }}</span>
+              <span class="shrink-0 text-amber-600/70">{{ new Date(log.time).toLocaleString() }}</span>
+            </div>
+            <div v-if="unsyncedLogs.length > 30" class="text-xs text-amber-600">仅显示前 30 条，共 {{ unsyncedLogs.length }} 条</div>
+          </div>
+        </div>
       </div>
       <div class="mx-auto max-w-7xl space-y-6 pb-8">
         <HomeModule v-if="currentTab === 'home'" />
@@ -725,6 +855,28 @@ watch(
         <button class="btn btn-outline" :disabled="cloudBusy" @click="cloudSignOut">退出登录</button>
         <button class="btn btn-outline" :disabled="cloudBusy" @click="pullFromCloud">从云端拉取</button>
         <button class="btn btn-primary" :disabled="cloudBusy" @click="syncCloudNowFromUi">立即同步</button>
+      </div>
+    </GlassModal>
+
+    <GlassModal v-model="cloudConflict" panel-class="w-full max-w-md p-6 relative" :close-on-overlay="false">
+      <div class="mb-1 text-xl font-bold">检测到数据冲突</div>
+      <p class="text-sm text-gray-600 mb-4">
+        本机数据比云端更新，可能是上次未同步成功或另一台设备未同步。请选择使用哪一份数据：
+      </p>
+      <div class="mb-4 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 space-y-1">
+        <div class="flex justify-between gap-3">
+          <span class="shrink-0">本机数据时间</span>
+          <span class="font-mono text-gray-800">{{ formatConflictTime(cloudConflictInfo.localAt) }}</span>
+        </div>
+        <div class="flex justify-between gap-3">
+          <span class="shrink-0">云端数据时间</span>
+          <span class="font-mono text-gray-800">{{ formatConflictTime(cloudConflictInfo.cloudAt) }}</span>
+        </div>
+      </div>
+      <div class="space-y-2">
+        <button class="btn btn-primary w-full" @click="resolveCloudConflict('local')">用本地的覆盖云端（上传本地）</button>
+        <button class="btn btn-outline w-full" @click="resolveCloudConflict('cloud')">用云端的覆盖本地</button>
+        <button class="btn btn-outline w-full" @click="resolveCloudConflict('manual')">先手动对比（不自动同步）</button>
       </div>
     </GlassModal>
 

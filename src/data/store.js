@@ -156,8 +156,11 @@ let suppressCloudSync = false
 let suppressHistory = false
 let lastPersistedData = null
 let lastPersistedSerialized = ''
+let lastPersistedCompareSerialized = ''
 let hasPersistedSnapshot = false
 let pendingHistoryMeta = null
+// 本地数据最后修改时间（ISO 字符串），用于启动时与云端 updated_at 比较
+let localLastModifiedAt = ''
 
 let _cloudUnhealthyWarned = false
 
@@ -207,10 +210,19 @@ function clearCloudSyncTimer() {
   cloudSyncTimer = null
 }
 
+// 移除 updatedAt 字段，用于判断本地数据是否有"真实"变化（时间戳变化不算）
+function stripUpdatedAt(data) {
+  if (!data || typeof data !== 'object') return data
+  const copy = { ...data }
+  delete copy.updatedAt
+  return copy
+}
+
 function setPersistedSnapshot(data) {
   const safeData = data && typeof data === 'object' ? clone(data) : exportData()
   lastPersistedData = safeData
   lastPersistedSerialized = JSON.stringify(safeData)
+  lastPersistedCompareSerialized = JSON.stringify(stripUpdatedAt(safeData))
   hasPersistedSnapshot = true
 }
 
@@ -373,6 +385,11 @@ export function loadData(jsonObject = {}) {
   } else if (!state.snapshots) {
     state.snapshots = []
   }
+
+  // 恢复本地最后修改时间
+  if (typeof data.updatedAt === 'string') {
+    localLastModifiedAt = data.updatedAt
+  }
 }
 
 export function exportData() {
@@ -387,6 +404,7 @@ export function exportData() {
     rushcar: normalizeRushCarData(state.rushcar),
     version: state.version,
     snapshots: state.snapshots ? clone(state.snapshots) : [],
+    updatedAt: localLastModifiedAt,
   }
 }
 
@@ -440,12 +458,20 @@ function takeDailySnapshot() {
   state.snapshots.push(snapshot)
 }
 
-export function saveToLocalStorage() {
+export function saveToLocalStorage(options = {}) {
+  const bumpTimestamp = options.bumpTimestamp !== false
   takeDailySnapshot()
-  const currentData = exportData()
+  let currentData = exportData()
+  const compareSerialized = JSON.stringify(stripUpdatedAt(currentData))
+  const hasDataChange = hasPersistedSnapshot && compareSerialized !== lastPersistedCompareSerialized
+
+  if (bumpTimestamp && hasDataChange) {
+    localLastModifiedAt = new Date().toISOString()
+    currentData = exportData()
+  }
   const serialized = JSON.stringify(currentData)
 
-  if (hasPersistedSnapshot && !suppressHistory && serialized !== lastPersistedSerialized) {
+  if (hasDataChange && !suppressHistory) {
     pushHistoryEntry(lastPersistedData, currentData)
   } else {
     clearPendingHistoryMeta()
@@ -454,6 +480,16 @@ export function saveToLocalStorage() {
   localStorage.setItem('ysp_data', serialized)
   setPersistedSnapshot(currentData)
   scheduleCloudSync()
+}
+
+/** 读取本地数据最后修改时间（ISO 字符串，可能为空） */
+export function getLocalModifiedAt() {
+  return localLastModifiedAt
+}
+
+/** 显式设置本地数据最后修改时间（如云端拉取后对齐为云端时间） */
+export function setLocalModifiedAt(t) {
+  localLastModifiedAt = typeof t === 'string' ? t : ''
 }
 
 export function registerCloudSyncHandler(handler) {
@@ -621,6 +657,20 @@ export function clearOperationLogs() {
 }
 
 /**
+ * 获取尚未同步到云端的操作清单（操作时间晚于最近一次成功同步/云端拉取的较晚者）。
+ * 用于在"云端未连接"时向用户展示本地未同步的具体改动。
+ */
+export function getUnsyncedOperations() {
+  const syncTs = state.cloudStatus.lastSyncAt ? new Date(state.cloudStatus.lastSyncAt).getTime() : 0
+  const loadTs = state.cloudStatus.lastCloudLoadAt ? new Date(state.cloudStatus.lastCloudLoadAt).getTime() : 0
+  const threshold = Math.max(syncTs, loadTs) || 0
+  return state.operationLogs.filter((log) => {
+    const t = new Date(log.time).getTime()
+    return Number.isFinite(t) && t > threshold
+  })
+}
+
+/**
  * 回溯指定时间点的 calc 字段值
  * @param {string} field - calc 字段名 (debt|wechat|publicExp|unconfirmed|fund)
  * @param {string|Date} targetDate - 目标时间点
@@ -721,6 +771,8 @@ export function loadFromLocalStorage() {
     hasPersistedSnapshot = false
     lastPersistedData = null
     lastPersistedSerialized = ''
+    lastPersistedCompareSerialized = ''
+    localLastModifiedAt = ''
     return
   }
 

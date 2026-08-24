@@ -201,7 +201,7 @@ export async function saveCloudState(rawConfig = {}, payload = {}, options = {})
     throw new Error('云端配置不完整')
   }
 
-  const { session = null, onSession = null, makePublic = true } = options
+  const { session = null, onSession = null, makePublic = true, keepalive = false } = options
   const nextSession = await ensureSession(config, session, onSession)
   if (!nextSession?.accessToken) {
     throw new Error('请先登录云端账号')
@@ -223,6 +223,7 @@ export async function saveCloudState(rawConfig = {}, payload = {}, options = {})
       is_public: Boolean(makePublic),
       updated_at: new Date().toISOString(),
     }),
+    keepalive,
   })
 
   const patchData = await readJsonResponse(patchResp)
@@ -252,6 +253,7 @@ export async function saveCloudState(rawConfig = {}, payload = {}, options = {})
     method: 'POST',
     headers,
     body: JSON.stringify([insertRow]),
+    keepalive,
   })
 
   const insertData = await readJsonResponse(insertResp)
