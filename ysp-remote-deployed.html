@@ -2086,8 +2086,10 @@ function renderHome() {
         <div style="background:#fff;border-radius:10px;padding:10px;text-align:center;border:1px solid #e5e5ea">
           <div style="font-size:11px;color:#8e8e93">总实盈利润</div>
           <div style="font-size:20px;font-weight:800;${totalActualProfit>=0?'color:#34c759':'color:#ff3b30'}">¥${fmtMoney(totalActualProfit)}</div>
-          <div style="font-size:11px;color:#8e8e93">率${fmt(totalProfitMargin*100,1)}%</div>
-          <div style="font-size:9px;color:#8e8e93">已扣公共支出（支出−收入）</div>
+          <div style="display:flex;justify-content:center;align-items:center;gap:5px">
+            <span style="font-size:11px;color:#8e8e93">率${fmt(totalProfitMargin*100,1)}%</span>
+            <span style="font-size:9px;color:#8e8e93">已扣除公共支出</span>
+          </div>
         </div>
       </div>
     </div>
@@ -2123,7 +2125,6 @@ function renderHome() {
         <div class="calc-item">
           <label>公共支出（自动）</label>
           <div style="font-size:16px;font-weight:600;padding-top:4px">${fmtMoney(finPubExp)}</div>
-          <div style="font-size:9px;color:#8e8e93">支出−收入</div>
         </div>
         <div class="calc-item">
           <label>未确认交易</label>

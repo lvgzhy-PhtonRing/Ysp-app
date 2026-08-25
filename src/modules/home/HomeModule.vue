@@ -248,8 +248,10 @@ function statusText(status) {
         <div class="flex flex-col justify-center text-center p-4 bg-white rounded-lg shadow-sm border border-gray-100 h-40">
           <div class="text-sm text-gray-500 mb-2 font-medium">总实盈利润</div>
           <div class="text-5xl md:text-6xl font-extrabold tracking-tighter" :class="totalActualProfit >= 0 ? 'text-success' : 'text-danger'">{{ fmtMoney(totalActualProfit) }}</div>
-          <div class="text-lg text-gray-400 mt-1">利润率 {{ fmtNum(totalProfitMargin * 100) }}%</div>
-          <div class="text-xs text-gray-400 mt-1">已扣除公共支出（支出−收入）</div>
+          <div class="flex items-center justify-center gap-2 mt-1">
+            <span class="text-lg text-gray-400">利润率 {{ fmtNum(totalProfitMargin * 100) }}%</span>
+            <span class="text-xs text-gray-400">已扣除公共支出</span>
+          </div>
         </div>
       </div>
     </div>
@@ -262,7 +264,7 @@ function statusText(status) {
           <input type="number" v-model.number="store.calc.debt" class="apple-input mt-1" @focus="onCalcFocus('debt')" @change="persistCalc('debt')" />
         </div>
         <div><label class="text-xs text-gray-500">借贷余额</label><div class="mt-2 text-lg font-bold text-gray-700">{{ fmtMoney(financeLoanBalance) }}</div></div>
-        <div><label class="text-xs text-gray-500">公共支出</label><div class="mt-2 text-lg font-bold text-gray-700">{{ fmtMoney(financePublicExpense) }}</div><div class="text-[10px] text-gray-400 mt-0.5">支出−收入</div></div>
+        <div><label class="text-xs text-gray-500">公共支出</label><div class="mt-2 text-lg font-bold text-gray-700">{{ fmtMoney(financePublicExpense) }}</div></div>
         <div>
           <label class="text-xs text-gray-500">未确认交易</label>
           <input type="number" v-model.number="store.calc.unconfirmed" class="apple-input mt-1" @focus="onCalcFocus('unconfirmed')" @change="persistCalc('unconfirmed')" />
