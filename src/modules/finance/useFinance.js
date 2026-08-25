@@ -143,6 +143,23 @@ export function deleteLoanRecord(loanId) {
   return true
 }
 
+/**
+ * 公共支出净额：支出 - 收入
+ * 统一口径，供首页「总实盈利润」减项与首页公共支出卡使用，
+ * 与财务页「公共支出」卡（totalExpense - totalIncome）保持一致。
+ */
+export function getPublicExpense(financeRecords = []) {
+  const totalExpense = financeRecords.reduce(
+    (sum, r) => (r?.type === 'expense' ? sum + toNumber(r.amount) : sum),
+    0,
+  )
+  const totalIncome = financeRecords.reduce(
+    (sum, r) => (r?.type === 'income' ? sum + toNumber(r.amount) : sum),
+    0,
+  )
+  return totalExpense - totalIncome
+}
+
 export function getFinanceStats(financeRecords = [], loanRecords = []) {
   const totalIncome = financeRecords.reduce(
     (sum, r) => (r?.type === 'income' ? sum + toNumber(r.amount) : sum),
@@ -182,5 +199,6 @@ export function useFinance() {
     updateLoanRecord,
     deleteLoanRecord,
     getFinanceStats,
+    getPublicExpense,
   }
 }

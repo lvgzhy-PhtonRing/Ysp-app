@@ -2,7 +2,7 @@
 
 import { reactive } from 'vue'
 
-const APP_VERSION = '3.7.0'
+const APP_VERSION = '3.8.0'
 const CLOUD_SYNC_DEBOUNCE_MS = 800
 const MAX_UNDO_STEPS = 20
 const HISTORY_META_EXPIRE_MS = 3000
@@ -429,9 +429,14 @@ function takeDailySnapshot() {
     return s + (l?.type === 'borrow' ? Number(l.amount || 0) : -Number(l.amount || 0))
   }, 0)
 
-  const publicExpense = state.financeRecords
+  // 公共支出净额：支出 - 收入（与首页/财务页「公共支出」口径一致）
+  const financeExpense = state.financeRecords
     .filter(r => r?.type === 'expense')
     .reduce((s, r) => s + Number(r?.amount || 0), 0)
+  const financeIncome = state.financeRecords
+    .filter(r => r?.type === 'income')
+    .reduce((s, r) => s + Number(r?.amount || 0), 0)
+  const publicExpense = financeExpense - financeIncome
 
   const soldItems = state.items.filter(i => i?.status === 'sold')
   const inventoryItems = state.items.filter(i => i?.status === 'inventory')
@@ -443,7 +448,8 @@ function takeDailySnapshot() {
     calc: { ...state.calc },
     finance: { loanBalance, publicExpense },
     profit: {
-      totalActualProfit: soldItems.reduce((s, i) => s + Number(i?.saleDetails?.profit || 0), 0),
+      // 净实盈利润：已售利润 - 公共支出净额
+      totalActualProfit: soldItems.reduce((s, i) => s + Number(i?.saleDetails?.profit || 0), 0) - publicExpense,
     },
     inventory: {
       value: inventoryItems.reduce((s, i) => s + Number(i?.cost || 0), 0),

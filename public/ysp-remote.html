@@ -1880,25 +1880,30 @@ function statusText(s) {
   return s||'-';
 }
 
+// 公共支出净额：支出 - 收入（与主应用「公共支出」口径一致）
+function getPublicExpense() {
+  const exp=APP.data.finance.records.filter(r=>r.type==='expense').reduce((s,r)=>s+toNum(r.amount),0);
+  const inc=APP.data.finance.records.filter(r=>r.type==='income').reduce((s,r)=>s+toNum(r.amount),0);
+  return exp - inc;
+}
+
 function calcAlipayBalance() {
   const inv=APP.data.items.filter(i=>i.status==='inventory');
   const invValue=inv.reduce((s,i)=>s+toNum(i.cost),0);
   const sold=APP.data.items.filter(i=>i.status==='sold');
-  const totalActualProfit=sold.reduce((s,i)=>s+toNum(i.saleDetails?.profit),0);
+  const financePublicExpense=getPublicExpense();
+  const totalActualProfit=sold.reduce((s,i)=>s+toNum(i.saleDetails?.profit),0) - financePublicExpense;
   const financeLoanBalance=APP.data.finance.loans.reduce((sum,l)=>{
     if(l.type==='borrow') return sum+toNum(l.amount);
     if(l.type==='lend') return sum-toNum(l.amount); // lend=还款/归还
     return sum;
   },0);
-  const financePublicExpense=APP.data.finance.records
-    .filter(r=>r.type==='expense').reduce((s,r)=>s+toNum(r.amount),0);
   const purchaseTotalCost=APP.data.items.filter(i=>i.status==='purchase').reduce((s,i)=>s+toNum(i.cost),0);
 
   return toNum(APP.calc.debt)
     + financeLoanBalance
     + totalActualProfit
     - invValue
-    - financePublicExpense
     - toNum(APP.calc.unconfirmed)
     + toNum(APP.carFundBalance)
     - purchaseTotalCost;
@@ -1946,7 +1951,7 @@ function renderHome() {
   const ltValue = lt.reduce((s,i)=>s+toNum(i.cost),0);
   const ltCount = lt.length;
   const sold = APP.data.items.filter(i=>i.status==='sold');
-  const totalActualProfit = sold.reduce((s,i)=>s+toNum(i.saleDetails?.profit),0);
+  const totalActualProfit = sold.reduce((s,i)=>s+toNum(i.saleDetails?.profit),0) - getPublicExpense();
   const soldCost = sold.reduce((s,i)=>s+toNum(i.cost),0);
   const totalProfitMargin = soldCost>0 ? totalActualProfit/soldCost : 0;
 
@@ -2037,6 +2042,7 @@ function renderHome() {
           <div style="font-size:11px;color:#8e8e93">总实盈利润</div>
           <div style="font-size:20px;font-weight:800;${totalActualProfit>=0?'color:#34c759':'color:#ff3b30'}">¥${fmtMoney(totalActualProfit)}</div>
           <div style="font-size:11px;color:#8e8e93">率${fmt(totalProfitMargin*100,1)}%</div>
+          <div style="font-size:9px;color:#8e8e93">已扣公共支出（支出−收入）</div>
         </div>
       </div>
     </div>
@@ -2049,10 +2055,10 @@ function renderHome() {
     if(l.type==='lend') return sum-toNum(l.amount);
     return sum;
   },0);
-  const finPubExp = APP.data.finance.records.filter(r=>r.type==='expense').reduce((s,r)=>s+toNum(r.amount),0);
+  const finPubExp = getPublicExpense();
   const purchaseTC = APP.data.items.filter(i=>i.status==='purchase').reduce((s,i)=>s+toNum(i.cost),0);
   const actualBal = alipay - toNum(APP.calc.forwarderBalance) - toNum(APP.calc.watchBalance);
-  const formulaText = `挖财总负债(${fmtMoney(APP.calc.debt)}) + 借贷余额(${fmtMoney(finLoanBal)}) + 总实盈利润(${fmtMoney(totalActualProfit)}) - 库存总货值(${fmtMoney(invValue)}) - 公共支出(${fmtMoney(finPubExp)}) - 未确认交易(${fmtMoney(APP.calc.unconfirmed)}) + Payton's基金(${fmtMoney(APP.carFundBalance)}) - 采购中金额(${fmtMoney(purchaseTC)}) = ${fmtMoney(alipay)}`;
+  const formulaText = `挖财总负债(${fmtMoney(APP.calc.debt)}) + 借贷余额(${fmtMoney(finLoanBal)}) + 总实盈利润(已扣公共支出)(${fmtMoney(totalActualProfit)}) - 库存总货值(${fmtMoney(invValue)}) - 未确认交易(${fmtMoney(APP.calc.unconfirmed)}) + Payton's基金(${fmtMoney(APP.carFundBalance)}) - 采购中金额(${fmtMoney(purchaseTC)}) = ${fmtMoney(alipay)}`;
 
   html += `<div class="card" style="margin-top:10px">
     <div class="card-header">
@@ -2072,6 +2078,7 @@ function renderHome() {
         <div class="calc-item">
           <label>公共支出（自动）</label>
           <div style="font-size:16px;font-weight:600;padding-top:4px">${fmtMoney(finPubExp)}</div>
+          <div style="font-size:9px;color:#8e8e93">支出−收入</div>
         </div>
         <div class="calc-item">
           <label>未确认交易</label>

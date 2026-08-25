@@ -11,6 +11,7 @@ import {
   searchItems,
 } from './useHomeInsights'
 import CashflowMonitor from './CashflowMonitor.vue'
+import { getPublicExpense } from '../finance/useFinance'
 
 const now = computed(() => new Date())
 const todayDate = computed(() => now.value.toISOString().slice(0, 10))
@@ -30,8 +31,11 @@ const longTermItems = computed(() =>
 const longTermValue = computed(() => longTermItems.value.reduce((s, i) => s + Number(i?.cost || 0), 0))
 const longTermCount = computed(() => longTermItems.value.length)
 
+const financePublicExpense = computed(() => getPublicExpense(store.financeRecords))
+
 const totalActualProfit = computed(() =>
-  soldItems.value.reduce((s, i) => s + Number(i?.saleDetails?.profit || 0), 0),
+  soldItems.value.reduce((s, i) => s + Number(i?.saleDetails?.profit || 0), 0) -
+  financePublicExpense.value,
 )
 const soldCost = computed(() => soldItems.value.reduce((s, i) => s + Number(i?.cost || 0), 0))
 const totalProfitMargin = computed(() => (soldCost.value > 0 ? totalActualProfit.value / soldCost.value : 0))
@@ -44,12 +48,6 @@ const financeLoanBalance = computed(() =>
     if (l?.type === 'lend') return sum - Number(l?.amount || 0)
     return sum
   }, 0),
-)
-
-const financePublicExpense = computed(() =>
-  store.financeRecords
-    .filter((r) => r?.type === 'expense')
-    .reduce((s, r) => s + Number(r?.amount || 0), 0),
 )
 
 const carFundBalance = ref(0)
@@ -78,7 +76,6 @@ const alipayBalance = computed(() => {
     financeLoanBalance.value +
     totalActualProfit.value -
     inventoryValue.value -
-    financePublicExpense.value -
     Number(store.calc.unconfirmed || 0) +
     carFundBalance.value -
     purchaseStats.value.totalCost
@@ -86,7 +83,7 @@ const alipayBalance = computed(() => {
 })
 
 const alipayFormula = computed(() => {
-  return `挖财总负债(${fmtMoney(store.calc.debt)}) + 借贷余额(${fmtMoney(financeLoanBalance.value)}) + 总实盈利润(${fmtMoney(totalActualProfit.value)}) - 库存总货值(${fmtMoney(inventoryValue.value)}) - 公共支出(${fmtMoney(financePublicExpense.value)}) - 未确认交易(${fmtMoney(store.calc.unconfirmed)}) + Payton's基金(${fmtMoney(carFundBalance.value)}) - 采购中金额(${fmtMoney(purchaseStats.value.totalCost)}) = ${fmtMoney(alipayBalance.value)}`
+  return `挖财总负债(${fmtMoney(store.calc.debt)}) + 借贷余额(${fmtMoney(financeLoanBalance.value)}) + 总实盈利润(已扣公共支出)(${fmtMoney(totalActualProfit.value)}) - 库存总货值(${fmtMoney(inventoryValue.value)}) - 未确认交易(${fmtMoney(store.calc.unconfirmed)}) + Payton's基金(${fmtMoney(carFundBalance.value)}) - 采购中金额(${fmtMoney(purchaseStats.value.totalCost)}) = ${fmtMoney(alipayBalance.value)}`
 })
 
 const searchKeyword = ref('')
@@ -252,6 +249,7 @@ function statusText(status) {
           <div class="text-sm text-gray-500 mb-2 font-medium">总实盈利润</div>
           <div class="text-5xl md:text-6xl font-extrabold tracking-tighter" :class="totalActualProfit >= 0 ? 'text-success' : 'text-danger'">{{ fmtMoney(totalActualProfit) }}</div>
           <div class="text-lg text-gray-400 mt-1">利润率 {{ fmtNum(totalProfitMargin * 100) }}%</div>
+          <div class="text-xs text-gray-400 mt-1">已扣除公共支出（支出−收入）</div>
         </div>
       </div>
     </div>
@@ -264,7 +262,7 @@ function statusText(status) {
           <input type="number" v-model.number="store.calc.debt" class="apple-input mt-1" @focus="onCalcFocus('debt')" @change="persistCalc('debt')" />
         </div>
         <div><label class="text-xs text-gray-500">借贷余额</label><div class="mt-2 text-lg font-bold text-gray-700">{{ fmtMoney(financeLoanBalance) }}</div></div>
-        <div><label class="text-xs text-gray-500">公共支出</label><div class="mt-2 text-lg font-bold text-gray-700">{{ fmtMoney(financePublicExpense) }}</div></div>
+        <div><label class="text-xs text-gray-500">公共支出</label><div class="mt-2 text-lg font-bold text-gray-700">{{ fmtMoney(financePublicExpense) }}</div><div class="text-[10px] text-gray-400 mt-0.5">支出−收入</div></div>
         <div>
           <label class="text-xs text-gray-500">未确认交易</label>
           <input type="number" v-model.number="store.calc.unconfirmed" class="apple-input mt-1" @focus="onCalcFocus('unconfirmed')" @change="persistCalc('unconfirmed')" />
