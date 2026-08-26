@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  buildAlipayBreakdown,
   calcAlipayBalance,
   calcItemCost,
   calcPreTransferCost,
@@ -33,5 +34,15 @@ describe('calc utilities', () => {
     // 新公式（与 HomeModule 界面一致）：
     // debt + loanBalance + actualProfit - inventoryValue - unconfirmed + fund - purchaseCost
     expect(calcAlipayBalance(100, 20, 30, 10, 5, 2, 8)).toBeCloseTo(129, 6)
+  })
+
+  it('buildAlipayBreakdown should group by incoming/outgoing with subtotals', () => {
+    const b = buildAlipayBreakdown(108504.41, 6000, 21512, 94821.31, 1006, -4887.14, 37398.38)
+    expect(b.incoming.map((x) => x.label)).toEqual(['挖财总负债', '借贷余额', '总实盈利润'])
+    expect(b.outgoing.map((x) => x.label)).toEqual(['库存总货值', '采购中金额', '未确认交易', "Payton's基金"])
+    expect(b.inSubtotal).toBeCloseTo(136016.41, 2)
+    expect(b.outSubtotal).toBeCloseTo(-138112.83, 2)
+    // 基金是负值(借出)，出栏中直接取 fund
+    expect(b.outgoing[3].value).toBe(-4887.14)
   })
 })

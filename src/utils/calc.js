@@ -57,3 +57,33 @@ export function calcAlipayBalance(
     Number(purchaseCost)
   )
 }
+
+/**
+ * 支付宝余额分组明细（正负对账两栏）：
+ *   进栏=资金(负债+借贷+利润)；出栏=货·债·基金(库存+采购+未确认+基金，均取负向值)
+ * 基金余额为负表示借出给基金，直接取 fund，故出栏显示为负。
+ */
+export function buildAlipayBreakdown(
+  debt,
+  loanBalance,
+  actualProfit,
+  inventoryValue,
+  unconfirmed,
+  fund,
+  purchaseCost,
+) {
+  const incoming = [
+    { label: '挖财总负债', value: Number(debt) },
+    { label: '借贷余额', value: Number(loanBalance) },
+    { label: '总实盈利润', value: Number(actualProfit) },
+  ]
+  const outgoing = [
+    { label: '库存总货值', value: -Number(inventoryValue) },
+    { label: '采购中金额', value: -Number(purchaseCost) },
+    { label: '未确认交易', value: -Number(unconfirmed) },
+    { label: "Payton's基金", value: Number(fund) },
+  ]
+  const inSubtotal = incoming.reduce((s, x) => s + x.value, 0)
+  const outSubtotal = outgoing.reduce((s, x) => s + x.value, 0)
+  return { incoming, outgoing, inSubtotal, outSubtotal }
+}
