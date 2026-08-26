@@ -44,5 +44,10 @@ describe('calc utilities', () => {
     expect(b.outSubtotal).toBeCloseTo(-138112.83, 2)
     // 基金是负值(借出)，出栏中直接取 fund
     expect(b.outgoing[3].value).toBe(-4887.14)
+    // 两栏小计与应有余额恒等式：进 + 出 = 应有余额
+    expect(b.inSubtotal + b.outSubtotal).toBeCloseTo(
+      calcAlipayBalance(108504.41, 6000, 21512, 94821.31, 1006, -4887.14, 37398.38),
+      2,
+    )
   })
 })
