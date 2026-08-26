@@ -14,10 +14,12 @@ import {
   addOperationLog,
   clearCloudSession,
   clearOperationLogs,
+  computeConflictDiff,
   exportData,
   getLocalModifiedAt,
   getUnsyncedOperations,
   isCloudSyncUnhealthy,
+  isContentEqual,
   loadData,
   loadFromLocalStorage,
   loadUiStateFromLocalStorage,
@@ -289,8 +291,16 @@ const cloudBusy = ref(false)
 
 // 云端冲突检测弹窗（本地数据比云端新时弹出，供用户选择数据源）
 const cloudConflict = ref(false)
-const cloudConflictInfo = ref({ localAt: '', cloudAt: '' })
+const cloudConflictInfo = ref({ localAt: '', cloudAt: '', entries: [], total: 0 })
 let cloudConflictResolver = null
+// 冲突差异明细最多展开显示的条目数，超出仅提示数量
+const DIFF_DISPLAY_LIMIT = 5
+
+function kindText(kind) {
+  if (kind === 'localOnly') return '本地独有'
+  if (kind === 'cloudOnly') return '云端独有'
+  return '两边不同'
+}
 
 function tsToEpoch(t) {
   const n = t ? new Date(t).getTime() : 0
@@ -304,10 +314,12 @@ function formatConflictTime(t) {
   return d.toLocaleString()
 }
 
-function askCloudConflict(cloudResult, localAt) {
+function askCloudConflict(cloudResult, localAt, diff) {
   cloudConflictInfo.value = {
     localAt: localAt || '',
     cloudAt: cloudResult?.updatedAt || '',
+    entries: diff?.entries || [],
+    total: diff?.total || 0,
   }
   cloudConflict.value = true
   return new Promise((resolve) => {
@@ -582,9 +594,24 @@ async function loadCloudOnStartup() {
     const localAt = getLocalModifiedAt()
     const localTs = tsToEpoch(localAt)
 
-    // 本地数据比云端更新 → 弹窗让用户选择数据源，避免误覆盖本地新数据
+    // 本地数据比云端更新 → 先比较内容：仅时间戳/快照不同则对齐时间戳，不弹窗
     if (cloudTs && localTs && localTs > cloudTs) {
-      const choice = await askCloudConflict(result, localAt)
+      const localPayload = exportData()
+
+      // 用户数据内容一致（只是时间戳/自动快照不同）→ 对齐时间戳，不打扰用户
+      if (isContentEqual(localPayload, result.payload)) {
+        setLocalModifiedAt(result.updatedAt)
+        saveToLocalStorage({ bumpTimestamp: false })
+        setCloudLoadSuccess(result.updatedAt)
+        addOperationLog('cloud_conflict', '本地与云端内容一致，已对齐时间戳', {
+          localUpdatedAt: localAt,
+          cloudUpdatedAt: result.updatedAt,
+        })
+        return true
+      }
+
+      const diff = computeConflictDiff(localPayload, result.payload)
+      const choice = await askCloudConflict(result, localAt, diff)
       if (choice === 'local') {
         try {
           const syncResult = await syncToCloudNow()
@@ -613,6 +640,7 @@ async function loadCloudOnStartup() {
       addOperationLog('cloud_conflict', '本地与云端数据存在差异，已保留本地待手动处理', {
         localUpdatedAt: localAt,
         cloudUpdatedAt: result.updatedAt,
+        diffCount: diff.total,
       })
       return false
     }
@@ -858,7 +886,7 @@ watch(
       </div>
     </GlassModal>
 
-    <GlassModal v-model="cloudConflict" panel-class="w-full max-w-md p-6 relative" :close-on-overlay="false">
+    <GlassModal v-model="cloudConflict" panel-class="w-full max-w-md p-6 relative max-h-[80vh] overflow-y-auto" :close-on-overlay="false">
       <div class="mb-1 text-xl font-bold">检测到数据冲突</div>
       <p class="text-sm text-gray-600 mb-4">
         本机数据比云端更新，可能是上次未同步成功或另一台设备未同步。请选择使用哪一份数据：
@@ -871,6 +899,25 @@ watch(
         <div class="flex justify-between gap-3">
           <span class="shrink-0">云端数据时间</span>
           <span class="font-mono text-gray-800">{{ formatConflictTime(cloudConflictInfo.cloudAt) }}</span>
+        </div>
+      </div>
+      <div v-if="cloudConflictInfo.total" class="mb-4 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
+        <div class="font-medium text-gray-700 mb-1">差异明细（{{ cloudConflictInfo.total }} 处）</div>
+        <div class="space-y-2 max-h-48 overflow-y-auto">
+          <div
+            v-for="e in cloudConflictInfo.entries.slice(0, DIFF_DISPLAY_LIMIT)"
+            :key="e.key"
+            class="border-t border-gray-200/70 pt-1.5 first:border-t-0 first:pt-0"
+          >
+            <div class="flex items-center gap-2">
+              <span class="min-w-0 truncate font-medium text-gray-700">{{ e.collectionLabel }}·{{ e.recordLabel }}</span>
+              <span class="shrink-0 rounded bg-white/70 px-1.5 py-0.5 text-gray-500">{{ kindText(e.kind) }}</span>
+            </div>
+            <div v-if="e.kind === 'modified' && e.summary" class="mt-0.5 text-gray-500">{{ e.summary }}</div>
+          </div>
+          <div v-if="cloudConflictInfo.total > DIFF_DISPLAY_LIMIT" class="border-t border-gray-200/70 pt-1.5 text-gray-500">
+            另有 {{ cloudConflictInfo.total - DIFF_DISPLAY_LIMIT }} 处未显示
+          </div>
         </div>
       </div>
       <div class="space-y-2">

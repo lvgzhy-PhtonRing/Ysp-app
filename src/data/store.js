@@ -2,7 +2,7 @@
 
 import { reactive } from 'vue'
 
-const APP_VERSION = '3.8.0'
+const APP_VERSION = '3.9.0'
 const CLOUD_SYNC_DEBOUNCE_MS = 800
 const MAX_UNDO_STEPS = 20
 const HISTORY_META_EXPIRE_MS = 3000
@@ -24,6 +24,10 @@ export const FIELD_LABEL_MAP = {
   unconfirmed: '未确认款', fund: '备用金',
   website: '网站', discount: '折扣', fee: '手续费',
   transferBatch: '转运批次', inStockDate: '入库日期',
+  // 云同步冲突差异用（与编辑日志共用同一映射）
+  status: '状态', qty: '数量', sid: '编号',
+  saleDetails: '销售信息', purchaseDetails: '采购信息',
+  company: '转运公司', isRepaid: '已还款', repaid: '已还款',
 }
 
 function fmtBrief(v) {
@@ -46,6 +50,9 @@ export function formatChangesSummary(changes) {
     var key = entry[0]
     var val = entry[1]
     var label = FIELD_LABEL_MAP[key] || key
+    if (val && typeof val === 'object' && 'changed' in val) {
+      return label + '已变更'
+    }
     if (val && typeof val === 'object' && 'before' in val && 'after' in val) {
       return label + ':' + fmtBrief(val.before) + '→' + fmtBrief(val.after)
     }
@@ -496,6 +503,140 @@ export function getLocalModifiedAt() {
 /** 显式设置本地数据最后修改时间（如云端拉取后对齐为云端时间） */
 export function setLocalModifiedAt(t) {
   localLastModifiedAt = typeof t === 'string' ? t : ''
+}
+
+/**
+ * 规范序列化：递归按键名排序，用于内容比对。
+ * 规避 Supabase jsonb 重排对象键序导致的字符串比对不一致。
+ * 输入为 JSON 安全值（经 clone/JSON 传输）；对 undefined 返回 'null' 兜底。
+ */
+export function stableSerialize(value) {
+  if (value === undefined) return 'null'
+  if (value === null) return 'null'
+  if (Array.isArray(value)) {
+    return '[' + value.map((item) => stableSerialize(item)).join(',') + ']'
+  }
+  if (typeof value === 'object') {
+    const keys = Object.keys(value).sort()
+    return '{' + keys.map((key) => JSON.stringify(key) + ':' + stableSerialize(value[key])).join(',') + '}'
+  }
+  return JSON.stringify(value)
+}
+
+/**
+ * 产出「仅用户数据」的规范形态，供内容比对与冲突差异共用。
+ * 有意排除 version / snapshots / updatedAt：快照与版本号为自动派生数据，不应触发冲突。
+ */
+function normalizePayloadForCompare(data) {
+  const src = data && typeof data === 'object' ? data : {}
+  return {
+    items: Array.isArray(src.items) ? src.items : [],
+    calc: src.calc && typeof src.calc === 'object' ? src.calc : {},
+    finance: {
+      records: Array.isArray(src.finance?.records) ? src.finance.records : [],
+      loans: Array.isArray(src.finance?.loans) ? src.finance.loans : [],
+    },
+    transfers: Array.isArray(src.transfers) ? src.transfers : [],
+    rushcar: normalizeRushCarData(src.rushcar),
+  }
+}
+
+/** 仅比对用户数据内容（忽略时间戳/快照/版本），true 表示两边内容一致 */
+export function isContentEqual(a, b) {
+  return stableSerialize(normalizePayloadForCompare(a)) === stableSerialize(normalizePayloadForCompare(b))
+}
+
+/**
+ * 计算本地与云端 payload 的条目级差异。
+ * @returns {{ entries: Array, total: number }}
+ *  entries 元素形如 { key, collectionLabel, recordLabel, kind, summary }
+ *  kind: 'modified'（两边不同，summary 为字段级摘要）| 'localOnly' | 'cloudOnly'
+ */
+export function computeConflictDiff(localPayload, cloudPayload) {
+  const entries = []
+  const local = normalizePayloadForCompare(localPayload)
+  const cloud = normalizePayloadForCompare(cloudPayload)
+
+  // 各集合 → { 中文标签, 取本地, 取云端, 记录身份字段, 标签补充字段 }
+  const collections = [
+    { label: '商品', localList: local.items, cloudList: cloud.items, nameField: 'name', altField: 'sid', showField: 'sid' },
+    { label: '收支记录', localList: local.finance.records, cloudList: cloud.finance.records, nameField: 'item', altField: 'type', showField: null },
+    { label: '借贷记录', localList: local.finance.loans, cloudList: cloud.finance.loans, nameField: 'name', altField: 'type', showField: null },
+    { label: '转运记录', localList: local.transfers, cloudList: cloud.transfers, nameField: 'name', altField: null, showField: null },
+    { label: '美淘记录', localList: local.rushcar.entries, cloudList: cloud.rushcar.entries, nameField: 'name', altField: null, showField: null },
+    { label: '转运公司', localList: local.rushcar.forwarderInfos, cloudList: cloud.rushcar.forwarderInfos, nameField: 'name', altField: null, showField: null },
+    { label: '美泰站点', localList: local.rushcar.mattelSiteInfos, cloudList: cloud.rushcar.mattelSiteInfos, nameField: 'name', altField: null, showField: null },
+    { label: '支付卡', localList: local.rushcar.paymentCards, cloudList: cloud.rushcar.paymentCards, nameField: 'name', altField: null, showField: null },
+  ]
+
+  for (const col of collections) {
+    const localMap = new Map()
+    col.localList.forEach((r) => localMap.set(recordKey(r, col), r))
+    const cloudMap = new Map()
+    col.cloudList.forEach((r) => cloudMap.set(recordKey(r, col), r))
+
+    for (const id of new Set([...localMap.keys(), ...cloudMap.keys()])) {
+      const l = localMap.get(id)
+      const c = cloudMap.get(id)
+      const label = recordLabel(l || c, col)
+      if (l && c) {
+        if (stableSerialize(l) === stableSerialize(c)) continue
+        const summary = formatChangesSummary(diffRecordFields(c, l))
+        entries.push({ key: `${col.label}:${id}`, collectionLabel: col.label, recordLabel: label, kind: 'modified', summary })
+      } else if (l) {
+        entries.push({ key: `${col.label}:${id}`, collectionLabel: col.label, recordLabel: label, kind: 'localOnly', summary: '' })
+      } else {
+        entries.push({ key: `${col.label}:${id}`, collectionLabel: col.label, recordLabel: label, kind: 'cloudOnly', summary: '' })
+      }
+    }
+  }
+
+  // 财务结算 calc 单独比对（标量字段，字段级差异可读性好）
+  if (stableSerialize(local.calc) !== stableSerialize(cloud.calc)) {
+    const summary = formatChangesSummary(diffRecordFields(cloud.calc, local.calc))
+    entries.push({ key: 'calc', collectionLabel: '财务结算', recordLabel: '各项结算', kind: 'modified', summary })
+  }
+
+  return { entries, total: entries.length }
+}
+
+function recordKey(record, col) {
+  if (record && record.id !== undefined) return String(record.id)
+  if (record && col.altField && record[col.altField] !== undefined) return `${col.altField}:${record[col.altField]}`
+  return `#${record ? stableSerialize(record) : '?'}`
+}
+
+function recordLabel(record, col) {
+  if (!record) return '未知记录'
+  const name = record[col.nameField]
+  const base = typeof name === 'string' && name ? name : `#${record.id ?? '?'}`
+  if (col.showField && record[col.showField] !== undefined) {
+    return `${base} (${record[col.showField]})`
+  }
+  return base
+}
+
+/**
+ * 计算两条记录顶层的字段级差异。
+ * 标量差异记为 { before: 云端值, after: 本地值 }；嵌套对象/数组差异记为 { changed: true }（不做深层展开）。
+ * 返回 { field: { before, after } | { changed } }，可直接交给 formatChangesSummary。
+ */
+function diffRecordFields(cloudRecord, localRecord) {
+  const changes = {}
+  const keys = new Set([...Object.keys(cloudRecord || {}), ...Object.keys(localRecord || {})])
+  for (const key of keys) {
+    if (key === 'id') continue
+    const a = cloudRecord && cloudRecord[key]
+    const b = localRecord && localRecord[key]
+    if (stableSerialize(a) === stableSerialize(b)) continue
+    const isObject = (a !== null && typeof a === 'object') || (b !== null && typeof b === 'object')
+    if (isObject) {
+      changes[key] = { changed: true }
+    } else {
+      changes[key] = { before: a, after: b }
+    }
+  }
+  return changes
 }
 
 export function registerCloudSyncHandler(handler) {
