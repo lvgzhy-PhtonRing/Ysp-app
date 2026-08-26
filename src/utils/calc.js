@@ -1,7 +1,8 @@
 // 所有业务计算函数（纯函数，不依赖外部状态）
 
 /**
- * 采购预成本：originalPrice × exchangeRate + domesticShipping + fee
+ * 采购预成本：(originalPrice + domesticShipping + fee) × exchangeRate
+ * 注：exchangeRate 为分摊比例（totalRMB / 各行原价运费费之和），故各行合计等于 totalRMB
  */
 export function calcPreTransferCost(originalPrice, exchangeRate, domesticShipping, fee) {
   const price = Number(originalPrice)
@@ -35,8 +36,24 @@ export function calcProfit(price, express, feeRate, deduction, cost) {
 }
 
 /**
- * 支付宝应有余额：debt + wechat + publicExp - unconfirmed + fund
+ * 支付宝应有余额：debt + loanBalance + actualProfit - inventoryValue - unconfirmed + fund - purchaseCost
  */
-export function calcAlipayBalance(debt, wechat, publicExp, unconfirmed, fund) {
-  return Number(debt) + Number(wechat) + Number(publicExp) - Number(unconfirmed) + Number(fund)
+export function calcAlipayBalance(
+  debt,
+  loanBalance,
+  actualProfit,
+  inventoryValue,
+  unconfirmed,
+  fund,
+  purchaseCost,
+) {
+  return (
+    Number(debt) +
+    Number(loanBalance) +
+    Number(actualProfit) -
+    Number(inventoryValue) -
+    Number(unconfirmed) +
+    Number(fund) -
+    Number(purchaseCost)
+  )
 }

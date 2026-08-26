@@ -10,8 +10,9 @@ import {
 } from './calc'
 
 describe('calc utilities', () => {
-  it('calcPreTransferCost should match legacy behavior (domestic + fee multiplied)', () => {
-    expect(calcPreTransferCost(13400, 0.041924095322153576, 300, 0)).toBeCloseTo(861.782877316858, 6)
+  it('calcPreTransferCost should multiply domestic + fee by rate', () => {
+    // 分摊口径：(原价 + 国内运费 + 手续费) × 分摊汇率（各行合计 = totalRMB）
+    expect(calcPreTransferCost(13400, 0.041924095322153576, 300, 0)).toBeCloseTo(574.360105913504, 6)
     expect(calcPreTransferCost(25, 7.2, 1.6, 0)).toBeCloseTo(191.52, 6)
   })
 
@@ -29,6 +30,8 @@ describe('calc utilities', () => {
   })
 
   it('calcAlipayBalance should compute expected formula', () => {
-    expect(calcAlipayBalance(100, 20, 30, 10, 5)).toBeCloseTo(145, 6)
+    // 新公式（与 HomeModule 界面一致）：
+    // debt + loanBalance + actualProfit - inventoryValue - unconfirmed + fund - purchaseCost
+    expect(calcAlipayBalance(100, 20, 30, 10, 5, 2, 8)).toBeCloseTo(129, 6)
   })
 })
