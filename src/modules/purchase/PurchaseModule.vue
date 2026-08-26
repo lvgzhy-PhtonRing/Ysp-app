@@ -2035,9 +2035,9 @@ watch(purchaseViewCategory, () => {
         </div>
 
         <div class="grid grid-cols-3 gap-3 mb-4">
-          <div><label class="block text-sm mb-1 text-gray-600">购买优惠</label><input v-model="editGroupForm.discount" class="apple-input" /></div>
-          <div><label class="block text-sm mb-1 text-gray-600">采购网站</label><input v-model="editGroupForm.website" class="apple-input" /></div>
-          <div><label class="block text-sm mb-1 text-gray-600">网站账户</label><input v-model="editGroupForm.websiteAccount" class="apple-input" /></div>
+          <div><label class="block text-sm mb-1 text-gray-600">购买优惠</label><input v-model="editGroupForm.discount" class="apple-input" list="editDiscountsList" placeholder="优惠金额或描述" /></div>
+          <div><label class="block text-sm mb-1 text-gray-600">采购网站</label><input v-model="editGroupForm.website" class="apple-input" list="editWebsitesList" placeholder="采购网站名称" /></div>
+          <div><label class="block text-sm mb-1 text-gray-600">网站账户</label><input v-model="editGroupForm.websiteAccount" class="apple-input" list="editWebsiteAccountsList" placeholder="网站登录账户" /></div>
         </div>
 
         <div class="mb-4">
@@ -2078,8 +2078,11 @@ watch(purchaseViewCategory, () => {
                     <input
                       v-model="group.items[0].name"
                       class="apple-input text-sm"
+                      :list="`editItemNamesList-${group.id}`"
+                      placeholder="选择品牌后联想输入车辆名称颜色"
                       @input="syncLineField(group.items[0], 'name')"
                     />
+                    <datalist :id="`editItemNamesList-${group.id}`"><option v-for="n in getItemNamesByBrand(group.brand)" :key="n" :value="n" /></datalist>
                   </div>
                   <div class="col-span-1 flex justify-end pt-5">
                     <button class="text-danger text-sm" @click="removeEditGroupSid(group.sid)"><i class="fa-solid fa-trash" /></button>
@@ -2140,6 +2143,9 @@ watch(purchaseViewCategory, () => {
           <button class="btn btn-outline" @click="showEditGroupModal = false">取消</button>
           <button class="btn btn-primary" @click="submitEditPurchaseGroup" :disabled="isSubmittingEditGroup">保存购买组</button>
         </div>
+        <datalist id="editDiscountsList"><option v-for="d in discountsUsed" :key="d" :value="d" /></datalist>
+        <datalist id="editWebsitesList"><option v-for="w in websitesUsed" :key="w" :value="w" /></datalist>
+        <datalist id="editWebsiteAccountsList"><option v-for="a in websiteAccountsUsed" :key="a" :value="a" /></datalist>
       </div>
     </div>
 
