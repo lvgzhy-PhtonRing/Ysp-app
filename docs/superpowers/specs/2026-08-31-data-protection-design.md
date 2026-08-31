@@ -160,7 +160,7 @@ maybeAutoBackup():
 { ...exportData(), operationLogs }
 ```
 
-> 说明：相比手动导出（`exportData()`），备份**额外包含 operationLogs**。本次事故恢复恰恰全靠日志，若备份不含日志，覆盖后日志仍会丢失。文件为 `exportData()` 的超集，`loadData` 忽略未知键，回导兼容。若大王陛下倾向与手动导出完全一致，可去掉 `operationLogs`（改动一处）。
+> 决定（2026-08-31 用户确认）：备份**包含 operationLogs**。本次事故恢复恰恰全靠日志，若备份不含日志，覆盖后日志仍会丢失。文件为 `exportData()` 的超集，`loadData` 忽略未知键，回导兼容。
 
 ### C3. 浏览器下载拦截兜底
 
