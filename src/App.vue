@@ -46,6 +46,7 @@ import {
   signInWithPassword,
 } from './services/cloudStore'
 import { shouldWarnBeforeOverwrite, buildSyncRationale } from './services/dataProtection'
+import { downloadJsonBackup } from './services/dataProtection'
 
 const tabs = [
   { id: 'home', name: '数据透视' },
@@ -314,6 +315,40 @@ function resolveOverwriteWarn(choice) {
     overwriteWarnResolver(choice)
     overwriteWarnResolver = null
   }
+}
+
+// 每日备份手动下载兜底（C 方向）
+const backupNoticeVisible = ref(false)
+let backupNoticeTimer = null
+
+watch(
+  () => store.autoBackup.lastNotice,
+  (notice) => {
+    if (!notice || notice !== todayStr()) return
+    backupNoticeVisible.value = true
+    clearTimeout(backupNoticeTimer)
+    backupNoticeTimer = setTimeout(() => {
+      backupNoticeVisible.value = false
+    }, 8000)
+  },
+  { immediate: true }, // 重载页面时若今日已生成备份（lastNotice===today），仍显示 toast 供手动下载
+)
+
+function downloadBackupManually() {
+  const today = todayStr()
+  downloadJsonBackup({ ...exportData(), operationLogs: [...store.operationLogs] }, `饮食派数据_${today}.json`)
+  backupNoticeVisible.value = false
+}
+
+function dismissBackupNotice() {
+  backupNoticeVisible.value = false
+}
+
+function todayStr() {
+  const d = new Date()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${day}`
 }
 
 // 冲突差异明细最多展开显示的条目数，超出仅提示数量
@@ -1152,5 +1187,16 @@ watch(
         <button class="btn btn-outline" @click="showLogDetailModal = false">关闭</button>
       </div>
     </GlassModal>
+
+    <Transition name="fade">
+      <div
+        v-if="backupNoticeVisible"
+        class="fixed left-1/2 top-16 z-50 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800 shadow-lg"
+      >
+        <span>今日备份已生成：饮食派数据_{{ todayStr() }}.json</span>
+        <button class="font-semibold underline" @click="downloadBackupManually">若未自动下载，点此下载</button>
+        <button class="ml-1 text-emerald-500 hover:text-emerald-700" @click="dismissBackupNotice">✕</button>
+      </div>
+    </Transition>
   </div>
 </template>
