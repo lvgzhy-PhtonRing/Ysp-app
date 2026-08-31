@@ -44,6 +44,8 @@ export function submitSell(itemId, saleData = {}, options = {}) {
   const soldAt = toPositiveTimestamp(saleData.soldAt)
 
   const profit = calcProfit(price, express, feeRate, deduction, toNumber(item.cost))
+  const beforeStatus = item.status
+  const beforeStock = item.stock
 
   item.status = 'sold'
   item.stock = 0
@@ -59,7 +61,22 @@ export function submitSell(itemId, saleData = {}, options = {}) {
 
   saveToLocalStorage()
   if (!options?.skipLog) {
-    addOperationLog('sales_submit', `记录销售: ${item.name} x1`, { name: item.name, sid: item.sid, qty: 1, price })
+    addOperationLog('sales_submit', `记录销售: ${item.name} x1`, {
+      itemId: item.id,
+      name: item.name,
+      sid: item.sid,
+      qty: 1,
+      price,
+      express,
+      feeRate,
+      deduction,
+      date,
+      soldAt,
+      profit,
+      cost: toNumber(item.cost),
+      before: { status: beforeStatus, stock: beforeStock },
+      after: { status: 'sold', stock: 0 },
+    })
   }
   return item
 }
