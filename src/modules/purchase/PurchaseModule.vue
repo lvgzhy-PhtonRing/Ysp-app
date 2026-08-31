@@ -964,6 +964,7 @@ function submitAdd() {
       date: addForm.date,
       totalItems: createdItems.length,
       totalSids: sidSummary.length,
+      itemIds: createdItems.map((i) => i.id),
       sidSummary,
     })
 
@@ -1199,6 +1200,7 @@ function submitEditPurchaseGroup() {
 
     // 计算字段变更明细（每个商品的变化以 before/after 分组）
     const groupEditChanges = {}
+    const changedItemIds = []
     lines.forEach((line) => {
       const src = line.id ? originalById.get(line.id) : null
       if (!src) return
@@ -1226,13 +1228,24 @@ function submitEditPurchaseGroup() {
 
       if (Object.keys(before).length > 0) {
         groupEditChanges[label] = { before, after }
+        if (line.id) changedItemIds.push(line.id)
       }
     })
 
+    const removedRows = []
     purchaseRows.forEach((row) => {
       if (!lines.some((l) => l.id === row.id)) {
         const idx = store.items.findIndex((x) => x.id === row.id)
-        if (idx >= 0) store.items.splice(idx, 1)
+        if (idx >= 0) {
+          const gone = store.items[idx]
+          removedRows.push({
+            itemId: gone.id,
+            name: gone.name,
+            sid: gone.sid,
+            groupId: String(gone?.purchaseDetails?.purchaseGroupId || '').trim(),
+          })
+          store.items.splice(idx, 1)
+        }
       }
     })
 
@@ -1315,8 +1328,19 @@ function submitEditPurchaseGroup() {
     addOperationLog('purchase_group_edit', '编辑购买组: ' + editGroupForm.purchaseGroupId + (changedItemCount > 0 ? ' ← ' + changedItemCount + '个商品变更' : ''), {
       category: editGroupForm.category,
       batch: editGroupForm.batch,
+      purchaseGroupId: editGroupForm.purchaseGroupId,
       count: lines.length,
       changes: groupEditChanges,
+      itemIds: changedItemIds,
+    })
+    removedRows.forEach((r) => {
+      addOperationLog('purchase_delete', '编辑购买组时删除商品: ' + (r.name || r.sid), {
+        itemId: r.itemId,
+        name: r.name,
+        sid: r.sid,
+        purchaseGroupId: r.groupId,
+        source: 'purchase_group_edit',
+      })
     })
     showEditGroupModal.value = false
   } finally {
