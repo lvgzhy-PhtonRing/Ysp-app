@@ -293,6 +293,28 @@ const cloudBusy = ref(false)
 const cloudConflict = ref(false)
 const cloudConflictInfo = ref({ localAt: '', cloudAt: '', entries: [], total: 0 })
 let cloudConflictResolver = null
+
+// 云端覆盖本地前的重大异常强提示（B 方向）
+const overwriteWarn = ref(false)
+const overwriteWarnInfo = ref({ reasons: [], countLocal: 0, countCloud: 0, lastSaleLocal: '', lastSaleCloud: '' })
+let overwriteWarnResolver = null
+
+function askOverwriteWarn(info) {
+  overwriteWarnInfo.value = info
+  overwriteWarn.value = true
+  return new Promise((resolve) => {
+    overwriteWarnResolver = resolve
+  })
+}
+
+function resolveOverwriteWarn(choice) {
+  overwriteWarn.value = false
+  if (typeof overwriteWarnResolver === 'function') {
+    overwriteWarnResolver(choice)
+    overwriteWarnResolver = null
+  }
+}
+
 // 冲突差异明细最多展开显示的条目数，超出仅提示数量
 const DIFF_DISPLAY_LIMIT = 5
 
@@ -924,6 +946,18 @@ watch(
         <button class="btn btn-primary w-full" @click="resolveCloudConflict('local')">用本地的覆盖云端（上传本地）</button>
         <button class="btn btn-outline w-full" @click="resolveCloudConflict('cloud')">用云端的覆盖本地</button>
         <button class="btn btn-outline w-full" @click="resolveCloudConflict('manual')">先手动对比（不自动同步）</button>
+      </div>
+    </GlassModal>
+
+    <GlassModal v-model="overwriteWarn" panel-class="w-full max-w-md p-6 relative" :close-on-overlay="false">
+      <h3 class="mb-2 text-lg font-semibold text-red-600">⚠️ 云端数据疑似异常</h3>
+      <p class="mb-3 text-sm text-gray-600">检测到云端数据比本地少或更旧，用云端覆盖本地可能丢失本地改动：</p>
+      <ul class="mb-4 space-y-1.5 text-sm text-gray-700">
+        <li v-for="(r, i) in overwriteWarnInfo.reasons" :key="i" class="rounded bg-red-50 px-2 py-1">• {{ r }}</li>
+      </ul>
+      <div class="grid gap-2">
+        <button class="btn btn-outline w-full" @click="resolveOverwriteWarn('overwrite')">仍用云端覆盖本地</button>
+        <button class="btn btn-primary w-full" @click="resolveOverwriteWarn('keep')">保留本地数据（推荐）</button>
       </div>
     </GlassModal>
 
