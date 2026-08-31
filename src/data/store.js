@@ -2,6 +2,8 @@
 
 import { reactive } from 'vue'
 
+import { downloadJsonBackup, isBackupDue } from '../services/dataProtection'
+
 const APP_VERSION = '3.10.0'
 const CLOUD_SYNC_DEBOUNCE_MS = 800
 const MAX_UNDO_STEPS = 20
@@ -475,6 +477,26 @@ function takeDailySnapshot() {
   state.snapshots.push(snapshot)
 }
 
+/**
+ * 每日自动备份：今日首次保存时下载一份完整数据（含操作日志）到 Downloads。
+ * 仅在页面可见时触发（后台静默兜底上传不触发，避免被浏览器拦截）。
+ * 自动下载可能被浏览器静默拦截，lastNotice 记录本次生成，供界面显示手动下载入口兜底。
+ */
+function maybeAutoBackup() {
+  if (typeof document === 'undefined') return
+  if (document.visibilityState && document.visibilityState !== 'visible') return
+  const today = todayDateStr()
+  if (!isBackupDue(today, state.autoBackup.lastDate)) return
+
+  const payload = { ...exportData(), operationLogs: [...state.operationLogs] }
+  downloadJsonBackup(payload, `饮食派数据_${today}.json`)
+
+  state.autoBackup.lastDate = today
+  state.autoBackup.lastNotice = today
+  saveUiStateToLocalStorage()
+  addOperationLog('app_auto_backup', `已生成每日备份 饮食派数据_${today}.json`, { date: today })
+}
+
 export function saveToLocalStorage(options = {}) {
   const bumpTimestamp = options.bumpTimestamp !== false
   takeDailySnapshot()
@@ -497,6 +519,7 @@ export function saveToLocalStorage(options = {}) {
   localStorage.setItem('ysp_data', serialized)
   setPersistedSnapshot(currentData)
   scheduleCloudSync()
+  maybeAutoBackup()
 }
 
 /** 读取本地数据最后修改时间（ISO 字符串，可能为空） */
