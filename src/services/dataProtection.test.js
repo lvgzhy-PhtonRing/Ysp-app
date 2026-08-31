@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { shouldWarnBeforeOverwrite } from './dataProtection'
+import { buildSyncRationale, isBackupDue, shouldWarnBeforeOverwrite } from './dataProtection'
 
 function payload(items, saleDates = {}) {
   // saleDates: { sid: 'YYYY-MM-DD' }
@@ -96,5 +96,43 @@ describe('shouldWarnBeforeOverwrite', () => {
   it('items 缺失时不警告', () => {
     expect(shouldWarnBeforeOverwrite({}, {}).shouldWarn).toBe(false)
     expect(shouldWarnBeforeOverwrite({ items: 'not-array' }, { items: ['a'] }).shouldWarn).toBe(false)
+  })
+})
+
+describe('isBackupDue', () => {
+  it('同日不备份', () => {
+    expect(isBackupDue('2026-08-31', '2026-08-31')).toBe(false)
+  })
+  it('跨日需备份', () => {
+    expect(isBackupDue('2026-09-01', '2026-08-31')).toBe(true)
+  })
+  it('从未备份需备份', () => {
+    expect(isBackupDue('2026-08-31', '')).toBe(true)
+  })
+})
+
+describe('buildSyncRationale', () => {
+  it('把警告结果映射为同步决策依据字段', () => {
+    const warn = {
+      shouldWarn: true,
+      reasons: ['原因一'],
+      countDiff: 6,
+      lastSaleLocal: '2026-08-26',
+      lastSaleCloud: '2026-08-25',
+    }
+    expect(buildSyncRationale(warn)).toEqual({
+      countDiff: 6,
+      lastSaleBefore: '2026-08-26',
+      lastSaleAfter: '2026-08-25',
+      reasons: ['原因一'],
+    })
+  })
+  it('无警告时字段仍完整', () => {
+    expect(buildSyncRationale({})).toEqual({
+      countDiff: 0,
+      lastSaleBefore: '',
+      lastSaleAfter: '',
+      reasons: [],
+    })
   })
 })

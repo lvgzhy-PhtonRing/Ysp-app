@@ -50,3 +50,21 @@ export function shouldWarnBeforeOverwrite(localPayload, cloudPayload) {
     lastSaleCloud,
   }
 }
+
+/** 是否该触发今日自动备份（今日未备份过则触发） */
+export function isBackupDue(todayStr, lastBackupDate) {
+  return lastBackupDate !== todayStr
+}
+
+/**
+ * 将覆盖警告结果映射为 cloud_conflict 日志的决策依据字段。
+ * 字段名对齐 spec：countDiff / lastSaleBefore / lastSaleAfter / reasons。
+ */
+export function buildSyncRationale(warn) {
+  return {
+    countDiff: warn?.countDiff ?? 0,
+    lastSaleBefore: warn?.lastSaleLocal ?? '',
+    lastSaleAfter: warn?.lastSaleCloud ?? '',
+    reasons: Array.isArray(warn?.reasons) ? warn.reasons : [],
+  }
+}
