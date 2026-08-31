@@ -45,6 +45,7 @@ import {
   saveCloudState,
   signInWithPassword,
 } from './services/cloudStore'
+import { shouldWarnBeforeOverwrite, buildSyncRationale } from './services/dataProtection'
 
 const tabs = [
   { id: 'home', name: '数据透视' },
@@ -628,22 +629,26 @@ async function loadCloudOnStartup() {
         addOperationLog('cloud_conflict', '本地与云端内容一致，已对齐时间戳', {
           localUpdatedAt: localAt,
           cloudUpdatedAt: result.updatedAt,
+          ...buildSyncRationale(shouldWarnBeforeOverwrite(localPayload, result.payload)),
         })
         return true
       }
 
       const diff = computeConflictDiff(localPayload, result.payload)
+      const warn = shouldWarnBeforeOverwrite(localPayload, result.payload)
       const choice = await askCloudConflict(result, localAt, diff)
       if (choice === 'local') {
         try {
           const syncResult = await syncToCloudNow()
           addOperationLog('cloud_conflict', '本地数据较新，已上传覆盖云端', {
             updatedAt: syncResult?.updatedAt || result.updatedAt,
+            ...buildSyncRationale(warn),
           })
           setCloudLoadSuccess(syncResult?.updatedAt || result.updatedAt)
         } catch (err) {
           addOperationLog('cloud_conflict', '本地数据较新，但上传云端失败，已保留本地', {
             error: err.message,
+            ...buildSyncRationale(warn),
           })
           setCloudLoadError(err.message)
           alert(`上传云端失败：${err.message}\n本地数据已保留，请检查网络或云端登录。`)
@@ -651,10 +656,18 @@ async function loadCloudOnStartup() {
         return true
       }
       if (choice === 'cloud') {
+        if (warn.shouldWarn) {
+          const c = await askOverwriteWarn(warn)
+          if (c !== 'overwrite') {
+            addOperationLog('cloud_conflict', '云端数据异常，已取消用云端覆盖，保留本地', buildSyncRationale(warn))
+            return false
+          }
+        }
         applyCloudDataToStore(result.payload, { trackHistory: false, sourceUpdatedAt: result.updatedAt })
         setCloudLoadSuccess(result.updatedAt)
         addOperationLog('cloud_conflict', '云端数据较新，已用云端覆盖本地', {
           updatedAt: result.updatedAt,
+          ...buildSyncRationale(warn),
         })
         return true
       }
@@ -663,13 +676,26 @@ async function loadCloudOnStartup() {
         localUpdatedAt: localAt,
         cloudUpdatedAt: result.updatedAt,
         diffCount: diff.total,
+        ...buildSyncRationale(warn),
       })
       return false
     }
 
-    // 云端较新或无法比较 → 用云端覆盖本地（原行为）
+    // 云端较新或无法比较 → 先检测重大异常再决定是否覆盖（原行为为无条件覆盖）
+    const cloudWarn = shouldWarnBeforeOverwrite(exportData(), result.payload)
+    if (cloudWarn.shouldWarn) {
+      const c = await askOverwriteWarn(cloudWarn)
+      if (c !== 'overwrite') {
+        addOperationLog('cloud_conflict', '检测到云端数据异常，已保留本地', buildSyncRationale(cloudWarn))
+        return false
+      }
+    }
     applyCloudDataToStore(result.payload, { trackHistory: false, sourceUpdatedAt: result.updatedAt })
     setCloudLoadSuccess(result.updatedAt)
+    addOperationLog('cloud_conflict', '云端数据较新，已用云端覆盖本地', {
+      updatedAt: result.updatedAt,
+      ...buildSyncRationale(cloudWarn),
+    })
     return true
   } catch (err) {
     setCloudLoadError(err.message)
