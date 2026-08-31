@@ -165,11 +165,14 @@ export function addPurchaseItem(itemData = {}, options = {}) {
   store.items.push(item)
   if (!options?.skipLog) {
     addOperationLog('purchase_add', `新增采购: ${item.name}`, {
+      itemId: item.id,
+      purchaseGroupId: item.purchaseDetails?.purchaseGroupId,
       name: item.name,
       sid: item.sid,
       qty: 1,
       category: item.category,
       batch: item.batch,
+      cost: item.cost,
     })
   }
   return item
@@ -218,8 +221,11 @@ export function submitTransfer(transferData = {}, selectedItemIds = []) {
   saveToLocalStorage()
   addOperationLog('purchase_transfer', `提交转运: ${transferRecord.transferBatch || transferId}`, {
     transferId,
+    transferBatch: transferRecord.transferBatch,
     count: selectedItems.length,
     totalRMB: transferRecord.totalRMB,
+    itemIds: selectedItems.map((i) => i.id),
+    itemCosts: selectedItems.map((i) => ({ itemId: i.id, sid: i.sid, cost: i.cost })),
   })
   return transferRecord
 }
@@ -231,21 +237,39 @@ export function moveToInventory(itemId) {
 
   const transferId = item?.purchaseDetails?.transferId
   if (transferId) {
+    let movedCount = 0
     store.items.forEach((x) => {
       if (x?.purchaseDetails?.transferId === transferId && x.status === 'purchase') {
         x.status = 'inventory'
         markInStockDate(x, inStockDate)
+        movedCount += 1
       }
     })
     saveToLocalStorage()
-    addOperationLog('purchase_to_inventory', `同转运批次整组入库: ${item.name}`, { name: item.name, sid: item.sid, transferId, inStockDate })
+    addOperationLog('purchase_to_inventory', `同转运批次整组入库: ${item.name}`, {
+      itemId: item.id,
+      name: item.name,
+      sid: item.sid,
+      transferId,
+      inStockDate,
+      count: movedCount,
+      before: { status: 'purchase' },
+      after: { status: 'inventory' },
+    })
     return true
   }
 
   markInStockDate(item, inStockDate)
   item.status = 'inventory'
   saveToLocalStorage()
-  addOperationLog('purchase_to_inventory', `移入库存: ${item.name}`, { name: item.name, sid: item.sid, inStockDate })
+  addOperationLog('purchase_to_inventory', `移入库存: ${item.name}`, {
+    itemId: item.id,
+    name: item.name,
+    sid: item.sid,
+    inStockDate,
+    before: { status: 'purchase' },
+    after: { status: 'inventory' },
+  })
   return true
 }
 
@@ -254,10 +278,12 @@ export function batchMoveToInventory(itemIds = []) {
   const inStockDate = todayDate()
   let movedCount = 0
   const movedNames = []
+  const movedItemIds = []
 
   store.items.forEach((item) => {
     if (idSet.has(item.id) && item?.status === 'purchase') {
       movedNames.push(item.name)
+      movedItemIds.push(item.id)
       item.status = 'inventory'
       markInStockDate(item, inStockDate)
       movedCount += 1
@@ -265,7 +291,14 @@ export function batchMoveToInventory(itemIds = []) {
   })
 
   saveToLocalStorage()
-  addOperationLog('purchase_batch_to_inventory', `批量移入库存`, { count: movedCount, inStockDate, itemNames: movedNames })
+  addOperationLog('purchase_batch_to_inventory', `批量移入库存`, {
+    count: movedCount,
+    inStockDate,
+    itemNames: movedNames,
+    itemIds: movedItemIds,
+    before: { status: 'purchase' },
+    after: { status: 'inventory' },
+  })
 }
 
 export function deletePurchaseItem(itemId) {
@@ -274,6 +307,8 @@ export function deletePurchaseItem(itemId) {
 
   const target = store.items[idx]
   const transferId = target?.purchaseDetails?.transferId
+  const groupId = String(target?.purchaseDetails?.purchaseGroupId || '').trim()
+  const groupCostBefore = groupId ? computeGroupCost(groupId) : null
 
   store.items.splice(idx, 1)
 
@@ -282,13 +317,23 @@ export function deletePurchaseItem(itemId) {
   }
 
   saveToLocalStorage()
+  const groupCostAfter = groupId ? computeGroupCost(groupId) : null
   addOperationLog('purchase_delete', '删除采购商品: ' + (target ? target.name : itemId), {
     name: target ? target.name : '',
     sid: target ? target.sid : '',
     transferId: transferId,
     itemId: itemId,
+    purchaseGroupId: groupId,
+    ...(groupId ? { groupPriceBefore: groupCostBefore, groupPriceAfter: groupCostAfter } : {}),
   })
   return true
+}
+
+/** 计算指定购买组的总成本（组价联动，供日志记录删除影响） */
+function computeGroupCost(groupId) {
+  return store.items
+    .filter((i) => String(i?.purchaseDetails?.purchaseGroupId || '').trim() === String(groupId).trim())
+    .reduce((s, i) => s + Number(i?.cost || 0), 0)
 }
 
 export function usePurchase() {
