@@ -68,3 +68,27 @@ export function buildSyncRationale(warn) {
     reasons: Array.isArray(warn?.reasons) ? warn.reasons : [],
   }
 }
+
+/**
+ * 下载 JSON 备份到浏览器 Downloads。
+ * 非用户手势调用可能被浏览器静默拦截（调用方需提供手动下载兜底入口）。
+ * @returns {boolean} 是否真正触发了下载（无 document 时返回 false）
+ */
+export function downloadJsonBackup(data, filename) {
+  if (typeof document === 'undefined') return false
+  try {
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    return true
+  } catch (err) {
+    console.error('[autoBackup] 下载失败:', err)
+    return false
+  }
+}
