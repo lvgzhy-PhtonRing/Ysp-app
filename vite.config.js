@@ -12,7 +12,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        rushcar: resolve(__dirname, 'rushcar-prototype.html'),
       },
     },
   },
