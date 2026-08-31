@@ -658,6 +658,8 @@ function submitUnlist() {
   )
   if (!ok) return
 
+  const beforeList = targetItems.map((x) => ({ itemId: x.id, status: x.status, isLongTerm: !!x.isLongTerm }))
+
   targetItems.forEach((x) => {
     x.status = 'purchase'
     x.isLongTerm = false
@@ -671,11 +673,15 @@ function submitUnlist() {
 
   saveToLocalStorage()
   addOperationLog('inventory_unlist', `${scope === 'transfer' ? '批量' : '当前条目'}下架回采购: ${item.name}`, {
+    itemId: item.id,
     name: item.name,
     sid: item.sid,
     transferId: item?.purchaseDetails?.transferId,
     transferBatch: item?.purchaseDetails?.transferBatch,
     count: targetItems.length,
+    itemIds: targetItems.map((x) => x.id),
+    before: beforeList,
+    after: { status: 'purchase', isLongTerm: false },
   })
   showUnlistModal.value = false
   currentUnlistItem.value = null
