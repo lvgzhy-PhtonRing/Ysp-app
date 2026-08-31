@@ -153,6 +153,10 @@ export const state = reactive({
   undoStack: [],
   redoStack: [],
   operationLogs: [],
+  autoBackup: {
+    lastDate: '', // 最近一次自动备份日期（YYYY-MM-DD），一日一次
+    lastNotice: '', // 最近一次生成备份的日期，App.vue 据此显示手动下载提示
+  },
   snapshots: [],
 })
 
@@ -882,6 +886,7 @@ export function saveUiStateToLocalStorage() {
     },
     cloudStatus: { ...state.cloudStatus },
     operationLogs: [...state.operationLogs],
+    autoBackup: { ...state.autoBackup },
   }
   localStorage.setItem(UI_STORAGE_KEY, JSON.stringify(payload))
 }
@@ -909,6 +914,13 @@ export function loadUiStateFromLocalStorage() {
 
   if (Array.isArray(parsed?.operationLogs)) {
     replaceArray(state.operationLogs, parsed.operationLogs)
+  }
+
+  if (parsed?.autoBackup && typeof parsed.autoBackup === 'object') {
+    Object.assign(state.autoBackup, {
+      lastDate: typeof parsed.autoBackup.lastDate === 'string' ? parsed.autoBackup.lastDate : '',
+      lastNotice: typeof parsed.autoBackup.lastNotice === 'string' ? parsed.autoBackup.lastNotice : '',
+    })
   }
 }
 

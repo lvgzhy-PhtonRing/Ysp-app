@@ -3,8 +3,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { beforeEach, describe, expect, it } from 'vitest'
-import { computeConflictDiff, exportData, isContentEqual, loadData, stableSerialize } from './store'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { computeConflictDiff, exportData, isContentEqual, loadData, loadUiStateFromLocalStorage, saveUiStateToLocalStorage, stableSerialize, state } from './store'
 
 function readDesktopAJson() {
   const __filename = fileURLToPath(import.meta.url)
@@ -158,5 +158,27 @@ describe('computeConflictDiff', () => {
     const { entries, total } = computeConflictDiff(local, local)
     expect(total).toBe(0)
     expect(entries).toEqual([])
+  })
+})
+
+describe('autoBackup 持久化', () => {
+  it('保存并恢复 lastDate / lastNotice', () => {
+    const storeMap = new Map()
+    vi.stubGlobal('localStorage', {
+      getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
+      setItem: (k, v) => storeMap.set(k, String(v)),
+      removeItem: (k) => storeMap.delete(k),
+    })
+
+    state.autoBackup.lastDate = '2026-08-31'
+    state.autoBackup.lastNotice = '2026-08-31'
+    saveUiStateToLocalStorage()
+    state.autoBackup.lastDate = ''
+    state.autoBackup.lastNotice = ''
+    loadUiStateFromLocalStorage()
+
+    expect(state.autoBackup.lastDate).toBe('2026-08-31')
+    expect(state.autoBackup.lastNotice).toBe('2026-08-31')
+    vi.unstubAllGlobals()
   })
 })
