@@ -236,6 +236,7 @@ export async function saveCloudState(rawConfig = {}, payload = {}, options = {})
     return {
       row: patchedRows[0],
       updatedAt: patchedRows[0]?.updated_at || '',
+      payload: patchedRows[0]?.payload ?? payload,
       session: nextSession,
     }
   }
@@ -265,6 +266,7 @@ export async function saveCloudState(rawConfig = {}, payload = {}, options = {})
   return {
     row: insertedRows[0] || null,
     updatedAt: insertedRows[0]?.updated_at || '',
+    payload: insertedRows[0]?.payload ?? payload,
     session: nextSession,
   }
 }

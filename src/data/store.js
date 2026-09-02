@@ -4,7 +4,7 @@ import { reactive } from 'vue'
 
 import { downloadJsonBackup, isBackupDue } from '../services/dataProtection'
 
-const APP_VERSION = '3.11.0'
+const APP_VERSION = '3.12.1'
 const CLOUD_SYNC_DEBOUNCE_MS = 800
 const MAX_UNDO_STEPS = 20
 const HISTORY_META_EXPIRE_MS = 3000
@@ -1186,10 +1186,10 @@ export function promptCloudDataRecovery(warn, diff, cloudUpdatedAt, localModifie
 
     const title = '⚠️ 检测到疑似数据异常'
     const message = reasons.length > 0
-      ? `${title}\n${reasons.join('\\n')}\\n\\n云端数据可能比本地旧或不完整，是否仍使用云端数据覆盖本地？`
-      : `${title}\\n\\n检测到云端数据比本地新，是否使用云端数据？`
+      ? `${title}\n${reasons.join('\n')}\n\n云端数据可能比本地旧或不完整，是否仍使用云端数据覆盖本地？`
+      : `${title}\n\n检测到云端数据比本地新，是否使用云端数据？`
 
-    const choice = confirm(message + '\\n\\n点击"确定"使用云端数据，点击"取消"保留本地数据')
+    const choice = confirm(message + '\n\n点击"确定"使用云端数据，点击"取消"保留本地数据')
     if (choice) {
       resolve('use-cloud')
     } else {

@@ -433,6 +433,10 @@ async function tryLoadCloudConfigFromPublicFile() {
 
 function applyCloudDataToStore(payload = {}, options = {}) {
   if (!payload || typeof payload !== 'object') return false
+  if (!Array.isArray(payload.items) && store.items.length > 0) {
+    console.warn('[applyCloudDataToStore] 云端载荷缺少 items，拒绝应用以保护本地数据')
+    return false
+  }
   const trackHistory = options.trackHistory !== false
 
   setCloudSyncSuppressed(true)
@@ -859,7 +863,20 @@ onMounted(async () => {
     await tryLoadCloudConfigFromPublicFile()
   }
 
-  registerCloudSyncHandler(async (payload) => {
+  registerCloudSyncHandler(async (payload, options = {}) => {
+    const reason = options?.reason || ''
+    if (reason === 'pre-check') {
+      const result = await fetchCloudState(store.cloudSettings, {
+        session: store.cloudSession,
+        onSession: (session) => setCloudSession(session),
+        publicOnly: false,
+      })
+      return {
+        updatedAt: result?.updatedAt,
+        row: result?.row,
+        payload: result?.payload,
+      }
+    }
     const result = await saveCloudState(store.cloudSettings, payload, {
       session: store.cloudSession,
       onSession: (session) => setCloudSession(session),
@@ -868,6 +885,7 @@ onMounted(async () => {
     return {
       updatedAt: result?.updatedAt,
       row: result?.row,
+      payload: result?.payload,
     }
   })
 
