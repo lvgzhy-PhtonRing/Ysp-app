@@ -128,7 +128,7 @@ function createInitialState(seed = {}) {
       cardId: '',
       recipient: '',
     },
-    sourceLoadedFrom: seed.sourceLoadedFrom || 'public/a.json',
+    sourceLoadedFrom: seed.sourceLoadedFrom || 'cloud',
     loadedAt: now,
   })
 }

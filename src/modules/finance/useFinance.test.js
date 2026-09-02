@@ -1,7 +1,5 @@
-import fs from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import sampleData from '../../__tests__/fixtures/sampleData.json'
 import { loadData, state as store } from '../../data/store'
 import {
   addFinanceRecord,
@@ -10,14 +8,6 @@ import {
   getFinanceStats,
   updateLoanRecord,
 } from './useFinance'
-
-function readDesktopAJson() {
-  const __filename = fileURLToPath(import.meta.url)
-  const __dirname = path.dirname(__filename)
-  const filePath = path.resolve(__dirname, '../../../../a.json')
-  const raw = fs.readFileSync(filePath, 'utf8')
-  return JSON.parse(raw)
-}
 
 describe('useFinance logic', () => {
   beforeEach(() => {
@@ -33,11 +23,10 @@ describe('useFinance logic', () => {
   })
 
   it('test1 addFinanceRecord and deleteFinanceRecord', () => {
-    const original = readDesktopAJson()
-    loadData(original)
+    loadData(sampleData)
 
-    const initialCount = Array.isArray(original?.finance?.records) ? original.finance.records.length : 0
-    expect(store.financeRecords.length).toBe(initialCount)
+    const initialCount = store.financeRecords.length
+    expect(initialCount).toBe(sampleData.finance.records.length)
 
     const rec = addFinanceRecord({
       type: 'expense',
@@ -54,8 +43,7 @@ describe('useFinance logic', () => {
   })
 
   it('test2 addLoanRecord and updateLoanRecord', () => {
-    const original = readDesktopAJson()
-    loadData(original)
+    loadData(sampleData)
 
     const loan = addLoanRecord({
       type: 'borrow',
@@ -71,8 +59,7 @@ describe('useFinance logic', () => {
   })
 
   it('test3 getFinanceStats', () => {
-    const original = readDesktopAJson()
-    loadData(original)
+    loadData(sampleData)
 
     const stats = getFinanceStats(store.financeRecords, store.loanRecords)
 

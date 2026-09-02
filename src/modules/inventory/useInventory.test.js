@@ -1,17 +1,7 @@
-import fs from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import sampleData from '../../__tests__/fixtures/sampleData.json'
 import { loadData, state as store } from '../../data/store'
 import { editItem, filterInventory, getInventoryStats } from './useInventory'
-
-function readDesktopAJson() {
-  const __filename = fileURLToPath(import.meta.url)
-  const __dirname = path.dirname(__filename)
-  const filePath = path.resolve(__dirname, '../../../../a.json')
-  const raw = fs.readFileSync(filePath, 'utf8')
-  return JSON.parse(raw)
-}
 
 describe('useInventory logic', () => {
   beforeEach(() => {
@@ -27,19 +17,21 @@ describe('useInventory logic', () => {
   })
 
   it('test1 getInventoryStats', () => {
-    const original = readDesktopAJson()
-    loadData(original)
+    loadData(sampleData)
 
     const stats = getInventoryStats(store.items)
-    const soldCount = store.items.filter((x) => x.status === 'sold').length
+    const inventoryItems = store.items.filter((x) => x.status === 'inventory').length
+    const purchaseItems = store.items.filter((x) => x.status === 'purchase').length
+    const soldItems = store.items.filter((x) => x.status === 'sold').length
 
-    expect(stats.totalInventoryCount + stats.totalPurchaseCount + soldCount).toBe(407)
+    expect(stats.totalInventoryCount + stats.totalPurchaseCount + soldItems).toBe(
+      inventoryItems + purchaseItems + soldItems,
+    )
     expect(stats.totalInventoryValue).toBeGreaterThan(0)
   })
 
   it('test2 filterInventory', () => {
-    const original = readDesktopAJson()
-    loadData(original)
+    loadData(sampleData)
 
     const byStatus = filterInventory(store.items, { status: 'inventory' })
     expect(byStatus.length).toBeGreaterThan(0)
@@ -69,8 +61,7 @@ describe('useInventory logic', () => {
   })
 
   it('test3 editItem', () => {
-    const original = readDesktopAJson()
-    loadData(original)
+    loadData(sampleData)
 
     const item = store.items[0]
     const oldName = item.name

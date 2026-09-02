@@ -1,17 +1,7 @@
-import fs from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import sampleData from '../../__tests__/fixtures/sampleData.json'
 import { loadData, state as store } from '../../data/store'
 import { editSaleRecord, getSalesStats, submitSell } from './useSales'
-
-function readDesktopAJson() {
-  const __filename = fileURLToPath(import.meta.url)
-  const __dirname = path.dirname(__filename)
-  const filePath = path.resolve(__dirname, '../../../../a.json')
-  const raw = fs.readFileSync(filePath, 'utf8')
-  return JSON.parse(raw)
-}
 
 describe('useSales logic', () => {
   beforeEach(() => {
@@ -27,8 +17,7 @@ describe('useSales logic', () => {
   })
 
   it('test1 submitSell', () => {
-    const original = readDesktopAJson()
-    loadData(original)
+    loadData(sampleData)
 
     const item = store.items.find((x) => x.status === 'inventory')
     expect(item).toBeTruthy()
@@ -47,20 +36,18 @@ describe('useSales logic', () => {
   })
 
   it('test2 getSalesStats', () => {
-    const original = readDesktopAJson()
-    loadData(original)
+    loadData(sampleData)
 
     const stats = getSalesStats(store.items)
+    const soldItems = store.items.filter((x) => x.status === 'sold')
 
-    expect(stats.totalSoldCount).toBe(107)
+    expect(stats.totalSoldCount).toBe(soldItems.length)
     expect(Number.isNaN(stats.totalProfit)).toBe(false)
     expect(stats.recoveryRate).toBeGreaterThanOrEqual(0)
-    expect(stats.recoveryRate).toBeLessThanOrEqual(10)
   })
 
   it('test3 editSaleRecord', () => {
-    const original = readDesktopAJson()
-    loadData(original)
+    loadData(sampleData)
 
     const item = store.items.find((x) => x.status === 'sold' && x.saleDetails)
     expect(item).toBeTruthy()

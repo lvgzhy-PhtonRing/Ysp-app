@@ -1,47 +1,38 @@
-// store.js 单元测试：验证 a.json 的 loadData -> exportData 数据无损
+// store.js 单元测试：验证 loadData -> exportData 数据无损
 
-import fs from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { computeConflictDiff, exportData, isContentEqual, loadData, loadUiStateFromLocalStorage, saveUiStateToLocalStorage, stableSerialize, state } from './store'
-
-function readDesktopAJson() {
-  const __filename = fileURLToPath(import.meta.url)
-  const __dirname = path.dirname(__filename)
-  const filePath = path.resolve(__dirname, '../../../a.json')
-  const raw = fs.readFileSync(filePath, 'utf8')
-  return JSON.parse(raw)
-}
+import sampleData from '../__tests__/fixtures/sampleData.json'
+import {
+  computeConflictDiff,
+  exportData,
+  isContentEqual,
+  loadData,
+  loadUiStateFromLocalStorage,
+  saveUiStateToLocalStorage,
+  stableSerialize,
+  state,
+} from './store'
 
 describe('data store', () => {
   beforeEach(() => {
-    // 每个测试前重置到空状态
     loadData({})
   })
 
   it('should keep data lossless from loadData to exportData', () => {
-    const original = readDesktopAJson()
-
-    loadData(original)
+    loadData(sampleData)
     const output = exportData()
 
-    // items
-    expect(output.items.length).toBe(407)
-    expect(output.items.length).toBe(original.items.length)
+    expect(output.items.length).toBe(sampleData.items.length)
+    expect(output.items.length).toBe(sampleData.items.length)
 
     output.items.forEach((item, index) => {
-      expect(item.id).toEqual(original.items[index].id)
-      expect(item.sid).toEqual(original.items[index].sid)
-      expect(item.cost).toEqual(original.items[index].cost)
+      expect(item.id).toEqual(sampleData.items[index].id)
+      expect(item.sid).toEqual(sampleData.items[index].sid)
+      expect(item.cost).toEqual(sampleData.items[index].cost)
     })
 
-    // finance.records
-    expect(output.finance.records.length).toBe(original.finance.records.length)
-
-    // transfers
-    expect(output.transfers.length).toBe(original.transfers.length)
-
+    expect(output.finance.records.length).toBe(sampleData.finance.records.length)
+    expect(output.transfers.length).toBe(sampleData.transfers.length)
   })
 })
 
@@ -140,7 +131,6 @@ describe('computeConflictDiff', () => {
     const { entries, total } = computeConflictDiff(manyLocal, emptyCloud)
     expect(total).toBe(8)
     expect(entries.length).toBe(8)
-    // UI 仅展开前 5 条，其余以数量提示
     expect(entries.slice(0, 5).length).toBe(5)
     expect(total - 5).toBe(3)
   })

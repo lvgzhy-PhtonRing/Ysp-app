@@ -1,18 +1,8 @@
-import fs from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import sampleData from '../../__tests__/fixtures/sampleData.json'
 import { calcItemCost } from '../../utils/calc'
 import { loadData, state as store } from '../../data/store'
 import { addPurchaseItem, moveToInventory } from './usePurchase'
-
-function readDesktopAJson() {
-  const __filename = fileURLToPath(import.meta.url)
-  const __dirname = path.dirname(__filename)
-  const filePath = path.resolve(__dirname, '../../../../a.json')
-  const raw = fs.readFileSync(filePath, 'utf8')
-  return JSON.parse(raw)
-}
 
 describe('usePurchase logic', () => {
   beforeEach(() => {
@@ -28,6 +18,7 @@ describe('usePurchase logic', () => {
   })
 
   it('test1 addPurchaseItem', () => {
+    loadData(sampleData)
     const before = store.items.length
 
     const item = addPurchaseItem({
@@ -45,8 +36,7 @@ describe('usePurchase logic', () => {
   })
 
   it('test2 submitTransfer related cost formula consistency on real data', () => {
-    const original = readDesktopAJson()
-    loadData(original)
+    loadData(sampleData)
 
     const candidate =
       store.items.find((x) => x.status === 'purchase' && x.purchaseDetails?.transferId && x.sid === 'JP-0126') ||
@@ -62,8 +52,7 @@ describe('usePurchase logic', () => {
   })
 
   it('test3 moveToInventory', () => {
-    const original = readDesktopAJson()
-    loadData(original)
+    loadData(sampleData)
 
     const item = store.items.find((x) => x.status === 'purchase')
     expect(item).toBeTruthy()
