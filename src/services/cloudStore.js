@@ -68,6 +68,36 @@ export function hasValidSession(session, safeWindowSeconds = 60) {
   return expiresAt - safeWindowSeconds > Math.floor(Date.now() / 1000)
 }
 
+/**
+ * 服务端登出：调用 Supabase /auth/v1/logout 吊销会话令牌。
+ * 尽力而为：网络失败或令牌已失效时不抛错，本地清理由调用方负责。
+ */
+export async function signOutCloudSession(rawConfig = {}, session = null) {
+  const config = normalizeCloudConfig(rawConfig)
+  if (!isCloudConfigReady(config)) return
+  let token = trimString(session?.accessToken)
+  if (!token) return
+
+  // access token 若已过期，先用 refresh token 换新后再登出，确保吊销生效
+  if (!hasValidSession(session)) {
+    try {
+      const refreshed = await refreshCloudSession(config, session)
+      if (refreshed?.accessToken) token = refreshed.accessToken
+    } catch (_) {
+      // 刷新失败：仍尝试用原 token 登出（可能失败，尽力而为）
+    }
+  }
+
+  try {
+    await fetch(`${config.supabaseUrl}/auth/v1/logout`, {
+      method: 'POST',
+      headers: buildJsonHeaders(config, token),
+    })
+  } catch (_) {
+    // 尽力而为，网络异常不抛给上层
+  }
+}
+
 export async function signInWithPassword(rawConfig = {}, email = '', password = '') {
   const config = normalizeCloudConfig(rawConfig)
   if (!isCloudConfigReady(config)) {

@@ -23,8 +23,6 @@ import {
   loadData,
   loadFromLocalStorage,
   loadUiStateFromLocalStorage,
-  promptCloudDataRecovery,
-  promptUploadLocalData,
   registerCloudConflictHandler,
   registerCloudSyncHandler,
   resetCloudUnhealthyWarning,
@@ -48,6 +46,7 @@ import {
   readCloudConfigFromPublic,
   saveCloudState,
   signInWithPassword,
+  signOutCloudSession,
 } from './services/cloudStore'
 import { shouldWarnBeforeOverwrite, buildSyncRationale } from './services/dataProtection'
 import { downloadJsonBackup } from './services/dataProtection'
@@ -381,7 +380,7 @@ function formatConflictTime(t) {
 /**
  * 冲突决策模态框（字段级差异展示）。
  * 由 store.js runCloudSync 通过 registerCloudConflictHandler 调用，也可在 loadCloudOnStartup 中直接调用。
- * @param {'upload-local'|'recovery'} type - 冲突类型
+ * @param {'upload-local'|'manual-sync'|'recovery'} type - 冲突类型
  * @param {object} data - { diff, warn, cloudUpdatedAt, localModifiedAt }
  * @returns {Promise<'upload'|'use-cloud'|'keep-local'|'cancel'>}
  */
@@ -443,11 +442,27 @@ async function tryLoadCloudConfigFromPublicFile() {
   }
 }
 
+function cloudFieldMissingGuard(label, remoteValue, localCount) {
+  if (localCount <= 0) return false
+  if (Array.isArray(remoteValue)) return false
+  console.warn(`[applyCloudDataToStore] 云端载荷缺少或损坏「${label}」，拒绝应用以保护本地数据`)
+  return true
+}
+
 function applyCloudDataToStore(payload = {}, options = {}) {
   if (!payload || typeof payload !== 'object') return false
-  if (!Array.isArray(payload.items) && store.items.length > 0) {
-    console.warn('[applyCloudDataToStore] 云端载荷缺少 items，拒绝应用以保护本地数据')
-    return false
+  const guards = [
+    ['items', payload.items, store.items.length],
+    ['收支记录', payload.finance?.records, store.financeRecords.length],
+    ['借贷记录', payload.finance?.loans, store.loanRecords.length],
+    ['转运记录', payload.transfers, store.transfers.length],
+    ['美淘订单', payload.rushcar?.entries, store.rushcar.entries.length],
+    ['转运公司', payload.rushcar?.forwarderInfos, store.rushcar.forwarderInfos.length],
+    ['美泰站点', payload.rushcar?.mattelSiteInfos, store.rushcar.mattelSiteInfos.length],
+    ['支付卡', payload.rushcar?.paymentCards, store.rushcar.paymentCards.length],
+  ]
+  for (const [label, value, localCount] of guards) {
+    if (cloudFieldMissingGuard(label, value, localCount)) return false
   }
   const trackHistory = options.trackHistory !== false
 
@@ -554,7 +569,13 @@ async function cloudSignIn() {
   }
 }
 
-function cloudSignOut() {
+async function cloudSignOut() {
+  // 先通知服务端吊销令牌，再清本地；网络异常不阻塞本地退出
+  try {
+    await signOutCloudSession(store.cloudSettings, store.cloudSession)
+  } catch (_) {
+    // 尽力而为
+  }
   clearCloudSession()
   addOperationLog('cloud_signout', '云端已退出登录')
   alert('已退出云端账号')
@@ -873,28 +894,15 @@ onMounted(async () => {
   // === 新增：程序启动时自动从云端加载数据 ===
   const cloudLoaded = await loadCloudOnStartup()
 
-  // 如果云端加载未成功且本地也没有数据，尝试从 a.json 导入
-  if (!cloudLoaded && store.items.length === 0) {
-    try {
-      const basePath = import.meta.env.BASE_URL || '/'
-      const res = await fetch(`${basePath}a.json?t=${Date.now()}`, { cache: 'no-store' })
-      if (res.ok) {
-        const json = await res.json()
-        loadData(json)
-        saveToLocalStorage()
-        addOperationLog('app_import', '从 a.json 导入基础数据成功', { source: 'startup' })
-      }
-    } catch (_) {
-      // ignore - 无 a.json 文件也属于正常情况，视为全新账户
-    }
-  }
 
   // === 新增：如果启用了云同步，在后台定期检测是否需要同步 ===
   if (store.cloudSettings.enabled && isCloudConfigReady(store.cloudSettings)) {
     // 延迟第一次检测，避免页面加载过慢
-    setTimeout(periodicCloudCheck, CLOUD_AUTO_SYNC_INTERVAL)
+    periodicTimer = setTimeout(periodicCloudCheck, CLOUD_AUTO_SYNC_INTERVAL)
   }
 })
+
+let periodicTimer = null
 
 /**
  * 定期检测云同步状态（每30秒）
@@ -933,10 +941,11 @@ function periodicCloudCheck() {
   }
 
   // 继续下一次检测
-  setTimeout(periodicCloudCheck, CLOUD_AUTO_SYNC_INTERVAL)
+  periodicTimer = setTimeout(periodicCloudCheck, CLOUD_AUTO_SYNC_INTERVAL)
 }
 
 onBeforeUnmount(() => {
+  clearTimeout(periodicTimer)
   document.removeEventListener('visibilitychange', syncSilentlyOnHidden)
 
   // 关闭前保底上传：页面卸载时 confirm 不可靠，不做复杂冲突检测。
@@ -1105,7 +1114,7 @@ watch(
     <GlassModal v-model="cloudConflict" panel-class="w-full max-w-md p-6 relative max-h-[80vh] overflow-y-auto" :close-on-overlay="false">
       <div class="mb-1 text-xl font-bold">检测到数据冲突</div>
       <p class="text-sm text-gray-600 mb-4">
-        {{ cloudConflictType === 'upload-local' ? '本机数据比云端新，请选择使用哪一份数据：' : '云端数据比本地新或存在差异，请选择使用哪一份数据：' }}
+        {{ cloudConflictType === 'upload-local' ? '本机数据比云端新，请选择使用哪一份数据：' : (cloudConflictType === 'manual-sync' ? '本地与云端数据不一致，请选择保留哪一份：' : '云端数据比本地新或存在差异，请选择使用哪一份数据：') }}
       </p>
       <div class="mb-4 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 space-y-1">
         <div class="flex justify-between gap-3">
