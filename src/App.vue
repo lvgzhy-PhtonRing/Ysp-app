@@ -1037,8 +1037,6 @@ onBeforeUnmount(() => {
     }
   })()
 })
-  }
-})
 
 watch(
   () => store.rushcar,
@@ -1209,7 +1207,7 @@ watch(
             另有 {{ cloudConflictInfo.total - DIFF_DISPLAY_LIMIT }} 处差异未显示
           </div>
           <div v-if="cloudConflictInfo.total > DIFF_DISPLAY_LIMIT" class="mt-2 text-xs text-gray-500 cursor-pointer" @click="showAllDifferences = !showAllDifferences">
-            <i class="fa-solid fa-eye text-gray-400 mr-1"></i> {{ showAllDifferences ? '收起全部差异' : '查看全部 {{ cloudConflictInfo.total }} 处差异' }}
+            <i class="fa-solid fa-eye text-gray-400 mr-1"></i> {{ showAllDifferences ? '收起全部差异' : '查看全部 ' + cloudConflictInfo.total + ' 处差异' }}
           </div>
         </div>
       </div>
