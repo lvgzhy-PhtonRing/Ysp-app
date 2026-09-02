@@ -42,3 +42,9 @@ nul
 
 # Brainstorming mockups (visual companion)
 .superpowers/
+
+# Local tool/agent workspace
+.claude/
+
+# Local review doc (avoid accidental commit)
+docs/代码审查报告-数据云储存与数据安全-20260902.md
