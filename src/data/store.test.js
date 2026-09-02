@@ -1,6 +1,6 @@
 // store.js 单元测试：验证 loadData -> exportData 数据无损
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import sampleData from '../__tests__/fixtures/sampleData.json'
 import {
   computeConflictDiff,
@@ -8,9 +8,13 @@ import {
   isContentEqual,
   loadData,
   loadUiStateFromLocalStorage,
+  registerCloudApplyHandler,
+  registerCloudConflictHandler,
+  registerCloudSyncHandler,
   saveUiStateToLocalStorage,
   stableSerialize,
   state,
+  syncToCloudNow,
 } from './store'
 
 describe('data store', () => {
@@ -170,5 +174,104 @@ describe('autoBackup 持久化', () => {
     expect(state.autoBackup.lastDate).toBe('2026-08-31')
     expect(state.autoBackup.lastNotice).toBe('2026-08-31')
     vi.unstubAllGlobals()
+  })
+})
+
+describe('手动同步(force) 智能比对', () => {
+  const CLOUD_PAYLOAD = {
+    items: [{ id: 1, sid: 'JP-1', name: '云端商品', cost: 100, status: 'inventory' }],
+    calc: { debt: 0, wechat: 0 },
+    finance: { records: [], loans: [] },
+    transfers: [],
+    rushcar: { entries: [], forwarderInfos: [], mattelSiteInfos: [], paymentCards: [] },
+  }
+  const CLOUD_UPDATED_AT = '2026-09-02T10:00:00.000Z'
+
+  function makeSyncHandler(env) {
+    return async (payload, options = {}) => {
+      env.calls.push({ reason: options.reason || '', payload: payload ? JSON.parse(JSON.stringify(payload)) : payload })
+      if ((options.reason || '') === 'pre-check') {
+        return { updatedAt: env.cloudUpdatedAt || CLOUD_UPDATED_AT, row: env.cloudRow ?? null, payload: env.cloudPayload }
+      }
+      return { updatedAt: env.cloudUpdatedAt || CLOUD_UPDATED_AT, row: { id: 'main' }, payload }
+    }
+  }
+
+  function setupCloudEnv({ cloudPayload = CLOUD_PAYLOAD, cloudRow = { id: 'main' } } = {}) {
+    const env = { calls: [], cloudPayload, cloudRow, cloudUpdatedAt: CLOUD_UPDATED_AT }
+    const storeMap = new Map()
+    vi.stubGlobal('localStorage', {
+      getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
+      setItem: (k, v) => storeMap.set(k, String(v)),
+      removeItem: (k) => storeMap.delete(k),
+    })
+    Object.assign(state.cloudSettings, {
+      supabaseUrl: 'https://x.supabase.co',
+      supabaseAnonKey: 'anon-key',
+      stateId: 'main',
+      enabled: true,
+      publicRead: true,
+    })
+    registerCloudSyncHandler(makeSyncHandler(env))
+    return env
+  }
+
+  afterEach(() => {
+    registerCloudSyncHandler(null)
+    registerCloudConflictHandler(null)
+    registerCloudApplyHandler(null)
+    Object.assign(state.cloudSettings, {
+      supabaseUrl: '',
+      supabaseAnonKey: '',
+      stateId: 'main',
+      enabled: false,
+      publicRead: true,
+    })
+    vi.unstubAllGlobals()
+    loadData({})
+  })
+
+  it('云端有更全数据且与本地不同时，必须先走冲突确认，不得静默上传覆盖', async () => {
+    loadData({})
+    const env = setupCloudEnv()
+    let conflictType = ''
+    registerCloudConflictHandler(async (type) => {
+      conflictType = type
+      return 'cancel'
+    })
+
+    await syncToCloudNow()
+
+    // 只发生了一次 pre-check(只读)，绝无第二次上传调用
+    expect(env.calls.map((c) => c.reason)).toEqual(['pre-check'])
+    expect(conflictType).toBe('manual-sync')
+    expect(state.items.length).toBe(0) // 本地保持未被云端覆盖
+  })
+
+  it('云端为空(首次使用)时，手动同步应上传本地完成初始化', async () => {
+    loadData({ items: [{ id: 1, name: '本地商品', cost: 5 }] })
+    const env = setupCloudEnv({ cloudPayload: null, cloudRow: null })
+    let conflictCalled = false
+    registerCloudConflictHandler(async () => {
+      conflictCalled = true
+      return 'cancel'
+    })
+
+    await syncToCloudNow()
+
+    expect(env.calls.map((c) => c.reason)).toEqual(['pre-check', 'manual'])
+    expect(conflictCalled).toBe(false)
+    expect(state.items.length).toBe(1)
+  })
+
+  it('云端较新且不同、用户选择 use-cloud 时，应用云端数据覆盖本地', async () => {
+    loadData({})
+    const env = setupCloudEnv()
+    registerCloudConflictHandler(async () => 'use-cloud')
+
+    await syncToCloudNow()
+
+    expect(env.calls.map((c) => c.reason)).toEqual(['pre-check'])
+    expect(state.items).toEqual(CLOUD_PAYLOAD.items)
   })
 })

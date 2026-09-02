@@ -8,7 +8,7 @@ import {
   shouldWarnBeforeOverwrite as protectionWarn,
 } from '../services/dataProtection'
 
-const APP_VERSION = '3.12.2'
+const APP_VERSION = '3.12.3'
 const CLOUD_SYNC_DEBOUNCE_MS = 800
 const MAX_UNDO_STEPS = 20
 const HISTORY_META_EXPIRE_MS = 3000
@@ -341,8 +341,8 @@ async function runCloudSync({ reason = 'auto', force = false } = {}) {
       lastSyncError: '',
     })
     try {
-      // 先拉取云端做比对，而不是直接上传覆盖
-      const cloudResult = await cloudSyncHandler(exportData(), { reason: 'manual-precheck' })
+      // 先拉取云端做比对，而不是直接上传覆盖（reason 必须为 pre-check 才会走只读拉取）
+      const cloudResult = await cloudSyncHandler(exportData(), { reason: 'pre-check' })
       const cloudPayload = cloudResult?.payload
       const cloudUpdatedAt = cloudResult?.updatedAt || ''
 
@@ -402,15 +402,17 @@ async function runCloudSync({ reason = 'auto', force = false } = {}) {
         return result
       }
       if (userChoice === 'use-cloud') {
-        loadData(cloudPayload)
-        setLocalModifiedAt(cloudUpdatedAt)
-        saveToLocalStorage({ bumpTimestamp: false })
+        const applied = await applyCloudPayload(cloudPayload, { trackHistory: true, sourceUpdatedAt: cloudUpdatedAt })
         setCloudStatusPatch({
           syncing: false,
           connected: true,
           lastSyncAt: cloudUpdatedAt || new Date().toISOString(),
           lastSyncError: '',
         })
+        if (!applied) {
+          addOperationLog('cloud_sync', '手动同步：云端载荷损坏/缺失，已拒绝应用，保留本地', { diffCount: diff.total, cloudUpdatedAt })
+          return { updatedAt: getLocalModifiedAt(), row: cloudPayload }
+        }
         addOperationLog('cloud_sync', '手动同步：已下载云端覆盖本地', { diffCount: diff.total, cloudUpdatedAt })
         return { updatedAt: cloudUpdatedAt, row: cloudPayload }
       }
@@ -517,11 +519,14 @@ async function runCloudSync({ reason = 'auto', force = false } = {}) {
           throw err
         }
       } else if (userChoice === 'use-cloud') {
-        applyCloudDataToStore(cloudPayload, { trackHistory: false, sourceUpdatedAt: cloudUpdatedAt })
+        const applied = await applyCloudPayload(cloudPayload, { trackHistory: false, sourceUpdatedAt: cloudUpdatedAt })
+        if (!applied) {
+          addOperationLog('cloud_sync', '云端载荷损坏/缺失，已拒绝应用，保留本地', { localModifiedAt, cloudUpdatedAt, diffCount: diff.total })
+          setCloudLoadError('云端数据不完整，已拒绝应用')
+          return { updatedAt: localModifiedAt, row: cloudPayload }
+        }
         setCloudLoadSuccess(cloudUpdatedAt)
         addOperationLog('cloud_sync', '用户保留云端数据，已下载到本地', { localModifiedAt, cloudUpdatedAt, diffCount: diff.total })
-        setLocalModifiedAt(cloudUpdatedAt)
-        saveToLocalStorage({ bumpTimestamp: false })
         return { updatedAt: cloudUpdatedAt, row: cloudPayload }
       }
       // cancel / keep-local：保持本地，不上传不下载
@@ -542,11 +547,14 @@ async function runCloudSync({ reason = 'auto', force = false } = {}) {
         })
       }
       if (userChoice === 'use-cloud') {
-        applyCloudDataToStore(cloudPayload, { trackHistory: false, sourceUpdatedAt: cloudUpdatedAt })
+        const applied = await applyCloudPayload(cloudPayload, { trackHistory: false, sourceUpdatedAt: cloudUpdatedAt })
+        if (!applied) {
+          addOperationLog('cloud_sync', '云端载荷损坏/缺失，已拒绝应用，保留本地', { cloudUpdatedAt, localModifiedAt, diffCount: diff.total })
+          setCloudLoadError('云端数据不完整，已拒绝应用')
+          return { updatedAt: localModifiedAt, row: cloudPayload }
+        }
         setCloudLoadSuccess(cloudUpdatedAt)
         addOperationLog('cloud_sync', '用户选择使用云端数据', { cloudUpdatedAt, localModifiedAt, diffCount: diff.total })
-        setLocalModifiedAt(cloudUpdatedAt)
-        saveToLocalStorage({ bumpTimestamp: false })
         return { updatedAt: cloudUpdatedAt, row: cloudPayload }
       } else if (userChoice === 'keep-local' || userChoice === 'upload') {
         addOperationLog('cloud_sync', '用户选择保留本地数据', { cloudUpdatedAt, localModifiedAt, diffCount: diff.total })
@@ -910,6 +918,28 @@ function diffRecordFields(cloudRecord, localRecord) {
     }
   }
   return changes
+}
+
+// 应用云端载荷回调：由 App.vue 注入（带 8 集合守卫与撤销语义的实现）
+let cloudApplyHandler = null
+
+export function registerCloudApplyHandler(handler) {
+  cloudApplyHandler = typeof handler === 'function' ? handler : null
+}
+
+/**
+ * 应用云端载荷到本地 store。
+ * 优先走注入的实现（守卫 + 撤销语义）；未注入时退化为原行为。
+ * @returns {boolean} false 表示云端载荷损坏/缺失被拒
+ */
+async function applyCloudPayload(payload, options = {}) {
+  if (typeof cloudApplyHandler === 'function') {
+    return cloudApplyHandler(payload, options)
+  }
+  loadData(payload)
+  if (options.sourceUpdatedAt) setLocalModifiedAt(options.sourceUpdatedAt)
+  saveToLocalStorage({ bumpTimestamp: false })
+  return true
 }
 
 export function registerCloudSyncHandler(handler) {

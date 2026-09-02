@@ -23,6 +23,7 @@ import {
   loadData,
   loadFromLocalStorage,
   loadUiStateFromLocalStorage,
+  registerCloudApplyHandler,
   registerCloudConflictHandler,
   registerCloudSyncHandler,
   resetCloudUnhealthyWarning,
@@ -48,7 +49,7 @@ import {
   signInWithPassword,
   signOutCloudSession,
 } from './services/cloudStore'
-import { shouldWarnBeforeOverwrite, buildSyncRationale } from './services/dataProtection'
+import { shouldWarnBeforeOverwrite } from './services/dataProtection'
 import { downloadJsonBackup } from './services/dataProtection'
 
 const tabs = [
@@ -384,8 +385,8 @@ function formatConflictTime(t) {
  * @param {object} data - { diff, warn, cloudUpdatedAt, localModifiedAt }
  * @returns {Promise<'upload'|'use-cloud'|'keep-local'|'cancel'>}
  */
-function askCloudConflict(type, data = {}) {
-  const { diff, cloudUpdatedAt, localModifiedAt } = data
+async function askCloudConflict(type, data = {}) {
+  const { diff, cloudUpdatedAt, localModifiedAt, warn } = data
   cloudConflictType.value = type || 'recovery'
   cloudConflictInfo.value = {
     localAt: localModifiedAt || '',
@@ -394,9 +395,21 @@ function askCloudConflict(type, data = {}) {
     total: diff?.total || 0,
   }
   cloudConflict.value = true
-  return new Promise((resolve) => {
+  const choice = await new Promise((resolve) => {
     cloudConflictResolver = resolve
   })
+  // 用户选择"用云端覆盖本地"，且检测到强警告（数据骤减/销售日期倒挂等）→ 二次确认
+  if (choice === 'use-cloud' && warn?.shouldWarn && Array.isArray(warn.reasons) && warn.reasons.length > 0) {
+    const second = await askOverwriteWarn({
+      reasons: warn.reasons,
+      countLocal: warn.countDiff ?? 0,
+      countCloud: 0,
+      lastSaleLocal: warn.lastSaleLocal ?? '',
+      lastSaleCloud: warn.lastSaleCloud ?? '',
+    })
+    return second === 'overwrite' ? 'use-cloud' : 'keep-local'
+  }
+  return choice
 }
 
 function resolveCloudConflict(choice) {
@@ -598,7 +611,12 @@ async function pullFromCloud() {
       alert('云端没有可用数据')
       return
     }
-    applyCloudDataToStore(result.payload, { sourceUpdatedAt: result.updatedAt })
+    const applied = applyCloudDataToStore(result.payload, { sourceUpdatedAt: result.updatedAt })
+    if (!applied) {
+      setCloudLoadError('云端数据不完整，已拒绝应用')
+      alert('云端数据不完整（缺失/损坏），已拒绝应用，本地数据保持不变')
+      return
+    }
     setCloudLoadSuccess(result.updatedAt)
     addOperationLog('cloud_pull', '从云端加载数据成功', {
       updatedAt: result.updatedAt,
@@ -664,6 +682,8 @@ function syncSilentlyOnHidden() {
   if (!isCloudConfigReady(store.cloudSettings)) return
   if (store.cloudStatus.syncing) return
   if (getUnsyncedOperations().length === 0) return
+  // 本次会话尚未成功同步过（可能是旧浏览器/长期未同步）→ 不静默盲写，留给启动冲突检测
+  if (!store.cloudStatus.lastSyncAt) return
 
   const payload = exportData()
   saveCloudState(store.cloudSettings, payload, {
@@ -739,12 +759,15 @@ async function loadCloudOnStartup() {
           return false
         }
       } else if (userChoice === 'use-cloud') {
-        applyCloudDataToStore(result.payload, { trackHistory: false, sourceUpdatedAt: result.updatedAt })
+        const applied = applyCloudDataToStore(result.payload, { trackHistory: false, sourceUpdatedAt: result.updatedAt })
+        state.cloudStatus.lastAutoSyncAt = Date.now()
+        if (!applied) {
+          addOperationLog('cloud_sync', '云端载荷损坏/缺失，已拒绝应用，保留本地', { localUpdatedAt: localAt, cloudUpdatedAt: result.updatedAt, diffCount: diff.total })
+          setCloudLoadError('云端数据不完整，已拒绝应用')
+          return false
+        }
         setCloudLoadSuccess(result.updatedAt)
         addOperationLog('cloud_sync', '用户选择保留云端数据，已下载到本地', { localUpdatedAt: localAt, cloudUpdatedAt: result.updatedAt, diffCount: diff.total })
-        setLocalModifiedAt(result.updatedAt)
-        saveToLocalStorage({ bumpTimestamp: false })
-        state.cloudStatus.lastAutoSyncAt = Date.now()
         return true
       }
       // cancel：保持本地不变
@@ -767,12 +790,15 @@ async function loadCloudOnStartup() {
       })
 
       if (userChoice === 'use-cloud') {
-        applyCloudDataToStore(result.payload, { trackHistory: false, sourceUpdatedAt: result.updatedAt })
+        const applied = applyCloudDataToStore(result.payload, { trackHistory: false, sourceUpdatedAt: result.updatedAt })
+        state.cloudStatus.lastAutoSyncAt = Date.now()
+        if (!applied) {
+          addOperationLog('cloud_sync', '云端载荷损坏/缺失，已拒绝应用，保留本地', { cloudUpdatedAt: result.updatedAt, localUpdatedAt: localAt, diffCount: diff.total })
+          setCloudLoadError('云端数据不完整，已拒绝应用')
+          return false
+        }
         setCloudLoadSuccess(result.updatedAt)
         addOperationLog('cloud_sync', '用户选择使用云端数据', { cloudUpdatedAt: result.updatedAt, localUpdatedAt: localAt, diffCount: diff.total })
-        setLocalModifiedAt(result.updatedAt)
-        saveToLocalStorage({ bumpTimestamp: false })
-        state.cloudStatus.lastAutoSyncAt = Date.now()
         return true
       } else if (userChoice === 'upload' || userChoice === 'keep-local') {
         addOperationLog('cloud_sync', '用户选择保留本地数据', { cloudUpdatedAt: result.updatedAt, localUpdatedAt: localAt, diffCount: diff.total })
@@ -888,6 +914,7 @@ onMounted(async () => {
   })
 
   registerCloudConflictHandler(askCloudConflict)
+  registerCloudApplyHandler((payload, options = {}) => applyCloudDataToStore(payload, options))
 
   document.addEventListener('visibilitychange', syncSilentlyOnHidden)
 
@@ -959,6 +986,8 @@ onBeforeUnmount(() => {
 
     // 仅在有未同步操作时才尝试 keepalive 上传
     if (getUnsyncedOperations().length === 0) return
+    // 本次会话尚未成功同步过 → 不静默盲写，留给下次启动冲突检测
+    if (!store.cloudStatus.lastSyncAt) return
 
     const payload = exportData()
     try {
