@@ -1,0 +1,35 @@
+{
+  "items": [
+    {"id": 1, "sid": "JP-0001", "name": "GT-R 模型 A", "status": "inventory", "cost": 1200, "category": "日淘", "brand": "Nismo"},
+    {"id": 2, "sid": "JP-0002", "name": "GT-R 模型 B", "status": "inventory", "cost": 800, "category": "日淘", "brand": "Nismo"},
+    {"id": 3, "sid": "JP-0003", "name": "商品 C", "status": "inventory", "cost": 500, "category": "美淘", "brand": "Test"},
+    {"id": 4, "sid": "JP-0004", "name": "采购商品 D", "status": "purchase", "cost": 300, "category": "日淘", "purchaseDetails": {"preTransferCost": 250, "transferCost": 50, "transferId": "TR001"}},
+    {"id": 5, "sid": "JP-0126", "name": "JP-0126 商品", "status": "purchase", "cost": 1000, "category": "日淘", "purchaseDetails": {"preTransferCost": 800, "transferCost": 200, "transferId": "TR002"}},
+    {"id": 6, "sid": "JP-0006", "name": "已售商品 A", "status": "sold", "cost": 600, "saleDetails": {"price": 1000, "express": 50, "feeRate": 0.05, "deduction": 0, "profit": 300, "date": "2026-01-15"}},
+    {"id": 7, "sid": "JP-0007", "name": "已售商品 B", "status": "sold", "cost": 400, "saleDetails": {"price": 800, "express": 20, "feeRate": 0.03, "deduction": 0, "profit": 360, "date": "2026-02-01"}},
+    {"id": 8, "sid": "JP-0008", "name": "已售商品 C", "status": "sold", "cost": 700, "saleDetails": {"price": 1200, "express": 30, "feeRate": 0.04, "deduction": 0, "profit": 478, "date": "2026-03-01"}},
+    {"id": 9, "sid": "JP-0009", "name": "采购商品 E", "status": "purchase", "cost": 200, "purchaseDetails": {}},
+    {"id": 10, "sid": "JP-0010", "name": "GT-R 限量", "status": "inventory", "cost": 1500, "category": "日淘"}
+  ],
+  "calc": {"debt": 100, "wechat": 500, "publicExp": 50, "unconfirmed": 0, "fund": 2000, "forwarderBalance": 300, "watchBalance": 100},
+  "finance": {
+    "records": [
+      {"id": 10, "date": "2026-01-01", "item": "餐费", "type": "expense", "amount": 50, "note": ""},
+      {"id": 11, "date": "2026-01-02", "item": "工资", "type": "income", "amount": 5000, "note": ""}
+    ],
+    "loans": [
+      {"id": 20, "date": "2026-01-01", "name": "借出测试", "type": "lend", "amount": 1000, "note": "", "isRepaid": false, "repaid": false}
+    ]
+  },
+  "transfers": [
+    {"id": 1, "name": "转运公司A", "cost": 100}
+  ],
+  "rushcar": {
+    "entries": [],
+    "forwarderInfos": [],
+    "mattelSiteInfos": [],
+    "paymentCards": []
+  },
+  "snapshots": [],
+  "updatedAt": "2026-08-26T10:00:00.000Z"
+}
