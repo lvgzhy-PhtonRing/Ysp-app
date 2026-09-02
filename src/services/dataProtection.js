@@ -18,9 +18,24 @@ function lastSaleDate(payload) {
   return latest
 }
 
+function arrayCount(arr) {
+  return Array.isArray(arr) ? arr.length : null
+}
+
+function checkReduction(label, localArr, cloudArr, reasons) {
+  const lc = arrayCount(localArr)
+  const cc = arrayCount(cloudArr)
+  if (lc === null || cc === null) return
+  const minReduction = Math.max(OVERWRITE_THRESHOLD_MIN, Math.floor(lc * OVERWRITE_THRESHOLD_RATIO))
+  const reduction = lc - cc
+  if (reduction >= minReduction) {
+    reasons.push(`云端${label}比本地少 ${reduction} 条（本地 ${lc} → 云端 ${cc}）`)
+  }
+}
+
 /**
  * 检测"云端覆盖本地"前是否应警告。
- * 触发条件：云端商品数比本地少 ≥ max(5, 本地×10%)，或云端最后销售日期早于本地。
+ * 触发条件：云端各集合记录数比本地少 ≥ max(5, 本地×10%)，或云端最后销售日期早于本地。
  * @returns {{ shouldWarn: boolean, reasons: string[], countDiff: number, lastSaleLocal: string, lastSaleCloud: string }}
  */
 export function shouldWarnBeforeOverwrite(localPayload, cloudPayload) {
@@ -30,13 +45,11 @@ export function shouldWarnBeforeOverwrite(localPayload, cloudPayload) {
   const lastSaleLocal = lastSaleDate(localPayload)
   const lastSaleCloud = lastSaleDate(cloudPayload)
 
-  if (localCount !== null && cloudCount !== null) {
-    const minReduction = Math.max(OVERWRITE_THRESHOLD_MIN, Math.floor(localCount * OVERWRITE_THRESHOLD_RATIO))
-    const reduction = localCount - cloudCount
-    if (reduction >= minReduction) {
-      reasons.push(`云端商品数比本地少 ${reduction} 条（本地 ${localCount} → 云端 ${cloudCount}）`)
-    }
-  }
+  checkReduction('商品数', localPayload?.items, cloudPayload?.items, reasons)
+  checkReduction('收支记录', localPayload?.finance?.records, cloudPayload?.finance?.records, reasons)
+  checkReduction('借贷记录', localPayload?.finance?.loans, cloudPayload?.finance?.loans, reasons)
+  checkReduction('转运记录', localPayload?.transfers, cloudPayload?.transfers, reasons)
+  checkReduction('美淘记录', localPayload?.rushcar?.entries, cloudPayload?.rushcar?.entries, reasons)
 
   if (lastSaleLocal && lastSaleCloud && lastSaleCloud < lastSaleLocal) {
     reasons.push(`云端最后销售日期早于本地（本地 ${lastSaleLocal} → 云端 ${lastSaleCloud}）`)

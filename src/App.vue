@@ -25,8 +25,10 @@ import {
   loadUiStateFromLocalStorage,
   promptCloudDataRecovery,
   promptUploadLocalData,
+  registerCloudConflictHandler,
   registerCloudSyncHandler,
   resetCloudUnhealthyWarning,
+  runCloudSyncCheck,
   saveToLocalStorage,
   setCloudLoadError,
   setCloudLoadSuccess,
@@ -296,6 +298,7 @@ const cloudBusy = ref(false)
 
 // 云端冲突检测弹窗（本地数据比云端新时弹出，供用户选择数据源）
 const cloudConflict = ref(false)
+const cloudConflictType = ref('recovery')
 const cloudConflictInfo = ref({ localAt: '', cloudAt: '', entries: [], total: 0 })
 let cloudConflictResolver = null
 
@@ -375,10 +378,19 @@ function formatConflictTime(t) {
   return d.toLocaleString()
 }
 
-function askCloudConflict(cloudResult, localAt, diff) {
+/**
+ * 冲突决策模态框（字段级差异展示）。
+ * 由 store.js runCloudSync 通过 registerCloudConflictHandler 调用，也可在 loadCloudOnStartup 中直接调用。
+ * @param {'upload-local'|'recovery'} type - 冲突类型
+ * @param {object} data - { diff, warn, cloudUpdatedAt, localModifiedAt }
+ * @returns {Promise<'upload'|'use-cloud'|'keep-local'|'cancel'>}
+ */
+function askCloudConflict(type, data = {}) {
+  const { diff, cloudUpdatedAt, localModifiedAt } = data
+  cloudConflictType.value = type || 'recovery'
   cloudConflictInfo.value = {
-    localAt: localAt || '',
-    cloudAt: cloudResult?.updatedAt || '',
+    localAt: localModifiedAt || '',
+    cloudAt: cloudUpdatedAt || '',
     entries: diff?.entries || [],
     total: diff?.total || 0,
   }
@@ -668,131 +680,96 @@ async function loadCloudOnStartup() {
       return true
     }
 
-    // 情况2：本地数据比云端新 → 询问用户是上传本地还是保留云端
+    // 情况2：本地数据比云端新
     if (cloudTs && localTs && localTs > cloudTs) {
       const localPayload = exportData()
-
-      // 用户数据内容一致（只是时间戳/自动快照不同）→ 询问用户决定
       const contentEqual = isContentEqual(localPayload, result.payload)
+
+      // 内容一致 → 静默对齐时间戳，不打扰用户
       if (contentEqual) {
-        // 内容一致，仅对齐时间戳
-        const uploadChoice = await promptUploadLocalData(cloudTs.toString(), localAt)
-        if (uploadChoice === 'upload') {
-          // 上传本地数据（内容相同，仅时间戳不同）
-          applyCloudDataToStore(result.payload, { trackHistory: false, sourceUpdatedAt: result.updatedAt })
-          setLocalModifiedAt(result.updatedAt)
-          saveToLocalStorage({ bumpTimestamp: false })
-          setCloudLoadSuccess(result.updatedAt)
-          addOperationLog('cloud_sync', '内容一致，已上传本地数据对齐云端时间戳', {
-            localUpdatedAt: localAt,
-            cloudUpdatedAt: result.updatedAt,
-          })
-          state.cloudStatus.lastAutoSyncAt = Date.now()
-          return true
-        } else {
-          // 保留云端，下载云端数据
-          applyCloudDataToStore(result.payload, { trackHistory: false, sourceUpdatedAt: result.updatedAt })
-          setCloudLoadSuccess(result.updatedAt)
-          addOperationLog('cloud_sync', '用户保留云端数据，已下载到本地', {
-            localUpdatedAt: localAt,
-            cloudUpdatedAt: result.updatedAt,
-          })
-          setLocalModifiedAt(result.updatedAt)
-          saveToLocalStorage({ bumpTimestamp: false })
-          state.cloudStatus.lastAutoSyncAt = Date.now()
-          return true
-        }
+        setLocalModifiedAt(result.updatedAt)
+        saveToLocalStorage({ bumpTimestamp: false })
+        setCloudLoadSuccess(result.updatedAt)
+        addOperationLog('cloud_sync', '内容一致，已静默对齐时间戳', { localUpdatedAt: localAt, cloudUpdatedAt: result.updatedAt })
+        state.cloudStatus.lastAutoSyncAt = Date.now()
+        return true
       }
 
-      // 内容不一致，本地较新 → 询问用户上传或保留
-      const uploadChoice = await promptUploadLocalData(cloudTs.toString(), localAt)
-      if (uploadChoice === 'upload') {
-        // 用户确认上传本地数据
+      // 内容不一致，本地较新 → 弹模态框让用户决策
+      const diff = computeConflictDiff(localPayload, result.payload)
+      const userChoice = await askCloudConflict('upload-local', {
+        diff,
+        warn: shouldWarnBeforeOverwrite(localPayload, result.payload),
+        cloudUpdatedAt: result.updatedAt,
+        localModifiedAt: localAt,
+      })
+
+      if (userChoice === 'upload') {
         try {
           const syncResult = await syncToCloudNow()
-          addOperationLog('cloud_sync', '本户数据较新，用户确认上传覆盖云端', {
-            updatedAt: syncResult?.updatedAt || result.updatedAt,
-            localUpdatedAt: localAt,
-          })
+          addOperationLog('cloud_sync', '本地数据较新，用户确认上传覆盖云端', { updatedAt: syncResult?.updatedAt || result.updatedAt, localUpdatedAt: localAt, diffCount: diff.total })
           setCloudLoadSuccess(syncResult?.updatedAt || result.updatedAt)
           state.cloudStatus.lastAutoSyncAt = Date.now()
           return true
         } catch (err) {
           addOperationLog('cloud_sync', '本地上传云端失败', { error: err.message, localUpdatedAt: localAt })
           setCloudLoadError(err.message)
-          alert(`上传云端失败：${err.message}\n本地数据已保留，请检查网络或云端登录。`)
           state.cloudStatus.lastAutoSyncAt = Date.now()
           return false
         }
-      } else {
-        // 用户选择保留云端数据，下载云端到本地
+      } else if (userChoice === 'use-cloud') {
         applyCloudDataToStore(result.payload, { trackHistory: false, sourceUpdatedAt: result.updatedAt })
         setCloudLoadSuccess(result.updatedAt)
-        addOperationLog('cloud_sync', '用户选择保留云端数据，已下载到本地', {
-          localUpdatedAt: localAt,
-          cloudUpdatedAt: result.updatedAt,
-        })
+        addOperationLog('cloud_sync', '用户选择保留云端数据，已下载到本地', { localUpdatedAt: localAt, cloudUpdatedAt: result.updatedAt, diffCount: diff.total })
         setLocalModifiedAt(result.updatedAt)
         saveToLocalStorage({ bumpTimestamp: false })
         state.cloudStatus.lastAutoSyncAt = Date.now()
         return true
       }
-    }
-
-    // 情况3：云端数据比本地新（或无法比较） → 检测是否为疑似误操作
-    // 使用 store.js 中的 enhanced 检测函数
-    const localPayload = exportData()
-    const warn = shouldWarnBeforeOverwrite(localPayload, result.payload)
-    const diff = computeConflictDiff(localPayload, result.payload)
-
-    // 如果有强提示条件，显示强提示模态框
-    if (warn.shouldWarn || diff.total > 0) {
-      // 使用 store.js 提供的提示函数获取用户选择
-      const userChoice = await promptCloudDataRecovery(warn, diff, result.updatedAt, localAt)
-
-      if (userChoice === 'use-cloud') {
-        // 用户选择使用云端数据（可能是误操作回退场景）
-        applyCloudDataToStore(result.payload, { trackHistory: false, sourceUpdatedAt: result.updatedAt })
-        setCloudLoadSuccess(result.updatedAt)
-        addOperationLog('cloud_sync', '用户选择使用云端数据（疑似误操作回退）', {
-          cloudUpdatedAt: result.updatedAt,
-          localUpdatedAt: localAt,
-          diffCount: diff.total,
-        })
-        setLocalModifiedAt(result.updatedAt)
-        saveToLocalStorage({ bumpTimestamp: false })
-        state.cloudStatus.lastAutoSyncAt = Date.now()
-        return true
-      } else if (userChoice === 'keep-local') {
-        // 用户选择保留本地数据
-        addOperationLog('cloud_sync', '用户选择保留本地数据，云端数据被忽略', {
-          cloudUpdatedAt: result.updatedAt,
-          localUpdatedAt: localAt,
-          diffCount: diff.total,
-        })
-        setCloudLoadError('用户已拒绝云端数据覆盖')
-        state.cloudStatus.lastAutoSyncAt = Date.now()
-        return false
-      }
-      // 用户取消，保持现状
-      addOperationLog('cloud_sync', '用户取消云端数据覆盖决定', {
-        cloudUpdatedAt: result.updatedAt,
-        localUpdatedAt: localAt,
-        diffCount: diff.total,
-      })
+      // cancel：保持本地不变
+      addOperationLog('cloud_sync', '用户取消同步，保持本地数据', { localUpdatedAt: localAt, cloudUpdatedAt: result.updatedAt, diffCount: diff.total })
       state.cloudStatus.lastAutoSyncAt = Date.now()
       return false
     }
 
-    // 情况4：云端数据较新，无特殊警告 → 自动下载云端数据
-    applyCloudDataToStore(result.payload, { trackHistory: false, sourceUpdatedAt: result.updatedAt })
-    setCloudLoadSuccess(result.updatedAt)
-    addOperationLog('cloud_sync', '云端数据较新，已自动下载到本地', {
-      cloudUpdatedAt: result.updatedAt,
-      localUpdatedAt: localAt,
-    })
+    // 情况3：云端数据比本地新（或时间戳相等但内容不同）→ 弹模态框让用户决策
+    const localPayload = exportData()
+    const warn = shouldWarnBeforeOverwrite(localPayload, result.payload)
+    const diff = computeConflictDiff(localPayload, result.payload)
+
+    if (diff.total > 0 || warn.shouldWarn) {
+      const userChoice = await askCloudConflict('recovery', {
+        diff,
+        warn,
+        cloudUpdatedAt: result.updatedAt,
+        localModifiedAt: localAt,
+      })
+
+      if (userChoice === 'use-cloud') {
+        applyCloudDataToStore(result.payload, { trackHistory: false, sourceUpdatedAt: result.updatedAt })
+        setCloudLoadSuccess(result.updatedAt)
+        addOperationLog('cloud_sync', '用户选择使用云端数据', { cloudUpdatedAt: result.updatedAt, localUpdatedAt: localAt, diffCount: diff.total })
+        setLocalModifiedAt(result.updatedAt)
+        saveToLocalStorage({ bumpTimestamp: false })
+        state.cloudStatus.lastAutoSyncAt = Date.now()
+        return true
+      } else if (userChoice === 'upload' || userChoice === 'keep-local') {
+        addOperationLog('cloud_sync', '用户选择保留本地数据', { cloudUpdatedAt: result.updatedAt, localUpdatedAt: localAt, diffCount: diff.total })
+        setCloudLoadError('用户已拒绝云端数据覆盖')
+        state.cloudStatus.lastAutoSyncAt = Date.now()
+        return false
+      }
+      // cancel：保持现状
+      addOperationLog('cloud_sync', '用户取消云端数据覆盖决定', { cloudUpdatedAt: result.updatedAt, localUpdatedAt: localAt, diffCount: diff.total })
+      state.cloudStatus.lastAutoSyncAt = Date.now()
+      return false
+    }
+
+    // 云端较新且内容一致 → 静默对齐时间戳
     setLocalModifiedAt(result.updatedAt)
     saveToLocalStorage({ bumpTimestamp: false })
+    setCloudLoadSuccess(result.updatedAt)
+    addOperationLog('cloud_sync', '云端数据较新且内容一致，已对齐时间戳', { cloudUpdatedAt: result.updatedAt, localUpdatedAt: localAt })
     state.cloudStatus.lastAutoSyncAt = Date.now()
     return true
   } catch (err) {
@@ -889,6 +866,8 @@ onMounted(async () => {
     }
   })
 
+  registerCloudConflictHandler(askCloudConflict)
+
   document.addEventListener('visibilitychange', syncSilentlyOnHidden)
 
   // === 新增：程序启动时自动从云端加载数据 ===
@@ -935,8 +914,22 @@ function periodicCloudCheck() {
       // 静默失败，下次再试
     })
   } else if (store.cloudStatus.connected) {
-    // 没有未同步操作，但云端已连接，检查是否有新数据需要下载
-    // 这里可以根据需要实现轻量级检查
+    // 无未同步操作，但云端已连接 → 轻量检查云端是否有新数据
+    // 仅查询 updated_at 字段，若云端比本地 lastSyncAt 新则触发 runCloudSync
+    fetchCloudState(store.cloudSettings, {
+      session: store.cloudSession,
+      onSession: (session) => setCloudSession(session),
+      publicOnly: false,
+    }).then((result) => {
+      const cloudTs = tsToEpoch(result?.updatedAt)
+      const localSyncTs = tsToEpoch(store.cloudStatus.lastSyncAt)
+      if (cloudTs && (!localSyncTs || cloudTs > localSyncTs)) {
+        // 云端有新数据，触发非强制同步（会走冲突检测）
+        runCloudSyncCheck().catch(() => {})
+      }
+    }).catch(() => {
+      // 静默失败，下次再试
+    })
   }
 
   // 继续下一次检测
@@ -946,112 +939,30 @@ function periodicCloudCheck() {
 onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', syncSilentlyOnHidden)
 
-  // === 新增：程序关闭前数据冲突检测与上传 ===
+  // 关闭前保底上传：页面卸载时 confirm 不可靠，不做复杂冲突检测。
+  // 若有未同步的本地修改，用 keepalive 静默上传保底；冲突决策推迟到下次启动 loadCloudOnStartup。
   ;(async () => {
-    // 仅在云同步已启用且配置完整且连接时检测
     if (
-      store.cloudSettings.enabled &&
-      isCloudConfigReady(store.cloudSettings) &&
-      store.cloudStatus.connected &&
-      !store.cloudStatus.syncing
-    ) {
-      try {
-        const localPayload = exportData()
-        // 获取云端当前状态
-        const result = await fetchCloudState(store.cloudSettings, {
-          session: store.cloudSession,
-          onSession: (session) => setCloudSession(session),
-          publicOnly: false,
-        })
+      !store.cloudSettings.enabled ||
+      !isCloudConfigReady(store.cloudSettings) ||
+      store.cloudStatus.syncing
+    ) return
 
-        // 情况1：云端无数据（首次使用或未配置），直接上传本地数据
-        if (!result?.payload) {
-          // 云端无数据，直接上传本地数据覆盖
-          await syncToCloudNow().catch(() => {
-            // 静默失败，下次启动时重试
-          })
-          return
-        }
+    // 仅在有未同步操作时才尝试 keepalive 上传
+    if (getUnsyncedOperations().length === 0) return
 
-        // 情况2：内容一致，直接上传本地数据对齐时间戳
-        if (isContentEqual(localPayload, result.payload)) {
-          // 内容一致，仅上传以更新时间戳
-          await syncToCloudNow().catch(() => {
-            // 静默失败
-          })
-          return
-        }
-
-        // 情况3：内容不一致，进行差异计算并弹出强提示
-        const diff = computeConflictDiff(localPayload, result.payload)
-        const localModifiedAt = getLocalModifiedAt()
-        const cloudUpdatedAt = result.updatedAt || ''
-
-        // 构建提示理由
-        const reasons = []
-        if (localModifiedAt && cloudUpdatedAt && localModifiedAt > cloudUpdatedAt) {
-          reasons.push(`本地数据比云端新（${localModifiedAt} vs ${cloudUpdatedAt}）`)
-        }
-        if (diff.total > 0) {
-          reasons.push(`检测到 ${diff.total} 处数据差异`)
-        }
-
-        if (reasons.length > 0) {
-          // === 强提示用户：如何处理数据冲突 ===
-          const choice = await new Promise(resolve => {
-            // 使用浏览器 confirm 替代，实际项目建议使用现有的 GlassModal
-            const message = `⚠️ 检测到数据冲突\n\n${reasons.join('\\n')}\\n\\n请选择以下操作：\n1. 用本地数据覆盖云端（上传本地）\n2. 用云端数据覆盖本地（下载云端）\n3. 取消，保持本地数据不变，下次启动时提醒`
-            resolve(confirm(message))
-          })
-
-          switch (choice) {
-            case true:
-              // 用户选择：用本地数据覆盖云端
-              await syncToCloudNow().catch(() => {
-                // 静默失败，下次启动时提醒
-              })
-              break
-            case false:
-              // 用户选择：用云端数据覆盖本地
-              // 先应用云端数据到本地（不保存历史），然后上传
-              applyCloudDataToStore(result.payload, {
-                trackHistory: false,
-                sourceUpdatedAt: result.updatedAt,
-              })
-              // 保存到 localStorage 以便撤销
-              saveToLocalStorage({ bumpTimestamp: false })
-              // 然后上传到云端（此时本地已是云端数据，无实际冲突）
-              await syncToCloudNow().catch(() => {
-                // 静默失败
-              })
-              // 显示提示：云端数据已恢复到本地
-              alert('云端数据已恢复到本地，请重新启动程序确认。')
-              break
-            default:
-              // 用户选择：取消，保持本地数据不变，下次启动时记录
-              // 可以选择将冲突信息存入 localStorage，下次启动时提醒
-              addOperationLog('cloud_sync', '关闭前用户取消数据同步', {
-                cloudUpdatedAt,
-                localModifiedAt,
-                diffCount: diff.total,
-              })
-              // 不执行任何上传操作
-              break
-          }
-        } else {
-          // 有差异记录但未触发具体理由（理论上不应发生），仍然上传
-          await syncToCloudNow().catch(() => {
-            // 静默失败
-          })
-        }
-      } catch (err) {
-        // 静默捕获错误，避免关闭页面时弹窗卡顿用户体验
-        console.error('关闭前同步检测错误:', err)
-        // 出现错误时仍尝试上传，确保数据不致丢失
-        try {
-          await syncToCloudNow().catch(() => { })
-        } catch (_) { }
-      }
+    const payload = exportData()
+    try {
+      await saveCloudState(store.cloudSettings, payload, {
+        session: store.cloudSession,
+        onSession: (session) => setCloudSession(session),
+        makePublic: store.cloudSettings.publicRead,
+        keepalive: true,
+      })
+      addOperationLog('cloud_sync', '关闭前 keepalive 上传保底成功', { localUpdatedAt: getLocalModifiedAt() })
+    } catch (err) {
+      // 静默失败，下次启动 loadCloudOnStartup 会检测冲突并提示用户
+      addOperationLog('cloud_sync', '关闭前 keepalive 上传失败', { error: err.message })
     }
   })()
 })
@@ -1194,7 +1105,7 @@ watch(
     <GlassModal v-model="cloudConflict" panel-class="w-full max-w-md p-6 relative max-h-[80vh] overflow-y-auto" :close-on-overlay="false">
       <div class="mb-1 text-xl font-bold">检测到数据冲突</div>
       <p class="text-sm text-gray-600 mb-4">
-        本机数据比云端更新，可能是上次未同步成功或另一台设备未同步。请选择使用哪一份数据：
+        {{ cloudConflictType === 'upload-local' ? '本机数据比云端新，请选择使用哪一份数据：' : '云端数据比本地新或存在差异，请选择使用哪一份数据：' }}
       </p>
       <div class="mb-4 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 space-y-1">
         <div class="flex justify-between gap-3">
@@ -1249,9 +1160,9 @@ watch(
         </div>
       </div>
       <div class="space-y-2">
-        <button class="btn btn-primary w-full" @click="resolveCloudConflict('local')">用本地的覆盖云端（上传本地）</button>
-        <button class="btn btn-outline w-full" @click="resolveCloudConflict('cloud')">用云端的覆盖本地</button>
-        <button class="btn btn-outline w-full" @click="resolveCloudConflict('manual')">先手动对比（不自动同步）</button>
+        <button class="btn btn-primary w-full" @click="resolveCloudConflict('upload')">用本地覆盖云端（上传本地）</button>
+        <button class="btn btn-outline w-full" @click="resolveCloudConflict('use-cloud')">用云端覆盖本地（下载云端）</button>
+        <button class="btn btn-outline w-full" @click="resolveCloudConflict('cancel')">取消，保持本地不变</button>
       </div>
     </GlassModal>
 

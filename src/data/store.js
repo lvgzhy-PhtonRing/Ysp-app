@@ -4,7 +4,7 @@ import { reactive } from 'vue'
 
 import { downloadJsonBackup, isBackupDue } from '../services/dataProtection'
 
-const APP_VERSION = '3.12.1'
+const APP_VERSION = '3.12.2'
 const CLOUD_SYNC_DEBOUNCE_MS = 800
 const MAX_UNDO_STEPS = 20
 const HISTORY_META_EXPIRE_MS = 3000
@@ -179,6 +179,7 @@ export const state = reactive({
 
 const UI_STORAGE_KEY = 'ysp_ui'
 let cloudSyncHandler = null
+let cloudConflictHandler = null
 let cloudSyncTimer = null
 let suppressCloudSync = false
 let suppressHistory = false
@@ -204,10 +205,10 @@ export function needsAutoSyncOnStart() {
   return now - lastSync > CLOUD_SYNC_COMPARE_THRESHOLD_MS
 }
 
-export function isLocalDataNewerThanCloud() {
+export function isLocalDataNewerThanCloud(cloudUpdatedAt = '') {
   // 比较本地数据最后修改时间 vs 云端 updatedAt
   const localTs = tsToEpoch(getLocalModifiedAt())
-  const cloudTs = state.cloudStatus.lastSyncAt ? tsToEpoch(state.cloudStatus.lastSyncAt) : 0
+  const cloudTs = tsToEpoch(cloudUpdatedAt)
   return localTs > cloudTs
 }
 
@@ -410,15 +411,17 @@ async function runCloudSync({ reason = 'auto', force = false } = {}) {
       return { updatedAt: cloudUpdatedAt, row: cloudPayload }
     }
 
-    // 情况B：本地数据比云端新 → 上传本地数据覆盖云端
-    if (isLocalDataNewerThanCloud()) {
-      // 提示用户：本地有新数据，是否上传？
-      const shouldUpload = await promptUploadLocalData(cloudUpdatedAt, localModifiedAt)
-      if (shouldUpload) {
-        // 上传本地数据
-        setCloudStatusPatch({
-          syncing: true,
+    // 情况B：本地数据比云端新 → 询问用户上传本地还是保留云端
+    if (isLocalDataNewerThanCloud(cloudUpdatedAt)) {
+      const diff = computeConflictDiff(localPayload, cloudPayload)
+      let userChoice = 'upload'
+      if (typeof cloudConflictHandler === 'function' && diff.total > 0) {
+        userChoice = await cloudConflictHandler('upload-local', {
+          diff, cloudUpdatedAt, localModifiedAt, warn: shouldWarnBeforeOverwrite(localPayload, cloudPayload),
         })
+      }
+      if (userChoice === 'upload') {
+        setCloudStatusPatch({ syncing: true })
         try {
           const uploadResult = await cloudSyncHandler(exportData(), { reason: 'local-newer' })
           setCloudStatusPatch({
@@ -429,77 +432,59 @@ async function runCloudSync({ reason = 'auto', force = false } = {}) {
           })
           setLocalModifiedAt(uploadResult?.updatedAt || cloudUpdatedAt)
           saveUiStateToLocalStorage()
-          addOperationLog('cloud_sync', '本地数据较新，已上传覆盖云端', { localModifiedAt, cloudUpdatedAt })
+          addOperationLog('cloud_sync', '本地数据较新，已上传覆盖云端', { localModifiedAt, cloudUpdatedAt, diffCount: diff.total })
           return { updatedAt: uploadResult?.updatedAt || cloudUpdatedAt, row: uploadResult }
         } catch (err) {
-          setCloudStatusPatch({
-            syncing: false,
-            connected: false,
-            lastSyncError: err?.message || '上传云端失败',
-          })
+          setCloudStatusPatch({ syncing: false, connected: false, lastSyncError: err?.message || '上传云端失败' })
           addOperationLog('cloud_sync', '本地数据上传云端失败', { error: err.message, localModifiedAt, cloudUpdatedAt })
           throw err
         }
-      } else {
-        // 用户选择保留云端，下载云端数据到本地
+      } else if (userChoice === 'use-cloud') {
         applyCloudDataToStore(cloudPayload, { trackHistory: false, sourceUpdatedAt: cloudUpdatedAt })
         setCloudLoadSuccess(cloudUpdatedAt)
-        addOperationLog('cloud_sync', '用户保留云端数据，已下载到本地', { localModifiedAt, cloudUpdatedAt })
+        addOperationLog('cloud_sync', '用户保留云端数据，已下载到本地', { localModifiedAt, cloudUpdatedAt, diffCount: diff.total })
         setLocalModifiedAt(cloudUpdatedAt)
         saveToLocalStorage({ bumpTimestamp: false })
         return { updatedAt: cloudUpdatedAt, row: cloudPayload }
       }
-    }
-
-    // 情况C：云端数据比本地新 → 下载云端数据
-    // 这里需要检测是否为“疑似误操作”情形（数据回退、差异等）
-    const diff = computeConflictDiff(localPayload, cloudPayload)
-    const warn = shouldWarnBeforeOverwrite(localPayload, cloudPayload)
-
-    // 如果检测到潜在的“误操作”情形，给予强提示
-    if (warn.shouldWarn || diff.total > 0) {
-      // 显示强提示：询问用户是否要使用云端数据（可能是回退操作）
-      const userChoice = await promptCloudDataRecovery(warn, diff, cloudUpdatedAt, localModifiedAt)
-      if (userChoice === 'use-cloud') {
-        // 用户选择使用云端数据
-        applyCloudDataToStore(cloudPayload, { trackHistory: false, sourceUpdatedAt: cloudUpdatedAt })
-        setCloudLoadSuccess(cloudUpdatedAt)
-        addOperationLog('cloud_sync', '用户选择使用云端数据（可能是误操作回退）', {
-          cloudUpdatedAt,
-          localModifiedAt,
-          diffCount: diff.total,
-        })
-        setLocalModifiedAt(cloudUpdatedAt)
-        saveToLocalStorage({ bumpTimestamp: false })
-        return { updatedAt: cloudUpdatedAt, row: cloudPayload }
-      } else if (userChoice === 'keep-local') {
-        // 用户选择保留本地数据
-        addOperationLog('cloud_sync', '用户选择保留本地数据，云端数据将被忽略', {
-          cloudUpdatedAt,
-          localModifiedAt,
-          diffCount: diff.total,
-        })
-        setCloudLoadError('用户已拒绝云端数据覆盖')
-        return { updatedAt: localModifiedAt, row: localPayload }
-      }
-      // 如果用户取消，保持现状
-      addOperationLog('cloud_sync', '用户取消云端数据覆盖决定', {
-        cloudUpdatedAt,
-        localModifiedAt,
-        diffCount: diff.total,
-      })
+      // cancel / keep-local：保持本地，不上传不下载
+      addOperationLog('cloud_sync', '用户取消同步，保持本地数据', { localModifiedAt, cloudUpdatedAt, diffCount: diff.total })
       return { updatedAt: localModifiedAt, row: localPayload }
     }
 
-    // 情况D：云端数据较新，内容无特殊警告 → 自动使用云端数据
-    applyCloudDataToStore(cloudPayload, { trackHistory: false, sourceUpdatedAt: cloudUpdatedAt })
-    setCloudLoadSuccess(cloudUpdatedAt)
-    addOperationLog('cloud_sync', '云端数据较新，已自动下载到本地', {
-      cloudUpdatedAt,
-      localModifiedAt,
-    })
+    // 情况C/D：云端数据比本地新（或时间戳相等但内容不同）
+    const diff = computeConflictDiff(localPayload, cloudPayload)
+    const warn = shouldWarnBeforeOverwrite(localPayload, cloudPayload)
+
+    // 内容不一致即需用户决策（不再有"自动覆盖无确认"的情况D）
+    if (diff.total > 0 || warn.shouldWarn) {
+      let userChoice = 'use-cloud'
+      if (typeof cloudConflictHandler === 'function') {
+        userChoice = await cloudConflictHandler('recovery', {
+          diff, warn, cloudUpdatedAt, localModifiedAt,
+        })
+      }
+      if (userChoice === 'use-cloud') {
+        applyCloudDataToStore(cloudPayload, { trackHistory: false, sourceUpdatedAt: cloudUpdatedAt })
+        setCloudLoadSuccess(cloudUpdatedAt)
+        addOperationLog('cloud_sync', '用户选择使用云端数据', { cloudUpdatedAt, localModifiedAt, diffCount: diff.total })
+        setLocalModifiedAt(cloudUpdatedAt)
+        saveToLocalStorage({ bumpTimestamp: false })
+        return { updatedAt: cloudUpdatedAt, row: cloudPayload }
+      } else if (userChoice === 'keep-local' || userChoice === 'upload') {
+        addOperationLog('cloud_sync', '用户选择保留本地数据', { cloudUpdatedAt, localModifiedAt, diffCount: diff.total })
+        setCloudLoadError('用户已拒绝云端数据覆盖')
+        return { updatedAt: localModifiedAt, row: localPayload }
+      }
+      // cancel：保持现状
+      addOperationLog('cloud_sync', '用户取消云端数据覆盖决定', { cloudUpdatedAt, localModifiedAt, diffCount: diff.total })
+      return { updatedAt: localModifiedAt, row: localPayload }
+    }
+
+    // 内容一致（diff.total===0 且无警告）→ 仅对齐时间戳
     setLocalModifiedAt(cloudUpdatedAt)
     saveToLocalStorage({ bumpTimestamp: false })
+    addOperationLog('cloud_sync', '云端数据较新且内容一致，已对齐时间戳', { cloudUpdatedAt, localModifiedAt })
     return { updatedAt: cloudUpdatedAt, row: cloudPayload }
 
   } catch (err) {
@@ -853,6 +838,16 @@ export function registerCloudSyncHandler(handler) {
   cloudSyncHandler = typeof handler === 'function' ? handler : null
 }
 
+/**
+ * 注册冲突决策 UI 回调（模态框）。
+ * 由 App.vue 注册，runCloudSync 在需要用户决策时调用。
+ * 回调签名: (type, data) => Promise<'upload'|'use-cloud'|'keep-local'|'cancel'>
+ * type: 'upload-local'（本地较新，是否上传）| 'recovery'（云端较新，疑似误操作）
+ */
+export function registerCloudConflictHandler(handler) {
+  cloudConflictHandler = typeof handler === 'function' ? handler : null
+}
+
 export function setCloudSyncSuppressed(flag) {
   suppressCloudSync = Boolean(flag)
 }
@@ -864,6 +859,12 @@ export function setHistorySuppressed(flag) {
 export async function syncToCloudNow() {
   clearCloudSyncTimer()
   return runCloudSync({ reason: 'manual', force: true })
+}
+
+/** 非强制同步：走完整冲突检测流程（pre-check → 比对 → 冲策） */
+export async function runCloudSyncCheck() {
+  clearCloudSyncTimer()
+  return runCloudSync({ reason: 'periodic-check' })
 }
 
 export function undoLastChange() {
