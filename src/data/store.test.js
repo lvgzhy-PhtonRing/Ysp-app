@@ -8,9 +8,11 @@ import {
   isContentEqual,
   loadData,
   loadUiStateFromLocalStorage,
+  markCloudConnected,
   registerCloudApplyHandler,
   registerCloudConflictHandler,
   registerCloudSyncHandler,
+  runCloudSyncCheck,
   saveUiStateToLocalStorage,
   stableSerialize,
   state,
@@ -273,5 +275,35 @@ describe('手动同步(force) 智能比对', () => {
 
     expect(env.calls.map((c) => c.reason)).toEqual(['pre-check'])
     expect(state.items).toEqual(CLOUD_PAYLOAD.items)
+  })
+
+  it('内容一致对齐时间戳后不触发新的同步调度（防死循环）', async () => {
+    vi.useFakeTimers()
+    loadData(CLOUD_PAYLOAD)
+    const env = setupCloudEnv()
+
+    await runCloudSyncCheck()
+
+    const callsBefore = env.calls.length
+    expect(callsBefore).toBeGreaterThan(0)
+    vi.advanceTimersByTime(9000)
+    expect(env.calls.length).toBe(callsBefore)
+    vi.useRealTimers()
+  })
+
+  it('markCloudConnected 置 connected 为 true 并清除 lastCloudLoadError', () => {
+    const storeMap = new Map()
+    vi.stubGlobal('localStorage', {
+      getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
+      setItem: (k, v) => storeMap.set(k, String(v)),
+      removeItem: (k) => storeMap.delete(k),
+    })
+    state.cloudStatus.connected = false
+    state.cloudStatus.lastCloudLoadError = '用户已拒绝云端数据覆盖'
+
+    markCloudConnected()
+
+    expect(state.cloudStatus.connected).toBe(true)
+    expect(state.cloudStatus.lastCloudLoadError).toBe('')
   })
 })

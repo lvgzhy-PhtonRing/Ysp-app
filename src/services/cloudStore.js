@@ -41,7 +41,7 @@ async function readJsonResponse(resp) {
 }
 
 function buildApiError(prefix, status, data) {
-  const raw = data?.message || data?.error_description || data?.hint || data?.error || ''
+  const raw = data?.msg || data?.message || data?.error_description || data?.hint || data?.error || data?.error_code || ''
   const suffix = raw ? `: ${raw}` : ` (HTTP ${status})`
   return new Error(`${prefix}${suffix}`)
 }

@@ -771,7 +771,8 @@ export function saveToLocalStorage(options = {}) {
 
   localStorage.setItem('ysp_data', serialized)
   setPersistedSnapshot(currentData)
-  scheduleCloudSync()
+  // 仅在有真实内容变更时调度云同步；纯时间戳对齐/无变化时不再触发，避免同步死循环
+  if (hasDataChange) scheduleCloudSync()
   maybeAutoBackup()
 }
 
@@ -1059,6 +1060,15 @@ export function setCloudLoadError(message = '') {
   setCloudStatusPatch({
     connected: false,
     lastCloudLoadError: message || '云端加载失败',
+  })
+  saveUiStateToLocalStorage()
+}
+
+/** 登录成功后标记云端已连接，并清除历史拉取错误提示 */
+export function markCloudConnected() {
+  setCloudStatusPatch({
+    connected: true,
+    lastCloudLoadError: '',
   })
   saveUiStateToLocalStorage()
 }

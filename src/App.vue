@@ -23,6 +23,7 @@ import {
   loadData,
   loadFromLocalStorage,
   loadUiStateFromLocalStorage,
+  markCloudConnected,
   registerCloudApplyHandler,
   registerCloudConflictHandler,
   registerCloudSyncHandler,
@@ -570,6 +571,7 @@ async function cloudSignIn() {
   try {
     const session = await signInWithPassword(store.cloudSettings, email, password)
     setCloudSession(session)
+    markCloudConnected()
     cloudForm.value.password = ''
     addOperationLog('cloud_signin', '云端登录成功', {
       email: session.user?.email,
