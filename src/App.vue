@@ -719,7 +719,7 @@ async function loadCloudOnStartup() {
     if (cloudTs && localTs && cloudTs === localTs) {
       setCloudLoadSuccess(result.updatedAt)
       // 更新最后自动同步时间
-      state.cloudStatus.lastAutoSyncAt = Date.now()
+      store.cloudStatus.lastAutoSyncAt = Date.now()
       return true
     }
 
@@ -734,7 +734,7 @@ async function loadCloudOnStartup() {
         saveToLocalStorage({ bumpTimestamp: false })
         setCloudLoadSuccess(result.updatedAt)
         addOperationLog('cloud_sync', '内容一致，已静默对齐时间戳', { localUpdatedAt: localAt, cloudUpdatedAt: result.updatedAt })
-        state.cloudStatus.lastAutoSyncAt = Date.now()
+        store.cloudStatus.lastAutoSyncAt = Date.now()
         return true
       }
 
@@ -752,17 +752,17 @@ async function loadCloudOnStartup() {
           const syncResult = await syncToCloudNow()
           addOperationLog('cloud_sync', '本地数据较新，用户确认上传覆盖云端', { updatedAt: syncResult?.updatedAt || result.updatedAt, localUpdatedAt: localAt, diffCount: diff.total })
           setCloudLoadSuccess(syncResult?.updatedAt || result.updatedAt)
-          state.cloudStatus.lastAutoSyncAt = Date.now()
+          store.cloudStatus.lastAutoSyncAt = Date.now()
           return true
         } catch (err) {
           addOperationLog('cloud_sync', '本地上传云端失败', { error: err.message, localUpdatedAt: localAt })
           setCloudLoadError(err.message)
-          state.cloudStatus.lastAutoSyncAt = Date.now()
+          store.cloudStatus.lastAutoSyncAt = Date.now()
           return false
         }
       } else if (userChoice === 'use-cloud') {
         const applied = applyCloudDataToStore(result.payload, { trackHistory: false, sourceUpdatedAt: result.updatedAt })
-        state.cloudStatus.lastAutoSyncAt = Date.now()
+        store.cloudStatus.lastAutoSyncAt = Date.now()
         if (!applied) {
           addOperationLog('cloud_sync', '云端载荷损坏/缺失，已拒绝应用，保留本地', { localUpdatedAt: localAt, cloudUpdatedAt: result.updatedAt, diffCount: diff.total })
           setCloudLoadError('云端数据不完整，已拒绝应用')
@@ -774,7 +774,7 @@ async function loadCloudOnStartup() {
       }
       // cancel：保持本地不变
       addOperationLog('cloud_sync', '用户取消同步，保持本地数据', { localUpdatedAt: localAt, cloudUpdatedAt: result.updatedAt, diffCount: diff.total })
-      state.cloudStatus.lastAutoSyncAt = Date.now()
+      store.cloudStatus.lastAutoSyncAt = Date.now()
       return false
     }
 
@@ -793,7 +793,7 @@ async function loadCloudOnStartup() {
 
       if (userChoice === 'use-cloud') {
         const applied = applyCloudDataToStore(result.payload, { trackHistory: false, sourceUpdatedAt: result.updatedAt })
-        state.cloudStatus.lastAutoSyncAt = Date.now()
+        store.cloudStatus.lastAutoSyncAt = Date.now()
         if (!applied) {
           addOperationLog('cloud_sync', '云端载荷损坏/缺失，已拒绝应用，保留本地', { cloudUpdatedAt: result.updatedAt, localUpdatedAt: localAt, diffCount: diff.total })
           setCloudLoadError('云端数据不完整，已拒绝应用')
@@ -805,12 +805,12 @@ async function loadCloudOnStartup() {
       } else if (userChoice === 'upload' || userChoice === 'keep-local') {
         addOperationLog('cloud_sync', '用户选择保留本地数据', { cloudUpdatedAt: result.updatedAt, localUpdatedAt: localAt, diffCount: diff.total })
         setCloudLoadError('用户已拒绝云端数据覆盖')
-        state.cloudStatus.lastAutoSyncAt = Date.now()
+        store.cloudStatus.lastAutoSyncAt = Date.now()
         return false
       }
       // cancel：保持现状
       addOperationLog('cloud_sync', '用户取消云端数据覆盖决定', { cloudUpdatedAt: result.updatedAt, localUpdatedAt: localAt, diffCount: diff.total })
-      state.cloudStatus.lastAutoSyncAt = Date.now()
+      store.cloudStatus.lastAutoSyncAt = Date.now()
       return false
     }
 
@@ -819,7 +819,7 @@ async function loadCloudOnStartup() {
     saveToLocalStorage({ bumpTimestamp: false })
     setCloudLoadSuccess(result.updatedAt)
     addOperationLog('cloud_sync', '云端数据较新且内容一致，已对齐时间戳', { cloudUpdatedAt: result.updatedAt, localUpdatedAt: localAt })
-    state.cloudStatus.lastAutoSyncAt = Date.now()
+    store.cloudStatus.lastAutoSyncAt = Date.now()
     return true
   } catch (err) {
     setCloudLoadError(err.message)
