@@ -10,6 +10,7 @@ import SalesModule from './modules/sales/SalesModule.vue'
 import FinanceModule from './modules/finance/FinanceModule.vue'
 import RushCarPrototypeModule from './modules/rushcar/RushCarPrototypeModule.vue'
 import MarketPriceModule from './modules/market-price/MarketPriceModule.vue'
+import { primaryConflictAction } from './utils/cloudConflict'
 import {
   addOperationLog,
   clearCloudSession,
@@ -105,6 +106,11 @@ const cloudConflict = ref(false)
 const cloudConflictType = ref('recovery')
 const cloudConflictInfo = ref({ localAt: '', cloudAt: '', entries: [], total: 0 })
 let cloudConflictResolver = null
+
+// 主操作按钮方向：本地更新→上传，云端更新→下载
+const primaryConflictActionValue = computed(() =>
+  primaryConflictAction(cloudConflictType.value, cloudConflictInfo.value.localAt, cloudConflictInfo.value.cloudAt),
+)
 
 // 云端覆盖本地前的重大异常强提示（B 方向）
 const overwriteWarn = ref(false)
@@ -960,6 +966,32 @@ watch(
           <span class="font-mono text-gray-800">{{ formatConflictTime(cloudConflictInfo.cloudAt) }}</span>
         </div>
       </div>
+      <div class="mb-4 space-y-2">
+        <button
+          v-if="primaryConflictActionValue === 'upload'"
+          class="btn btn-primary w-full !py-4 !text-lg"
+          @click="resolveCloudConflict('upload')"
+        >
+          <span class="flex items-center justify-center gap-2">
+            <i class="fa-solid fa-arrow-up text-xl"></i>
+            <span class="text-2xl font-bold">{{ cloudConflictInfo.total }}</span>
+            <span>上传</span>
+          </span>
+          <span class="block text-xs font-normal text-blue-100">用本机数据覆盖云端</span>
+        </button>
+        <button
+          v-else
+          class="btn btn-primary w-full !py-4 !text-lg"
+          @click="resolveCloudConflict('use-cloud')"
+        >
+          <span class="flex items-center justify-center gap-2">
+            <i class="fa-solid fa-arrow-down text-xl"></i>
+            <span class="text-2xl font-bold">{{ cloudConflictInfo.total }}</span>
+            <span>下载</span>
+          </span>
+          <span class="block text-xs font-normal text-blue-100">用云端数据覆盖本地</span>
+        </button>
+      </div>
       <div v-if="cloudConflictInfo.total" class="mb-4 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
         <div class="font-medium text-gray-700 mb-1">差异明细（{{ cloudConflictInfo.total }} 处）</div>
         <div class="space-y-2 max-h-48 overflow-y-auto">
@@ -1003,9 +1035,17 @@ watch(
         </div>
       </div>
       <div class="space-y-2">
-        <button class="btn btn-primary w-full" @click="resolveCloudConflict('upload')">用本地覆盖云端（上传本地）</button>
-        <button class="btn btn-outline w-full" @click="resolveCloudConflict('use-cloud')">用云端覆盖本地（下载云端）</button>
-        <button class="btn btn-outline w-full" @click="resolveCloudConflict('cancel')">取消，保持本地不变</button>
+        <button
+          v-if="primaryConflictActionValue !== 'upload'"
+          class="btn btn-outline w-full"
+          @click="resolveCloudConflict('upload')"
+        >用本机数据覆盖云端</button>
+        <button
+          v-else
+          class="btn btn-outline w-full"
+          @click="resolveCloudConflict('use-cloud')"
+        >用云端数据覆盖本地</button>
+        <button class="btn btn-outline w-full" @click="resolveCloudConflict('cancel')">取消</button>
       </div>
     </GlassModal>
 
