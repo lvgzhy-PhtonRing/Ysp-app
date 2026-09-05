@@ -9,7 +9,7 @@ import {
   generatePurchaseGroupMetadata,
 } from './usePurchase'
 import { calcItemCost, calcPreTransferCost, calcTransferCost } from '../../utils/calc'
-import { addOperationLog, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
+import { addOperationLog, clone, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
 
 const BRANDS = ['Hotwheels', 'MINIGT', 'TLV', 'Kyosho', 'Tomica', 'Matchbox', 'AR BOX', 'KingModel', 'Mortal', '其它']
 const PURCHASE_TABS = ['日淘', '美淘', '国内']
@@ -1238,12 +1238,13 @@ function submitEditPurchaseGroup() {
         const idx = store.items.findIndex((x) => x.id === row.id)
         if (idx >= 0) {
           const gone = store.items[idx]
-          removedRows.push({
-            itemId: gone.id,
-            name: gone.name,
-            sid: gone.sid,
-            groupId: String(gone?.purchaseDetails?.purchaseGroupId || '').trim(),
-          })
+           removedRows.push({
+             itemId: gone.id,
+             name: gone.name,
+             sid: gone.sid,
+             groupId: String(gone?.purchaseDetails?.purchaseGroupId || '').trim(),
+             deletedItems: [clone(gone)],
+           })
           store.items.splice(idx, 1)
         }
       }
@@ -1332,6 +1333,7 @@ function submitEditPurchaseGroup() {
       count: lines.length,
       changes: groupEditChanges,
       itemIds: changedItemIds,
+      itemNames: lines.map((l) => l.name).filter(Boolean),
     })
     removedRows.forEach((r) => {
       addOperationLog('purchase_delete', '编辑购买组时删除商品: ' + (r.name || r.sid), {
@@ -1340,6 +1342,7 @@ function submitEditPurchaseGroup() {
         sid: r.sid,
         purchaseGroupId: r.groupId,
         source: 'purchase_group_edit',
+        deletedItems: r.deletedItems,
       })
     })
     showEditGroupModal.value = false
@@ -1480,8 +1483,19 @@ function deleteTransferRecord(record) {
   if (!confirm('确定删除此转运记录？商品将回归待转运状态。')) return
 
   const idSet = new Set(record.itemIds || [])
+  const affectedItems = []
   store.items.forEach((item) => {
     if (!idSet.has(item.id)) return
+    affectedItems.push({
+      itemId: item.id,
+      sid: item.sid,
+      name: item.name,
+      cost: Number(item.cost || 0),
+      transferId: item.purchaseDetails?.transferId,
+      transferBatch: item.purchaseDetails?.transferBatch,
+      transferStatus: item.purchaseDetails?.transferStatus,
+      transferCost: Number(item.purchaseDetails?.transferCost || 0),
+    })
     if (!item.purchaseDetails) item.purchaseDetails = {}
     item.purchaseDetails.transferStatus = 'pending'
     item.purchaseDetails.transferId = undefined
@@ -1496,6 +1510,10 @@ function deleteTransferRecord(record) {
   saveToLocalStorage()
   addOperationLog('purchase_transfer_delete', `删除转运记录: ${record.transferBatch || record.transferId}`, {
     transferId: record.transferId,
+    transferBatch: record.transferBatch,
+    count: affectedItems.length,
+    transfer: clone(record),
+    affectedItems,
   })
 }
 
@@ -1554,6 +1572,8 @@ function submitEdit() {
   var changesText = formatChangesSummary(changes)
   addOperationLog('purchase_edit', '编辑采购商品: ' + item.name + (changesText ? ' ← ' + changesText : ''), {
     sid: item.sid,
+    name: item.name,
+    itemId: item.id,
     changedFields: Object.keys(changes),
     changes: changes,
   })

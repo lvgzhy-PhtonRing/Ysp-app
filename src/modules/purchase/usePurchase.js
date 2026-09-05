@@ -1,7 +1,7 @@
 // 采购模块逻辑层（无 UI）
 
 import { calcItemCost, calcTransferCost } from '../../utils/calc'
-import { addOperationLog, saveToLocalStorage, state as store } from '../../data/store'
+import { addOperationLog, clone, saveToLocalStorage, state as store } from '../../data/store'
 import {
   generateSid,
   generatePaymentBatch,
@@ -183,6 +183,9 @@ export function submitTransfer(transferData = {}, selectedItemIds = []) {
   const selectedItems = store.items.filter((item) => selectedSet.has(item.id))
   if (selectedItems.length === 0) return null
 
+  // 转运结算前逐件记录（回溯时用于还原转运前的成本）
+  const itemCosts = selectedItems.map((item) => ({ itemId: item.id, sid: item.sid, name: item.name, costBefore: item.cost }))
+
   const transferId =
     transferData.transferId || generateUniqueTransferId(transferData, selectedItems) || transferData.transferBatch
   const transferBatch =
@@ -219,13 +222,17 @@ export function submitTransfer(transferData = {}, selectedItemIds = []) {
   })
 
   saveToLocalStorage()
+  itemCosts.forEach((entry) => {
+    const item = store.items.find((x) => x.id === entry.itemId)
+    entry.costAfter = item ? item.cost : entry.costBefore
+  })
   addOperationLog('purchase_transfer', `提交转运: ${transferRecord.transferBatch || transferId}`, {
     transferId,
     transferBatch: transferRecord.transferBatch,
     count: selectedItems.length,
     totalRMB: transferRecord.totalRMB,
     itemIds: selectedItems.map((i) => i.id),
-    itemCosts: selectedItems.map((i) => ({ itemId: i.id, sid: i.sid, cost: i.cost })),
+    itemCosts,
   })
   return transferRecord
 }
@@ -324,6 +331,8 @@ export function deletePurchaseItem(itemId) {
     transferId: transferId,
     itemId: itemId,
     purchaseGroupId: groupId,
+    // 完整商品快照：回溯时用于还原被删除的采购商品
+    deletedItems: target ? [clone(target)] : [],
     ...(groupId ? { groupPriceBefore: groupCostBefore, groupPriceAfter: groupCostAfter } : {}),
   })
   return true

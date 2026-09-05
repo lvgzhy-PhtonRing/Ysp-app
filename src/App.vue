@@ -43,6 +43,13 @@ import {
   undoLastChange,
 } from './data/store'
 import {
+  getLogBrief,
+  getLogDetailSections,
+  getLogMeta,
+  getLogModule,
+  hasLogDetail,
+} from './data/operationLogDisplay'
+import {
   fetchCloudState,
   isCloudConfigReady,
   readCloudConfigFromPublic,
@@ -66,174 +73,9 @@ const tabs = [
 const currentTab = ref('home')
 const fileInputRef = ref(null)
 const showLogsModal = ref(false)
-const showLogDetailModal = ref(false)
-const selectedLog = ref(null)
 var expandedLogId = ref(null)
-var showLogMeta = ref(false)
+var rawExpanded = ref(null)
 const showAllDifferences = ref(false)
-const logTypeMeta = {
-  app_import: { label: '系统导入', color: 'text-teal-600', icon: 'fa-solid fa-upload', pillClass: 'bg-teal-100 text-teal-700' },
-  app_export: { label: '系统导出', color: 'text-blue-600', icon: 'fa-solid fa-download', pillClass: 'bg-blue-100 text-blue-700' },
-  app_undo: { label: '系统撤销', color: 'text-orange-600', icon: 'fa-solid fa-rotate-left', pillClass: 'bg-orange-100 text-orange-700' },
-  app_redo: { label: '系统重做', color: 'text-emerald-600', icon: 'fa-solid fa-rotate-right', pillClass: 'bg-emerald-100 text-emerald-700' },
-  cloud_settings: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-cloud', pillClass: 'bg-cyan-100 text-cyan-700' },
-  cloud_signin: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-user-check', pillClass: 'bg-cyan-100 text-cyan-700' },
-  cloud_signout: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-user-slash', pillClass: 'bg-cyan-100 text-cyan-700' },
-  cloud_sync: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-arrows-rotate', pillClass: 'bg-cyan-100 text-cyan-700' },
-  cloud_pull: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-cloud-arrow-down', pillClass: 'bg-cyan-100 text-cyan-700' },
-  cloud_conflict: { label: '云端冲突', color: 'text-orange-600', icon: 'fa-solid fa-triangle-exclamation', pillClass: 'bg-orange-100 text-orange-700' },
-  purchase_add: { label: '采购新增', color: 'text-yellow-600', icon: 'fa-solid fa-plus', pillClass: 'bg-yellow-100 text-yellow-700',
-    summary: function (d) {
-      var lines = []
-      if (d.totalItems) lines.push(d.totalItems + '件')
-      if (d.batch) lines.push('批次:' + d.batch)
-      if (d.paymentBatch) lines.push('支付:' + d.paymentBatch)
-      if (Array.isArray(d.sidSummary) && d.sidSummary.length > 0) {
-        lines.push('商品:' + d.sidSummary.map(function (s) { return s.sid + '(' + s.qty + '件)' }).join('、'))
-      }
-      return lines
-    },
-  },
-  purchase_transfer: { label: '采购转运', color: 'text-amber-600', icon: 'fa-solid fa-truck', pillClass: 'bg-amber-100 text-amber-700',
-    summary: function (d) {
-      var parts = []
-      if (d.count) parts.push(d.count + '件')
-      if (d.totalRMB) parts.push('总RMB:\xA5' + Number(d.totalRMB).toFixed(0))
-      return parts
-    },
-  },
-  purchase_transfer_delete: { label: '采购转运', color: 'text-amber-600', icon: 'fa-solid fa-truck-ramp-box', pillClass: 'bg-amber-100 text-amber-700' },
-  purchase_edit: { label: '采购编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700',
-    summary: function (d) {
-      var parts = []
-      if (d.sid) parts.push('SID:' + d.sid)
-      if (d.changedFields && d.changedFields.length) parts.push('改' + d.changedFields.length + '字段')
-      return parts
-    },
-  },
-  purchase_delete: { label: '采购删除', color: 'text-red-600', icon: 'fa-solid fa-trash', pillClass: 'bg-red-100 text-red-700',
-    summary: function (d) {
-      var parts = []
-      if (d.sid) parts.push('SID:' + d.sid)
-      if (d.deletedCount > 1) parts.push('共' + d.deletedCount + '件')
-      return parts
-    },
-  },
-  purchase_to_inventory: { label: '采购入库', color: 'text-green-600', icon: 'fa-solid fa-box', pillClass: 'bg-green-100 text-green-700' },
-  purchase_batch_to_inventory: { label: '采购入库', color: 'text-green-600', icon: 'fa-solid fa-boxes-stacked', pillClass: 'bg-green-100 text-green-700',
-    summary: function (d) {
-      var parts = []
-      if (d.count) parts.push(d.count + '件')
-      return parts
-    },
-  },
-  purchase_group_edit: { label: '购买组编辑', color: 'text-blue-600', icon: 'fa-solid fa-diagram-project', pillClass: 'bg-blue-100 text-blue-700' },
-  inventory_manual_add: { label: '库存新增', color: 'text-blue-600', icon: 'fa-solid fa-bolt', pillClass: 'bg-blue-100 text-blue-700' },
-  inventory_edit: { label: '库存编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700',
-    summary: function (d) {
-      var parts = []
-      if (d.sid) parts.push('SID:' + d.sid)
-      if (d.affected > 1) parts.push('影响' + d.affected + '件')
-      if (d.changedFields && d.changedFields.length) parts.push('改' + d.changedFields.length + '字段')
-      return parts
-    },
-  },
-  inventory_unlist: { label: '库存下架', color: 'text-amber-600', icon: 'fa-solid fa-arrow-down', pillClass: 'bg-amber-100 text-amber-700' },
-  inventory_delete: { label: '库存删除', color: 'text-red-600', icon: 'fa-solid fa-trash', pillClass: 'bg-red-100 text-red-700',
-    summary: function (d) {
-      var parts = []
-      if (d.sid) parts.push('SID:' + d.sid)
-      if (d.deletedCount > 1) parts.push('共' + d.deletedCount + '件')
-      return parts
-    },
-  },
-  inventory_long_term: { label: '库存长线', color: 'text-purple-600', icon: 'fa-solid fa-infinity', pillClass: 'bg-purple-100 text-purple-700' },
-  inventory_sales_sync: { label: '库存销售同步', color: 'text-green-600', icon: 'fa-solid fa-arrows-rotate', pillClass: 'bg-green-100 text-green-700' },
-  sales_submit: { label: '销售新增', color: 'text-green-600', icon: 'fa-solid fa-cash-register', pillClass: 'bg-green-100 text-green-700',
-    summary: function (d) {
-      var parts = []
-      if (d.price) parts.push('售价:\xA5' + Number(d.price).toFixed(0))
-      return parts
-    },
-  },
-  sales_edit: { label: '销售编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700',
-    summary: function (d) {
-      var parts = []
-      if (d.sid) parts.push('SID:' + d.sid)
-      if (d.changedFields && d.changedFields.length) parts.push('改' + d.changedFields.length + '字段')
-      return parts
-    },
-  },
-  sales_rollback: { label: '销售回滚', color: 'text-red-600', icon: 'fa-solid fa-rotate-left', pillClass: 'bg-red-100 text-red-700' },
-  finance_add_record: { label: '收支新增', color: 'text-indigo-600', icon: 'fa-solid fa-receipt', pillClass: 'bg-indigo-100 text-indigo-700',
-    summary: function (d) {
-      var parts = []
-      if (d.type) parts.push(d.type === 'income' ? '收入' : '支出')
-      if (d.amount) parts.push('\xA5' + Number(d.amount).toFixed(0))
-      return parts
-    },
-  },
-  finance_delete_record: { label: '收支删除', color: 'text-red-600', icon: 'fa-solid fa-trash', pillClass: 'bg-red-100 text-red-700' },
-  finance_add_loan: { label: '借贷新增', color: 'text-yellow-600', icon: 'fa-solid fa-hand-holding-dollar', pillClass: 'bg-yellow-100 text-yellow-700' },
-  finance_update_record: { label: '收支编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700',
-    summary: function (d) {
-      var parts = []
-      if (d.type) parts.push(d.type === 'income' ? '收入' : '支出')
-      if (d.amount) parts.push('\xA5' + Number(d.amount).toFixed(0))
-      return parts
-    },
-  },
-  finance_update_loan: { label: '借贷编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700' },
-  finance_repaid: { label: '借贷归还', color: 'text-gray-600', icon: 'fa-solid fa-check', pillClass: 'bg-gray-100 text-gray-700' },
-  finance_delete_loan: { label: '借贷删除', color: 'text-red-600', icon: 'fa-solid fa-trash', pillClass: 'bg-red-100 text-red-700' },
-  purchase_transfer_edit: { label: '采购转运编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen-to-square', pillClass: 'bg-blue-100 text-blue-700' },
-  sales_unlist: { label: '销售下架', color: 'text-amber-600', icon: 'fa-solid fa-arrow-down', pillClass: 'bg-amber-100 text-amber-700' },
-  home_calc: { label: '计算器', color: 'text-blue-600', icon: 'fa-solid fa-calculator', pillClass: 'bg-blue-100 text-blue-700',
-    summary: function (d) {
-      if (d.before !== undefined && d.after !== undefined) {
-        return ['\xA5' + Number(d.before).toFixed(0) + ' → \xA5' + Number(d.after).toFixed(0)]
-      }
-      return []
-    },
-  },
-  market_price_update: {
-    label: '市价更新',
-    color: 'text-blue-600',
-    icon: 'fa-solid fa-chart-line',
-    pillClass: 'bg-blue-100 text-blue-700',
-    summary: function (d) {
-      var parts = []
-      if (d.price) parts.push('¥' + Number(d.price).toFixed(0))
-      if (d.linkedCount > 1) parts.push('联动' + d.linkedCount + '件')
-      return parts
-    },
-  },
-}
-
-function getLogMeta(type) {
-  return (
-    logTypeMeta[type] || {
-      label: formatLogKey(type),
-      color: 'text-gray-500',
-      icon: 'fa-solid fa-circle-info',
-      pillClass: 'bg-gray-100 text-gray-700',
-      summary: function () { return [] },
-    }
-  )
-}
-
-function formatLogKey(key) {
-  if (!key) return '-'
-  const parts = key.split('_')
-  return parts.length ? `${parts[0]}` : key
-}
-
-function openLogDetail(log) {
-  selectedLog.value = log || null
-  showLogDetailModal.value = true
-  showLogMeta.value = false
-}
-
 function toggleExpand(log) {
   if (expandedLogId.value === log.id) {
     expandedLogId.value = null
@@ -242,47 +84,8 @@ function toggleExpand(log) {
   }
 }
 
-function formatLogDetailValue(value) {
-  if (value === null || value === undefined || value === '') return '-'
-  if (typeof value === 'object') {
-    return '[复杂数据，请查看上方明细]'
-  }
-  return String(value)
-}
-
-function getLogDetailEntries(detail) {
-  if (!detail || typeof detail !== 'object') return []
-  var userFields = ['sid', 'name', 'affected', 'deletedCount', 'count', 'totalItems', 'totalSids',
-    'batch', 'purchaseGroupId', 'paymentBatch', 'category', 'transferId', 'inStockDate']
-  return Object.entries(detail).filter(function (entry) {
-    var key = entry[0]
-    if (key === 'changes' || key === 'sidSummary' || key === 'deletedNames' || key === 'deletedItemIds' || key === 'changedFields' || key === 'itemId' || key === 'itemNames' || key === 'qty' || key === 'price' || key === 'cost' || key === 'profit' || key === 'amount' || key === 'account' || key === 'recordId' || key === 'loanId') return false
-    return userFields.indexOf(key) >= 0
-  })
-}
-
-function getLogModule(type) {
-  if (!type) return '-'
-  const [mod] = String(type).split('_')
-  const map = {
-    app: '系统',
-    cloud: '云端',
-    purchase: '采购',
-    inventory: '库存',
-    sales: '销售',
-    finance: '公共收支',
-    home: '数据透视',
-  }
-  return map[mod] || mod
-}
-
-function getLogRawJson(detail) {
-  if (!detail || typeof detail !== 'object') return '-'
-  try {
-    return JSON.stringify(detail, null, 2)
-  } catch (_) {
-    return String(detail)
-  }
+function toggleRaw(log) {
+  rawExpanded.value = rawExpanded.value === log.id ? null : log.id
 }
 
 const showCloudSettings = ref(false)
@@ -1218,9 +1021,9 @@ watch(
       </div>
     </GlassModal>
 
-    <GlassModal v-model="showLogsModal" panel-class="w-full max-w-2xl relative max-h-[80vh] flex flex-col p-0" :close-on-overlay="true">
+        <GlassModal v-model="showLogsModal" panel-class="w-full max-w-2xl relative max-h-[80vh] flex flex-col p-0" :close-on-overlay="true">
       <div class="px-4 py-4 border-b border-gray-100 flex items-center justify-between">
-        <h3 class="text-xl font-bold">操作日志 <span class="text-sm font-normal text-gray-500">(近7天)</span></h3>
+        <h3 class="text-xl font-bold">操作日志 <span class="text-sm font-normal text-gray-500">(最近100条)</span></h3>
         <div class="flex items-center gap-2">
           <button class="btn btn-outline btn-sm" :disabled="!canUndo" @click="handleUndo">撤销 {{ store.undoStack.length }}</button>
           <button class="btn btn-outline btn-sm" :disabled="!canRedo" @click="handleRedo">重做 {{ store.redoStack.length }}</button>
@@ -1232,158 +1035,95 @@ watch(
         <div
           v-for="log in store.operationLogs.slice(0, 100)"
           :key="log.id"
-          class="p-3 rounded-lg cursor-pointer transition-colors"
-          :class="expandedLogId === log.id ? 'bg-blue-50 ring-1 ring-blue-200' : 'bg-gray-50 hover:bg-gray-100'"
-          @click="toggleExpand(log)"
+          class="rounded-lg transition-colors"
+          :class="[hasLogDetail(log) ? 'cursor-pointer' : 'cursor-default', expandedLogId === log.id ? 'bg-blue-50 ring-1 ring-blue-200' : 'bg-gray-50 hover:bg-gray-100']"
+          @click="hasLogDetail(log) && toggleExpand(log)"
         >
-          <div class="flex justify-between items-start">
+          <div class="p-3 flex justify-between items-start">
             <div class="flex items-start gap-2 min-w-0">
               <span class="inline-block px-2 py-0.5 rounded text-xs font-medium shrink-0" :class="getLogMeta(log.type).pillClass">
                 {{ getLogMeta(log.type).label }}
               </span>
               <div class="min-w-0">
-                <span class="text-sm text-gray-800 break-words">{{ log.message }}</span>
+                <div class="text-sm text-gray-800 break-words">{{ getLogBrief(log) }}</div>
+                <div class="mt-0.5 text-[11px] text-gray-400">{{ getLogModule(log.type) }}</div>
               </div>
             </div>
-            <span class="text-xs text-gray-400 whitespace-nowrap ml-2 shrink-0">{{ new Date(log.time).toLocaleString() }}</span>
-          </div>
-
-          <div v-if="expandedLogId === log.id && getLogMeta(log.type).summary" class="mt-2 border-t border-blue-100 pt-2">
-            <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
-              <span v-for="(line, i) in getLogMeta(log.type).summary(log.detail)" :key="i">{{ line }}</span>
-            </div>
-            <div class="mt-2 flex items-center gap-3">
-              <button class="text-[11px] text-blue-600 hover:text-blue-800 font-medium" @click.stop="openLogDetail(log)">
-                <i class="fa-solid fa-magnifying-glass mr-1" />查看详情
-              </button>
-              <span class="text-[11px] text-gray-300">收起 ▲</span>
+            <div class="text-right whitespace-nowrap ml-2 shrink-0">
+              <div class="text-xs text-gray-400">{{ new Date(log.time).toLocaleString() }}</div>
+              <div v-if="hasLogDetail(log)" class="mt-0.5 text-[11px] text-blue-500">
+                <i :class="expandedLogId === log.id ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'" class="mr-1" />{{ expandedLogId === log.id ? '收起' : '详情' }}
+              </div>
             </div>
           </div>
 
-          <div v-if="expandedLogId !== log.id" class="mt-1 text-[11px] text-blue-500">点击查看详情</div>
-        </div>
-      </div>
-    </GlassModal>
-
-    <GlassModal v-model="showLogDetailModal" panel-class="w-full max-w-xl p-0 overflow-hidden" :close-on-overlay="true">
-      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <i :class="getLogMeta(selectedLog?.type).icon" />
-          <h3 class="text-lg font-bold">日志详情</h3>
-        </div>
-        <span class="text-xs text-gray-400">{{ selectedLog?.time ? new Date(selectedLog.time).toLocaleString() : '' }}</span>
-      </div>
-      <div class="p-5 space-y-4 text-sm">
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-          <div class="bg-gray-50 rounded px-3 py-2">
-            <div class="text-gray-400">日志ID</div>
-            <div class="text-gray-700">{{ selectedLog?.id || '-' }}</div>
-          </div>
-          <div class="bg-gray-50 rounded px-3 py-2">
-            <div class="text-gray-400">模块</div>
-            <div class="text-gray-700">{{ getLogModule(selectedLog?.type) }}</div>
-          </div>
-          <div class="bg-gray-50 rounded px-3 py-2">
-            <div class="text-gray-400">详情字段数</div>
-            <div class="text-gray-700">{{ selectedLog?.detail ? Object.keys(selectedLog.detail).length : 0 }}</div>
-          </div>
-          <div class="bg-gray-50 rounded px-3 py-2">
-            <div class="text-gray-400">时间</div>
-            <div class="text-gray-700">{{ selectedLog?.time ? new Date(selectedLog.time).toLocaleString() : '-' }}</div>
-          </div>
-        </div>
-        <div>
-          <div class="text-xs text-gray-500 mb-1">类型</div>
-          <div class="font-medium">{{ getLogMeta(selectedLog?.type).label }} ({{ selectedLog?.type || '-' }})</div>
-        </div>
-        <div>
-          <div class="text-xs text-gray-500 mb-1">描述</div>
-          <div class="font-medium">{{ selectedLog?.message || '-' }}</div>
-        </div>
-        <div>
-          <div class="text-xs text-gray-500 mb-2">详细字段</div>
-          <div v-if="selectedLog?.detail && Object.keys(selectedLog.detail).length > 0" class="border border-gray-200 rounded-lg overflow-hidden">
-            <template v-if="selectedLog?.detail?.changes && Object.keys(selectedLog.detail.changes).length > 0">
-              <div class="bg-indigo-50 text-indigo-700 px-3 py-2 text-xs font-medium border-b border-indigo-100">修改明细</div>
-              <div
-                v-for="(change, fieldKey) in selectedLog.detail.changes"
-                :key="`change-${fieldKey}`"
-                class="grid grid-cols-[120px_1fr_1fr] border-b border-gray-100"
-              >
-                <div class="bg-gray-50 px-3 py-2 text-gray-700">{{ fieldKey }}</div>
-                <div class="px-3 py-2 border-l border-gray-100">
-                  <div class="text-[11px] text-gray-400 mb-1">修改前</div>
-                  <pre class="text-gray-700 whitespace-pre-wrap break-all m-0">{{ formatLogDetailValue(change?.before) }}</pre>
-                </div>
-                <div class="px-3 py-2 border-l border-gray-100">
-                  <div class="text-[11px] text-gray-400 mb-1">修改后</div>
-                  <pre class="text-gray-900 whitespace-pre-wrap break-all m-0">{{ formatLogDetailValue(change?.after) }}</pre>
-                </div>
-              </div>
-            </template>
-            <!-- 商品清单（购买组新增） -->
-            <template v-if="selectedLog?.detail?.sidSummary && selectedLog.detail.sidSummary.length > 0">
-              <div class="bg-green-50 text-green-700 px-3 py-2 text-xs font-medium border-b border-green-100">商品清单</div>
-              <div class="overflow-x-auto">
-                <table class="w-full text-xs">
-                  <thead>
-                    <tr class="bg-gray-50 text-gray-500">
-                      <th class="px-3 py-1.5 text-left font-medium">SID</th>
-                      <th class="px-3 py-1.5 text-left font-medium">名称</th>
-                      <th class="px-3 py-1.5 text-right font-medium">日元原价</th>
-                      <th class="px-3 py-1.5 text-center font-medium">件数</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="(s, si) in selectedLog.detail.sidSummary" :key="si" class="border-b border-gray-50">
-                      <td class="px-3 py-1.5 text-gray-500 font-mono">{{ s.sid }}</td>
-                      <td class="px-3 py-1.5">{{ s.name }}</td>
-                      <td class="px-3 py-1.5 text-right">{{ s.originalPrice ? '\xA5' + s.originalPrice : '-' }}</td>
-                      <td class="px-3 py-1.5 text-center">{{ s.qty }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </template>
-
-            <!-- 删除清单 -->
-            <template v-if="selectedLog?.detail?.deletedNames && selectedLog.detail.deletedNames.length > 0">
-              <div class="bg-red-50 text-red-700 px-3 py-2 text-xs font-medium border-b border-red-100">
-                已删除 {{ selectedLog.detail.deletedCount || selectedLog.detail.deletedNames.length }} 件商品
-              </div>
-              <div class="px-3 py-2 text-xs text-gray-600">
-                {{ selectedLog.detail.deletedNames.join('、') }}
-              </div>
-            </template>
+          <div v-if="expandedLogId === log.id" class="px-3 pb-3 space-y-3">
             <div
-              v-for="([k, v]) in getLogDetailEntries(selectedLog.detail)"
-              :key="k"
-              class="grid grid-cols-[120px_1fr] border-b border-gray-100 last:border-b-0"
+              v-for="(section, si) in getLogDetailSections(log)"
+              :key="si"
             >
-              <div class="bg-gray-50 px-3 py-2 text-gray-600">{{ k }}</div>
-              <pre class="px-3 py-2 text-gray-800 whitespace-pre-wrap break-all m-0">{{ formatLogDetailValue(v) }}</pre>
+              <!-- 原始数据：默认折叠 -->
+              <div v-if="section.kind === 'raw'" class="border-t border-gray-100 pt-2">
+                <button class="w-full text-left text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1" @click.stop="toggleRaw(log)">
+                  <i :class="rawExpanded === log.id ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'" />
+                  {{ section.title }}
+                </button>
+                <pre v-if="rawExpanded === log.id" class="mt-1 bg-gray-50 rounded p-2 text-[11px] text-gray-500 whitespace-pre-wrap break-all">{{ section.json }}</pre>
+              </div>
+              <!-- 结构化区块 -->
+              <div v-else>
+                <div v-if="section.kind !== 'changes'" class="text-xs font-medium text-gray-500 mb-1">{{ section.title }}</div>
+                <div v-if="section.kind === 'changes'" class="border border-gray-200 rounded-lg overflow-hidden">
+                  <div class="bg-indigo-50 text-indigo-700 px-3 py-1.5 text-xs font-medium border-b border-indigo-100">修改明细</div>
+                  <div
+                    v-for="(row, ri) in section.rows"
+                    :key="ri"
+                    class="grid grid-cols-[110px_1fr_1fr] border-b border-gray-100 last:border-b-0"
+                  >
+                    <div class="bg-gray-50 px-3 py-2 text-gray-700">{{ row.field }}</div>
+                    <div class="px-3 py-2 text-gray-500">{{ row.before }}</div>
+                    <div class="px-3 py-2 text-gray-900">{{ row.after }}</div>
+                  </div>
+                </div>
+                <div v-else-if="section.kind === 'items'" class="border border-gray-200 rounded-lg overflow-hidden">
+                  <div class="overflow-x-auto">
+                    <table class="w-full text-xs">
+                      <thead>
+                        <tr class="bg-gray-50 text-gray-500">
+                          <th v-for="(col, ci) in section.columns" :key="ci" class="px-3 py-1.5 text-left font-medium">{{ col }}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="(row, ri) in section.rows" :key="ri" class="border-b border-gray-100 last:border-b-0">
+                          <td v-for="(cell, ci) in row" :key="ci" class="px-3 py-1.5">{{ cell }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <div v-else-if="section.kind === 'names'" class="border border-gray-200 rounded-lg">
+                  <div class="px-3 py-2 text-xs text-gray-600">
+                    <span v-for="(n, ni) in section.names" :key="ni">
+                      <span v-if="ni > 0" class="text-gray-300">、</span>{{ n }}
+                    </span>
+                  </div>
+                </div>
+                <div v-else-if="section.kind === 'kv'" class="border border-gray-200 rounded-lg overflow-hidden">
+                  <div
+                    v-for="(entry, ei) in section.entries"
+                    :key="ei"
+                    class="grid grid-cols-[110px_1fr] border-b border-gray-100 last:border-b-0"
+                  >
+                    <div class="bg-gray-50 px-3 py-2 text-gray-600">{{ entry.key }}</div>
+                    <div class="px-3 py-2 text-gray-800 whitespace-pre-wrap break-all">{{ entry.value }}</div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-          <div v-else class="text-gray-400">无详细字段</div>
         </div>
-        <!-- 数据追踪（默认折叠） -->
-        <div class="border-t border-gray-100 pt-3">
-          <button class="text-xs text-gray-400 hover:text-gray-600 w-full text-left" @click="showLogMeta = !showLogMeta">
-            <i :class="showLogMeta ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'" class="mr-1" />
-            数据追踪
-          </button>
-          <div v-if="showLogMeta" class="mt-2 text-xs text-gray-400 space-y-1">
-            <div>type: {{ selectedLog?.type || '-' }}</div>
-            <div>id: {{ selectedLog?.id || '-' }}</div>
-            <div>time: {{ selectedLog?.time || '-' }}</div>
-          </div>
-        </div>
-      </div>
-      <div class="px-5 py-4 border-t border-gray-100 flex justify-end">
-        <button class="btn btn-outline" @click="showLogDetailModal = false">关闭</button>
       </div>
     </GlassModal>
-
     <Transition name="fade">
       <div
         v-if="backupNoticeVisible"

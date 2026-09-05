@@ -122,7 +122,7 @@ const DEFAULT_RUSHCAR = {
   paymentCards: [],
 }
 
-function clone(value) {
+export function clone(value) {
   return JSON.parse(JSON.stringify(value))
 }
 
@@ -1089,11 +1089,15 @@ export function addOperationLog(type, message, detail) {
       var newCount = prevCount + 1
       var prevNames = Array.isArray(last.detail.deletedNames) ? last.detail.deletedNames : [last.detail.name || '']
       var prevIds = Array.isArray(last.detail.deletedItemIds) ? last.detail.deletedItemIds : [last.detail.itemId]
+      // 完整商品对象随合并一起累加（回溯时用于还原被删除的商品）
+      var prevItems = Array.isArray(last.detail.deletedItems) ? last.detail.deletedItems : (last.detail.item ? [last.detail.item] : [])
+      var newItems = Array.isArray(detail.deletedItems) ? detail.deletedItems : []
 
       last.detail = Object.assign({}, last.detail, {
         deletedCount: newCount,
         deletedItemIds: prevIds.concat([detail.itemId || detail.sid]),
         deletedNames: prevNames.concat([detail.name || '']),
+        deletedItems: prevItems.concat(newItems),
       })
       last.message = '删除商品: ' + (detail.name || '') + ' x' + newCount
       last.time = new Date().toISOString()

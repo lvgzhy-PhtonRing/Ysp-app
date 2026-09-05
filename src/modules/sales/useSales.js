@@ -92,7 +92,13 @@ export function unlistItem(itemId, unlistData = {}) {
   }
 
   saveToLocalStorage()
-  addOperationLog('sales_unlist', `下架商品: ${item.name}`, { name: item.name, sid: item.sid, reason: unlistData.reason })
+  addOperationLog('sales_unlist', `下架商品: ${item.name}`, {
+    itemId: item.id,
+    name: item.name,
+    sid: item.sid,
+    reason: unlistData.reason,
+    before: { status: 'sold' },
+  })
   return item
 }
 
@@ -138,6 +144,8 @@ export function editSaleRecord(itemId, newSaleData = {}) {
   saveToLocalStorage()
   var changesText = formatChangesSummary(changes)
   addOperationLog('sales_edit', '编辑销售: ' + item.name + (changesText ? ' ← ' + changesText : ''), {
+    itemId: item.id,
+    name: item.name,
     sid: item.sid,
     changedFields: Object.keys(changes),
     changes: changes,

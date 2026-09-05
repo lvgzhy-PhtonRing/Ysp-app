@@ -484,8 +484,9 @@ function submitLongTermMark() {
   const target = store.items.filter(
     (i) => i.status === 'inventory' && i.category === longTermForm.category && i.batch === longTermForm.batch,
   )
-  // 捕获实际变更 isLongTerm 状态的商品名称
-  const changedNames = target.filter((item) => item.isLongTerm !== sidSet.has(item.sid)).map((item) => item.name)
+  // 捕获实际变更 isLongTerm 状态的商品
+  const changedItems = target.filter((item) => item.isLongTerm !== sidSet.has(item.sid))
+  const changedNames = changedItems.map((item) => item.name)
   target.forEach((item) => {
     item.isLongTerm = sidSet.has(item.sid)
   })
@@ -495,6 +496,7 @@ function submitLongTermMark() {
     batch: longTermForm.batch,
     count: longTermForm.selectedSids.length,
     itemNames: changedNames,
+    itemIds: changedItems.map((item) => item.id),
   })
   showLongTermModal.value = false
 }
@@ -733,18 +735,22 @@ function submitSellItem() {
         name: item?.name || '未命名商品',
         qty: 0,
         price: 0,
+        itemIds: [],
       })
     }
     const g = logMap.get(sid)
     g.qty += 1
     g.price += Number(item?.saleDetails?.price || 0)
+    g.itemIds.push(item.id)
   })
 
   logMap.forEach((g) => {
     addOperationLog('inventory_sales_sync', `同步销售记录: ${g.name} x${g.qty}`, {
       sid: g.sid,
+      name: g.name,
       qty: g.qty,
       price: g.price,
+      itemIds: g.itemIds,
     })
   })
 

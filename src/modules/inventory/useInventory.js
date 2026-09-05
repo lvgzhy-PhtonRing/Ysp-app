@@ -1,6 +1,6 @@
 // 库存模块逻辑层（无 UI）
 
-import { addOperationLog, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
+import { addOperationLog, clone, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
 
 function toNumber(value, fallback = 0) {
   const n = Number(value)
@@ -138,6 +138,8 @@ export function deleteItem(itemId) {
     name: target ? target.name : '',
     sid: target ? target.sid : '',
     itemId: itemId,
+    // 完整商品快照：回溯时用于还原被删除的商品
+    deletedItems: target ? [clone(target)] : [],
   })
   return true
 }
@@ -153,7 +155,7 @@ export function submitManualAdd(itemData = {}) {
 
   store.items.push(item)
   saveToLocalStorage()
-  addOperationLog('inventory_manual_add', `手动添加商品: ${item.name}`, { name: item.name, sid: item.sid, cost: item.cost })
+  addOperationLog('inventory_manual_add', `手动添加商品: ${item.name}`, { name: item.name, sid: item.sid, itemId: item.id, cost: item.cost })
   return item
 }
 

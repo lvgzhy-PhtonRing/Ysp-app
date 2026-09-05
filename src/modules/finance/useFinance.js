@@ -1,6 +1,6 @@
 // 公共收支模块逻辑层（无 UI）
 
-import { addOperationLog, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
+import { addOperationLog, clone, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
 
 function toNumber(value, fallback = 0) {
   const n = Number(value)
@@ -23,7 +23,7 @@ export function addFinanceRecord(recordData = {}) {
 
   store.financeRecords.push(record)
   saveToLocalStorage()
-  addOperationLog('finance_add_record', `新增收支: ${record.item}`, { item: record.item, type: record.type, amount: record.amount })
+  addOperationLog('finance_add_record', `新增收支: ${record.item}`, { recordId: record.id, item: record.item, type: record.type, amount: record.amount })
   return record
 }
 
@@ -35,11 +35,13 @@ export function deleteFinanceRecord(recordId) {
   store.financeRecords.splice(idx, 1)
   saveToLocalStorage()
   addOperationLog('finance_delete_record', `删除收支: ${record.item || '-'}`, {
+    recordId,
+    // 完整记录快照：回溯时用于还原被删除的收支记录
+    record: clone(record),
     item: record.item,
     type: record.type,
     amount: record.amount,
     date: record.date,
-    recordId,
   })
   return true
 }
@@ -67,6 +69,7 @@ export function updateFinanceRecord(recordId, patch = {}) {
   saveToLocalStorage()
   var changesText = formatChangesSummary(changes)
   addOperationLog('finance_update_record', '编辑收支: ' + record.item + (changesText ? ' ← ' + changesText : ''), {
+    recordId: recordId,
     type: record.type,
     amount: record.amount,
     changedFields: Object.keys(changes),
@@ -88,6 +91,7 @@ export function addLoanRecord(loanData = {}) {
   store.loanRecords.push(loan)
   saveToLocalStorage()
   addOperationLog('finance_add_loan', `新增借贷: ${loan.counterparty || '-'}`, {
+    loanId: loan.id,
     type: loan.type,
     amount: loan.amount,
     counterparty: loan.counterparty,
@@ -135,6 +139,8 @@ export function deleteLoanRecord(loanId) {
   store.loanRecords.splice(idx, 1)
   saveToLocalStorage()
   addOperationLog('finance_delete_loan', `删除借贷: ${loan.counterparty || '-'}`, {
+    // 完整记录快照：回溯时用于还原被删除的借贷
+    loan: clone(loan),
     counterparty: loan.counterparty,
     type: loan.type,
     amount: loan.amount,

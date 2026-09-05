@@ -325,11 +325,17 @@ function rollbackSale(itemId) {
   const idx = store.items.findIndex((x) => x.id === itemId)
   if (idx < 0) return
   const item = store.items[idx]
+  // 回滚会清空售卖信息，先捕获完整 before（回溯时用于还原被回滚的销售）
+  const before = {
+    status: item.status,
+    stock: item.stock,
+    saleDetails: item.saleDetails ? JSON.parse(JSON.stringify(item.saleDetails)) : null,
+  }
   item.status = 'inventory'
   item.stock = 1
   delete item.saleDetails
   saveToLocalStorage()
-  addOperationLog('sales_rollback', `回滚销售: ${item?.name || itemId}`, { name: item?.name, sid: item?.sid })
+  addOperationLog('sales_rollback', `回滚销售: ${item?.name || itemId}`, { name: item?.name, sid: item?.sid, itemId, before })
 }
 
 function toggleSalesGroup(key) {
