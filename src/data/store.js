@@ -8,7 +8,7 @@ import {
   shouldWarnBeforeOverwrite as protectionWarn,
 } from '../services/dataProtection'
 
-const APP_VERSION = '3.12.7'
+const APP_VERSION = '3.12.8'
 const CLOUD_SYNC_DEBOUNCE_MS = 800
 const MAX_UNDO_STEPS = 20
 const HISTORY_META_EXPIRE_MS = 3000
