@@ -89,6 +89,11 @@ function isMergedPriced(item) {
   return item.mergedPrice != null
 }
 
+/** 合并组内未标价的原始货品件数 */
+function getUnpricedCount(item) {
+  return (item.rawItems || []).filter(r => !isPriced(r)).length
+}
+
 const filteredItems = computed(() => {
   let list = allItems.value
   if (searchKeyword.value) {
@@ -191,8 +196,12 @@ function confirmPrice() {
 // ===== 历史展开 =====
 const expandedItemId = ref(null)
 
+function historyKey(item) {
+  return item?.sid || item?.id
+}
+
 function toggleHistory(item) {
-  const id = item?.sid || item?.id
+  const id = historyKey(item)
   expandedItemId.value = expandedItemId.value === id ? null : id
 }
 
@@ -386,6 +395,11 @@ function formatAmount(v) {
                       :title="item.rawItems?.length > 1 ? '点击查看 ' + item.rawItems.length + ' 件明细' : ''"
                     >{{ item.name }}</span>
                     <span v-if="item.qty > 1" class="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 text-[11px] font-bold text-white bg-primary rounded-full">{{ item.qty }}x</span>
+                    <span
+                      v-if="getUnpricedCount(item) > 0"
+                      class="inline-flex items-center h-5 px-1.5 text-[11px] font-semibold text-amber-600 bg-amber-100 rounded-full"
+                      :title="getUnpricedCount(item) + ' 件未标价，市价按已标价货品计算'"
+                    ><i class="fa-solid fa-triangle-exclamation mr-0.5"></i>{{ getUnpricedCount(item) }}</span>
                   </div>
                   <div v-if="item.qty > 1" class="text-[11px] text-gray-400 mt-0.5">
                     总成本 {{ formatPrice(item.totalCost) }}
@@ -467,7 +481,7 @@ function formatAmount(v) {
                 </td>
               </tr>
               <!-- 历史时间线（展开行，折叠时隐藏） -->
-              <tr v-for="hitem in [(expandedItemId && (item.id || item.sid) === expandedItemId) ? item : null].filter(Boolean)" :key="'h-' + (hitem?.id || hitem?.sid)" v-if="!collapsedBrands.has(group.brand)" class="bg-gray-50/80">
+              <tr v-for="hitem in [(expandedItemId && historyKey(item) === expandedItemId) ? item : null].filter(Boolean)" :key="'h-' + historyKey(hitem)" v-if="!collapsedBrands.has(group.brand)" class="bg-gray-50/80">
                 <td colspan="7" class="px-4 py-3 pl-12">
                   <div class="text-xs font-semibold text-gray-600 mb-2">
                     <i class="fa-solid fa-clock-rotate-left mr-1.5"></i>市场价格历史 · {{ hitem?.name }}

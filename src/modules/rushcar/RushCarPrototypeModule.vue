@@ -162,7 +162,7 @@ function fmtUsd(value) {
 function getEntryStatus(row) {
   if (row?.refundStatus === '已退款') return { label: '已退款', cls: 'bg-emerald-100 text-emerald-700' }
   if (row?.purchaseStatus === 'failed') return { label: '失败', cls: 'bg-orange-100 text-orange-700' }
-  return { label: '购买成功', cls: 'bg-blue-100 text-blue-700' }
+  return { label: '✔', title: '购买成功', cls: 'bg-primary text-white' }
 }
 
 function isAccountMismatch(row) {
@@ -492,7 +492,7 @@ function confirmRemovePaymentCard(id) {
                 <td class="text-center">{{ row.shopQuickPay || '-' }}</td>
                 <td class="text-right tabular-nums">{{ fmtUsd(row.consumeUSD) }}</td>
                 <td>
-                  <span class="inline-flex px-2 py-0.5 rounded text-xs" :class="getEntryStatus(row).cls">{{ getEntryStatus(row).label }}</span>
+                  <span class="inline-flex px-2 py-0.5 rounded text-xs" :class="getEntryStatus(row).cls" :title="getEntryStatus(row).title">{{ getEntryStatus(row).label }}</span>
                 </td>
                 <td class="text-right whitespace-nowrap">
                   <button class="btn btn-outline btn-sm" @click="viewEntryDetail(row)">网络信息</button>

@@ -871,7 +871,7 @@ watch(invFilterMode, (val) => {
           >长短线</button>
           <button
             class="px-3 py-1 text-xs rounded-full transition"
-            :class="invFilterMode==='longterm' ? '' : 'bg-purple-100 text-purple-600 hover:bg-purple-200'"
+            :class="invFilterMode==='longterm' ? '' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
             :style="invFilterMode==='longterm' ? { backgroundColor: '#f3e8ff', color: '#7e22ce' } : {}"
             @click="invFilterMode='longterm'; longTermFilter='long'"
           >仅长线</button>
