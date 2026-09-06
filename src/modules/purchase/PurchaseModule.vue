@@ -1733,7 +1733,7 @@ watch(purchaseViewCategory, () => {
                   <td class="text-gray-500 text-right px-2 py-2">{{ item.purchaseDetails?.fee || 0 }}</td>
                   <td class="text-center px-2 py-2">{{ item.purchaseDetails?.transferCoefficient || 1 }}</td>
                   <td class="text-warning text-right px-2 py-2">{{ fmtMoney(item.purchaseDetails?.preTransferCost || 0) }}</td>
-                  <td class="text-teal text-right px-2 py-2">{{ fmtMoney(item.purchaseDetails?.transferCost || 0) }}</td>
+                  <td class="text-[#5AC8FA] text-right px-2 py-2">{{ fmtMoney(item.purchaseDetails?.transferCost || 0) }}</td>
                   <td class="text-primary font-bold text-right px-2 py-2">{{ fmtMoney(item.cost) }}</td>
                   <td class="text-center px-2 py-2">
                     <span v-if="item.purchaseDetails?.transferStatus === 'completed'" class="text-gray-400 text-xs" title="转运批次">{{ item.purchaseDetails?.transferBatch }}</span>

@@ -1097,7 +1097,7 @@ watch(
             </div>
           </div>
 
-          <div v-if="expandedLogId === log.id" class="px-3 pb-3 space-y-3">
+          <div v-if="expandedLogId === log.id" class="px-3 pb-3 space-y-3 text-xs">
             <div
               v-for="(section, si) in getLogDetailSections(log)"
               :key="si"

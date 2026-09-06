@@ -39,6 +39,8 @@ a {
   border-radius: 10px;
 }
 
+/* 组件层：放在 @layer components 内，保证 Tailwind 工具类（如 border-l-4、p-0）可覆盖 */
+@layer components {
 .apple-card {
   background-color: #ffffff;
   border-radius: 18px;
@@ -324,4 +326,5 @@ a {
 
 .finance-tab.finance-tab-active::after {
   opacity: 1;
+}
 }

@@ -376,15 +376,20 @@ function confirmRemovePaymentCard(id) {
 </script>
 
 <template>
-  <div class="space-y-5">
-    <div class="flex justify-between items-end mb-6">
+  <div class="space-y-6">
+    <div class="flex items-center justify-between">
       <div class="flex items-baseline gap-3">
         <h2 class="text-3xl font-extrabold">美淘记录</h2>
         <span class="text-base text-gray-400 font-light">US Import Records</span>
       </div>
-      <div class="text-right text-xs text-gray-500">
-        <div>数据源：{{ state.sourceLoadedFrom }}</div>
-        <div>加载日期：{{ state.loadedAt }}</div>
+      <div class="flex items-center gap-3">
+        <div class="text-right text-xs text-gray-500 hidden md:block">
+          <div>数据源：{{ state.sourceLoadedFrom }}</div>
+          <div>加载日期：{{ state.loadedAt }}</div>
+        </div>
+        <button v-if="state.activePage === 'history'" class="btn btn-primary" @click="openEntryModal">
+          <i class="fa-solid fa-plus" /> 新增美淘记录
+        </button>
       </div>
     </div>
 
@@ -392,14 +397,14 @@ function confirmRemovePaymentCard(id) {
       <div class="flex gap-2">
         <button
           class="flex-1 py-2.5 rounded-lg font-semibold"
-          :class="state.activePage === 'history' ? 'bg-cyan-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+          :class="state.activePage === 'history' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
           @click="state.activePage = 'history'"
         >
           历史记录
         </button>
         <button
           class="flex-1 py-2.5 rounded-lg font-semibold"
-          :class="state.activePage === 'master' ? 'bg-cyan-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+          :class="state.activePage === 'master' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
           @click="state.activePage = 'master'"
         >
           帐号与卡片管理
@@ -409,10 +414,7 @@ function confirmRemovePaymentCard(id) {
 
     <template v-if="state.activePage === 'history'">
       <div class="apple-card">
-        <div class="flex items-center justify-between mb-3">
-          <div class="text-sm font-semibold text-gray-700">历史记录过滤（用户名 / 支付卡 / 收件人）</div>
-          <button class="btn btn-primary" @click="openEntryModal">+ 新增美淘记录</button>
-        </div>
+        <div class="text-sm font-semibold text-gray-700 mb-3">历史记录过滤（用户名 / 支付卡 / 收件人）</div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
           <div>
             <label class="block text-xs text-gray-500 mb-1">用户名</label>
@@ -494,7 +496,7 @@ function confirmRemovePaymentCard(id) {
                 </td>
                 <td class="text-right whitespace-nowrap">
                   <button class="btn btn-outline btn-sm" @click="viewEntryDetail(row)">网络信息</button>
-                  <button class="btn btn-sm ml-1 border border-orange-200 bg-orange-100 text-orange-700 hover:bg-orange-200" @click="openFailureDialog(row)">失败</button>
+                  <button class="btn btn-warning btn-sm ml-1" @click="openFailureDialog(row)">失败</button>
                   <button class="btn btn-outline btn-sm ml-1" @click="removeEntry(row.id)">删除</button>
                 </td>
               </tr>
@@ -508,7 +510,7 @@ function confirmRemovePaymentCard(id) {
     </template>
 
     <template v-else>
-      <div class="apple-card">
+      <div class="apple-card border-l-4 border-l-cyan-500">
         <div class="text-sm font-semibold text-gray-700 mb-3">A 转运公司信息</div>
         <div class="mb-3 text-xs text-gray-500">字段：转运公司名称、登录用户名、密码前三位、收件人名称、国内收件人（吕/郑/爷）</div>
         <div class="flex justify-end mb-3">
@@ -583,7 +585,7 @@ function confirmRemovePaymentCard(id) {
                   </span>
                 </td>
                 <td class="text-right whitespace-nowrap">
-                  <button v-if="isForwarderEditable(row.id)" class="btn btn-sm" style="background:#06b6d4;color:white" @click="saveForwarderRow(row)">保存</button>
+                  <button v-if="isForwarderEditable(row.id)" class="btn btn-primary btn-sm" @click="saveForwarderRow(row)">保存</button>
                   <button v-else class="btn btn-outline btn-sm" @click="editForwarderRow(row.id)">编辑</button>
                   <button class="btn btn-outline btn-sm ml-1" @click="confirmRemoveForwarder(row.id)">删除</button>
                 </td>
@@ -596,7 +598,7 @@ function confirmRemovePaymentCard(id) {
         </div>
       </div>
 
-      <div class="apple-card">
+      <div class="apple-card border-l-4 border-l-purple-500">
         <div class="text-sm font-semibold text-gray-700 mb-3">B 美泰网站信息</div>
         <div class="mb-3 text-xs text-gray-500">字段：登录用户名、密码前三位、收件人名称（从转运公司信息多选）、美泰网站显示的称呼</div>
         <div v-if="unknownWebsiteUsernames.length > 0" class="mb-3 text-xs text-orange-700 bg-orange-50 border border-orange-100 rounded px-3 py-2">
@@ -682,7 +684,7 @@ function confirmRemovePaymentCard(id) {
                   </span>
                 </td>
                 <td class="text-right whitespace-nowrap">
-                  <button v-if="isMattelEditable(row.id)" class="btn btn-sm" style="background:#06b6d4;color:white" @click="saveMattelRow(row)">保存</button>
+                  <button v-if="isMattelEditable(row.id)" class="btn btn-primary btn-sm" @click="saveMattelRow(row)">保存</button>
                   <button v-else class="btn btn-outline btn-sm" @click="editMattelRow(row.id)">编辑</button>
                   <button class="btn btn-outline btn-sm ml-1" @click="confirmRemoveMattel(row.id)">删除</button>
                 </td>
@@ -695,7 +697,7 @@ function confirmRemovePaymentCard(id) {
         </div>
       </div>
 
-      <div class="apple-card">
+      <div class="apple-card border-l-4 border-l-yellow-500">
         <div class="text-sm font-semibold text-gray-700 mb-3">C 银行卡信息</div>
         <div class="text-xs text-gray-500 mb-3">按规范新增卡片；如是贝宝请填写密码前三位和默认扣卡（写在备注栏）。</div>
 
@@ -753,17 +755,17 @@ function confirmRemovePaymentCard(id) {
       </div>
     </template>
 
-    <div v-if="!isIntegratedMode" class="apple-card border-yellow-100 bg-yellow-50 text-sm text-yellow-800">
+    <div v-if="!isIntegratedMode" class="apple-card border-l-4 border-l-yellow-500 bg-yellow-50 text-sm text-yellow-800">
       <span class="font-semibold">当前为原型沙盒：</span>
       侧边栏保留完整结构，但 ysp-app 其他模块已禁用点击；本页删除/保存仅作用于原型内存，不影响采购管理源数据。
     </div>
 
-    <div v-if="failureDialog.open" class="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
-      <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl p-4 space-y-4">
-        <div class="flex items-center justify-between">
-          <h3 class="text-base font-semibold text-gray-800">购买失败信息</h3>
-          <button class="btn btn-outline btn-sm" @click="closeFailureDialog">关闭</button>
-        </div>
+    <div v-if="failureDialog.open" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 glass-modal">
+      <div class="apple-card w-full max-w-2xl relative space-y-4">
+        <button class="absolute top-4 right-4 text-gray-400 hover:text-gray-800" @click="closeFailureDialog">
+          <i class="fa-solid fa-xmark text-xl" />
+        </button>
+        <h3 class="text-base font-semibold text-gray-800">购买失败信息</h3>
 
         <div class="border border-gray-100 rounded-lg p-3 bg-gray-50">
           <div class="text-xs text-gray-500 mb-2">网络信息（只读）</div>
@@ -798,19 +800,21 @@ function confirmRemovePaymentCard(id) {
 
         <div class="flex justify-end gap-2">
           <button class="btn btn-outline" @click="closeFailureDialog">取消</button>
-          <button class="btn" style="background:#fb923c;color:#7c2d12" @click="saveFailureDialog">保存购买失败信息</button>
+          <button class="btn btn-warning" @click="saveFailureDialog">保存购买失败信息</button>
         </div>
       </div>
     </div>
 
-    <div v-if="showEntryModal" class="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
-      <div class="bg-white rounded-xl shadow-xl w-full max-w-6xl max-h-[90vh] overflow-y-auto p-6 space-y-5">
+    <div v-if="showEntryModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 glass-modal">
+      <div class="apple-card w-full max-w-6xl max-h-[90vh] overflow-y-auto relative space-y-5">
         <div class="flex items-center justify-between">
           <h3 class="text-lg font-bold text-gray-800">新增美淘记录</h3>
-          <button class="btn btn-outline btn-sm" @click="closeEntryModal">关闭</button>
+          <button class="text-gray-400 hover:text-gray-800" @click="closeEntryModal">
+            <i class="fa-solid fa-xmark text-xl" />
+          </button>
         </div>
 
-        <div class="apple-card">
+        <div class="apple-card border-l-4 border-l-blue-500">
           <div class="text-sm font-semibold text-gray-700 mb-3">第一组：订单基本信息（只读带入）</div>
           <div class="grid grid-cols-12 gap-3">
             <div class="col-span-12 md:col-span-5">
@@ -866,11 +870,11 @@ function confirmRemovePaymentCard(id) {
           </div>
 
           <div class="mt-3 flex justify-end text-sm">
-            <div class="bg-cyan-50 border border-cyan-100 rounded px-3 py-2">总计金额（Total USD）：<span class="font-bold text-cyan-700">{{ fmtUsd(entrySnapshot.totalUSD) }}</span></div>
+            <div class="bg-blue-50 border border-blue-100 rounded px-3 py-2">总计金额（Total USD）：<span class="font-bold text-blue-700">{{ fmtUsd(entrySnapshot.totalUSD) }}</span></div>
           </div>
         </div>
 
-        <div class="apple-card">
+        <div class="apple-card border-l-4 border-l-cyan-500">
           <div class="text-sm font-semibold text-gray-700 mb-3">第二组：操作环境信息（全点选）</div>
           <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
             <div>
@@ -910,7 +914,7 @@ function confirmRemovePaymentCard(id) {
           </div>
         </div>
 
-        <div class="apple-card">
+        <div class="apple-card border-l-4 border-l-purple-500">
           <div class="text-sm font-semibold text-gray-700 mb-3">第三组：网站登录信息</div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
@@ -937,7 +941,7 @@ function confirmRemovePaymentCard(id) {
           </div>
         </div>
 
-        <div class="apple-card">
+        <div class="apple-card border-l-4 border-l-yellow-500">
           <div class="text-sm font-semibold text-gray-700 mb-3">第四组：付款信息</div>
           <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
             <div>

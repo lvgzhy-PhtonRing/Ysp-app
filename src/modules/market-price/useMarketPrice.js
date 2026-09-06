@@ -86,6 +86,7 @@ export function getGlobalStats(items) {
   const lossCount = priced.filter(i => (getChangeRate(i) || 0) < 0).length
   return {
     totalValue,
+    totalCost,
     totalCount: items.length,
     pricedCount: priced.length,
     unPricedCount: items.length - priced.length,

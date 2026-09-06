@@ -238,7 +238,7 @@ function statusText(status) {
       </div>
       <div class="mt-3 flex gap-6 text-sm text-gray-500">
         <div>累计采购: <span class="font-medium text-warning">{{ fmtMoney(purchaseStats.purchaseAmount) }}</span></div>
-        <div>累计转运: <span class="font-medium text-teal">{{ fmtMoney(purchaseStats.transferAmount) }}</span></div>
+        <div>累计转运: <span class="font-medium text-[#5AC8FA]">{{ fmtMoney(purchaseStats.transferAmount) }}</span></div>
       </div>
     </div>
 
