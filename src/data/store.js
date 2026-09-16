@@ -909,7 +909,7 @@ function recordLabel(record, col) {
  * 标量差异记为 { before: 云端值, after: 本地值 }；嵌套对象/数组差异记为 { changed: true }（不做深层展开）。
  * 返回 { field: { before, after } | { changed } }，可直接交给 formatChangesSummary。
  */
-function diffRecordFields(cloudRecord, localRecord) {
+function diffRecordFields(cloudRecord, localRecord, prefix = '') {
   const changes = {}
   const keys = new Set([...Object.keys(cloudRecord || {}), ...Object.keys(localRecord || {})])
   for (const key of keys) {
@@ -917,7 +917,13 @@ function diffRecordFields(cloudRecord, localRecord) {
     const a = cloudRecord && cloudRecord[key]
     const b = localRecord && localRecord[key]
     if (stableSerialize(a) === stableSerialize(b)) continue
-    changes[key] = { before: a, after: b }
+    const label = prefix ? `${prefix}.${key}` : key
+    const isObj = (x) => x !== null && typeof x === 'object'
+    if (isObj(a) || isObj(b)) {
+      Object.assign(changes, diffRecordFields(a, b, label))
+    } else {
+      changes[label] = { before: a, after: b }
+    }
   }
   return changes
 }
