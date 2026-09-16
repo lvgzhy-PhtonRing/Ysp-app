@@ -297,6 +297,16 @@ function parseSummaryPairs(summary) {
   })
 }
 
+// 从 summary 提取某一侧的值（cloud=before, local=after）
+function extractSideValues(summary, side) {
+  const pairs = parseSummaryPairs(summary)
+  if (pairs.length === 0) return ''
+  return pairs.map((p) => {
+    const val = side === 'cloud' ? p.before : p.after
+    return p.field + ':' + val
+  }).join(', ')
+}
+
 function showConfirmLayer(choice) {
   confirmChoice.value = choice
   showConfirm.value = true
@@ -1105,7 +1115,7 @@ watch(
             <div class="rounded bg-yellow-100/70 px-2 py-1.5 text-left">
               <div class="text-[10px] font-semibold text-yellow-700 mb-0.5"><i class="fa-solid fa-arrow-right-left mr-0.5"></i>将覆盖 ({{ cloudImpact.change.length }})</div>
               <div class="text-[11px] text-gray-700 truncate">{{ cloudImpact.change[0]?.recordLabel || '无' }}</div>
-              <div v-if="cloudImpact.change[0]?.summary" class="text-[10px] text-gray-500 font-mono truncate">{{ cloudImpact.change[0].summary }}</div>
+              <div v-if="cloudImpact.change[0]?.summary" class="text-[10px] text-gray-500 font-mono truncate">{{ extractSideValues(cloudImpact.change[0].summary, 'cloud') }}</div>
             </div>
           </div>
           <div class="mt-2 flex-1 w-full"></div>
@@ -1137,7 +1147,7 @@ watch(
             <div class="rounded bg-yellow-100/70 px-2 py-1.5 text-left">
               <div class="text-[10px] font-semibold text-yellow-700 mb-0.5"><i class="fa-solid fa-arrow-right-left mr-0.5"></i>将覆盖 ({{ localImpact.change.length }})</div>
               <div class="text-[11px] text-gray-700 truncate">{{ localImpact.change[0]?.recordLabel || '无' }}</div>
-              <div v-if="localImpact.change[0]?.summary" class="text-[10px] text-gray-500 font-mono truncate">{{ localImpact.change[0].summary }}</div>
+              <div v-if="localImpact.change[0]?.summary" class="text-[10px] text-gray-500 font-mono truncate">{{ extractSideValues(localImpact.change[0].summary, 'local') }}</div>
             </div>
           </div>
           <div class="mt-2 flex-1 w-full"></div>
