@@ -1194,8 +1194,8 @@ watch(
                     <div v-for="(pair, pi) in parseSummaryPairs(it.summary)" :key="pi" class="flex items-center justify-between gap-2">
                       <span class="text-gray-500 truncate">{{ pair.field }}</span>
                       <span class="flex items-center gap-2 shrink-0">
-                        <span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 font-mono font-bold">{{ pair.before }}</span>
                         <span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 font-mono font-bold">{{ pair.after }}</span>
+                        <span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 font-mono font-bold">{{ pair.before }}</span>
                       </span>
                     </div>
                   </div>
