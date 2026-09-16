@@ -1190,13 +1190,12 @@ watch(
               <div class="impact-list space-y-1.5 text-[11px] text-gray-700">
                 <div v-for="(it, i) in (confirmChoice === 'upload' ? localImpact.change : cloudImpact.change)" :key="i" :class="i > 0 ? 'border-t border-yellow-200/60 pt-1.5' : ''">
                   <div class="font-medium truncate">{{ it.collectionLabel }}·{{ it.recordLabel }}</div>
-                  <div v-if="it.summary" class="mt-0.5 space-y-0.5">
+                   <div v-if="it.summary" class="mt-0.5 space-y-0.5">
                     <div v-for="(pair, pi) in parseSummaryPairs(it.summary)" :key="pi" class="flex items-center justify-between gap-2">
                       <span class="text-gray-500 truncate">{{ pair.field }}</span>
-                      <span class="flex items-center gap-1 shrink-0">
-                        <span class="px-1 py-0.5 rounded bg-red-100 text-red-700 font-mono font-bold">{{ pair.before }}</span>
-                        <i class="fa-solid fa-arrow-right text-gray-400 text-[9px]"></i>
-                        <span class="px-1 py-0.5 rounded bg-green-100 text-green-700 font-mono font-bold">{{ pair.after }}</span>
+                      <span class="flex items-center gap-2 shrink-0">
+                        <span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 font-mono font-bold">{{ pair.before }}</span>
+                        <span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 font-mono font-bold">{{ pair.after }}</span>
                       </span>
                     </div>
                   </div>
