@@ -99,7 +99,7 @@ export function formatChangesSummary(changes) {
   var parts = entries.map(function (entry) {
     var key = entry[0]
     var val = entry[1]
-    var label = FIELD_LABEL_MAP[key] || key
+    var label = key.split('.').map(function (seg) { return FIELD_LABEL_MAP[seg] || seg }).join('.')
     if (val && typeof val === 'object' && 'changed' in val) {
       return label + '已变更'
     }
