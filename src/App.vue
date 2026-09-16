@@ -1031,9 +1031,6 @@ watch(
 
     <GlassModal v-model="cloudConflict" panel-class="w-full max-w-lg p-6 relative max-h-[80vh] overflow-y-auto" :close-on-overlay="false">
       <div class="mb-1 text-xl font-bold">检测到数据冲突</div>
-      <p class="text-sm text-gray-600 mb-4">
-        悬停预览，点击提交。两张卡片底部展示选它的收益与损失。
-      </p>
 
       <!-- 差异摘要（默认折叠） -->
       <div v-if="cloudConflictInfo.total" class="mb-3">
@@ -1080,10 +1077,9 @@ watch(
         >
           <div class="flex items-center gap-1.5 mb-1">
             <i class="fa-solid fa-cloud text-gray-600 text-lg"></i>
-            <span class="text-xl font-bold text-gray-800">云端</span>
+            <span class="text-xl font-bold text-gray-800">选云端</span>
             <span class="pick-check bg-gray-700 text-white"><i class="fa-solid fa-check"></i></span>
           </div>
-          <div class="text-base font-semibold text-gray-800">{{ cloudConflictInfo.cloudAt ? '云端数据' : '-' }}</div>
           <div class="text-[11px] text-gray-400 mb-2">{{ relativeLabel(cloudConflictInfo.cloudAt) }}</div>
           <div class="w-full space-y-1.5">
             <div class="rounded bg-green-100/70 px-2 py-1.5 text-left">
@@ -1096,7 +1092,8 @@ watch(
             </div>
             <div class="rounded bg-yellow-100/70 px-2 py-1.5 text-left">
               <div class="text-[10px] font-semibold text-yellow-700 mb-0.5"><i class="fa-solid fa-arrow-right-left mr-0.5"></i>将覆盖 ({{ cloudImpact.change.length }})</div>
-              <div class="text-[11px] text-gray-700 truncate">{{ shortTitle(cloudImpact.change) }}</div>
+              <div class="text-[11px] text-gray-700 truncate">{{ cloudImpact.change[0]?.recordLabel || '无' }}</div>
+              <div v-if="cloudImpact.change[0]?.summary" class="text-[10px] text-gray-500 font-mono truncate">{{ cloudImpact.change[0].summary }}</div>
             </div>
           </div>
           <div class="mt-2 flex-1 w-full"></div>
@@ -1112,10 +1109,9 @@ watch(
         >
           <div class="flex items-center gap-1.5 mb-1">
             <i class="fa-solid fa-laptop text-gray-600 text-lg"></i>
-            <span class="text-xl font-bold text-gray-800">本机</span>
+            <span class="text-xl font-bold text-gray-800">选本地</span>
             <span class="pick-check bg-gray-700 text-white"><i class="fa-solid fa-check"></i></span>
           </div>
-          <div class="text-base font-semibold text-gray-800">{{ cloudConflictInfo.localAt ? '本机数据' : '-' }}</div>
           <div class="text-[11px] text-gray-400 mb-2">{{ relativeLabel(cloudConflictInfo.localAt) }}</div>
           <div class="w-full space-y-1.5">
             <div class="rounded bg-green-100/70 px-2 py-1.5 text-left">
@@ -1128,7 +1124,8 @@ watch(
             </div>
             <div class="rounded bg-yellow-100/70 px-2 py-1.5 text-left">
               <div class="text-[10px] font-semibold text-yellow-700 mb-0.5"><i class="fa-solid fa-arrow-right-left mr-0.5"></i>将覆盖 ({{ localImpact.change.length }})</div>
-              <div class="text-[11px] text-gray-700 truncate">{{ shortTitle(localImpact.change) }}</div>
+              <div class="text-[11px] text-gray-700 truncate">{{ localImpact.change[0]?.recordLabel || '无' }}</div>
+              <div v-if="localImpact.change[0]?.summary" class="text-[10px] text-gray-500 font-mono truncate">{{ localImpact.change[0].summary }}</div>
             </div>
           </div>
           <div class="mt-2 flex-1 w-full"></div>
