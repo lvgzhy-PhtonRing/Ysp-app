@@ -66,7 +66,8 @@ export function calcAlipayBalance(
 export function buildAlipayBreakdown(
   debt,
   loanBalance,
-  actualProfit,
+  salesProfit,
+  publicExpense,
   inventoryValue,
   unconfirmed,
   fund,
@@ -75,7 +76,8 @@ export function buildAlipayBreakdown(
   const incoming = [
     { label: '挖财总负债', value: Number(debt) },
     { label: '借贷余额', value: Number(loanBalance) },
-    { label: '总实盈利润', value: Number(actualProfit) },
+    { label: '总实盈利润', value: Number(salesProfit) },
+    { label: '公共支出', value: -Number(publicExpense) || 0 },
   ]
   const outgoing = [
     { label: '库存总货值', value: -Number(inventoryValue) },

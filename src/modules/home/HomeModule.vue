@@ -34,10 +34,10 @@ const longTermCount = computed(() => longTermItems.value.length)
 
 const financePublicExpense = computed(() => getPublicExpense(store.financeRecords))
 
-const totalActualProfit = computed(() =>
-  soldItems.value.reduce((s, i) => s + Number(i?.saleDetails?.profit || 0), 0) -
-  financePublicExpense.value,
+const totalSalesProfit = computed(() =>
+  soldItems.value.reduce((s, i) => s + Number(i?.saleDetails?.profit || 0), 0),
 )
+const totalActualProfit = computed(() => totalSalesProfit.value - financePublicExpense.value)
 const soldCost = computed(() => soldItems.value.reduce((s, i) => s + Number(i?.cost || 0), 0))
 const totalProfitMargin = computed(() => (soldCost.value > 0 ? totalActualProfit.value / soldCost.value : 0))
 
@@ -75,7 +75,8 @@ const alipayBalance = computed(() => {
   return (
     Number(store.calc.debt || 0) +
     financeLoanBalance.value +
-    totalActualProfit.value -
+    totalSalesProfit.value -
+    financePublicExpense.value -
     inventoryValue.value -
     Number(store.calc.unconfirmed || 0) +
     carFundBalance.value -
@@ -87,7 +88,8 @@ const alipayBreakdown = computed(() =>
   buildAlipayBreakdown(
     store.calc.debt,
     financeLoanBalance.value,
-    totalActualProfit.value,
+    totalSalesProfit.value,
+    financePublicExpense.value,
     inventoryValue.value,
     store.calc.unconfirmed,
     carFundBalance.value,
@@ -289,20 +291,24 @@ function statusText(status) {
           <div class="text-sm font-bold text-gray-700">应有支付宝余额</div>
           <div class="text-2xl font-bold text-primary">{{ fmtMoney(alipayBalance) }}</div>
         </div>
-        <div class="flex gap-2">
-          <div class="flex-1 bg-green-50 border border-green-200 rounded-lg p-2.5">
+        <div class="grid grid-cols-2 gap-2">
+          <div class="bg-green-50 border border-green-200 rounded-lg p-2.5 grid grid-rows-[auto_1fr_auto]">
             <div class="text-[11px] font-bold text-green-700 mb-1">进 / 资金</div>
-            <div v-for="x in alipayBreakdown.incoming" :key="x.label" class="flex justify-between text-xs text-gray-600 py-0.5">
-              <span>{{ x.label }}</span><span class="text-green-700">+{{ fmtMoney(x.value) }}</span>
+            <div>
+              <div v-for="x in alipayBreakdown.incoming" :key="x.label" class="flex justify-between text-xs text-gray-600 py-0.5">
+                <span>{{ x.label }}</span><span class="text-green-700">{{ x.value >= 0 ? '+' : '' }}{{ fmtMoney(x.value) }}</span>
+              </div>
             </div>
             <div class="flex justify-between text-xs font-bold text-green-700 border-t border-green-200 mt-1 pt-1">
-              <span>小计</span><span>+{{ fmtMoney(alipayBreakdown.inSubtotal) }}</span>
+              <span>小计</span><span>{{ alipayBreakdown.inSubtotal >= 0 ? '+' : '' }}{{ fmtMoney(alipayBreakdown.inSubtotal) }}</span>
             </div>
           </div>
-          <div class="flex-1 bg-orange-50 border border-orange-200 rounded-lg p-2.5">
+          <div class="bg-orange-50 border border-orange-200 rounded-lg p-2.5 grid grid-rows-[auto_1fr_auto]">
             <div class="text-[11px] font-bold text-orange-700 mb-1">出 / 货·债·基金</div>
-            <div v-for="x in alipayBreakdown.outgoing" :key="x.label" class="flex justify-between text-xs text-gray-600 py-0.5">
-              <span>{{ x.label }}</span><span class="text-orange-700">{{ fmtMoney(x.value) }}</span>
+            <div>
+              <div v-for="x in alipayBreakdown.outgoing" :key="x.label" class="flex justify-between text-xs text-gray-600 py-0.5">
+                <span>{{ x.label }}</span><span class="text-orange-700">{{ fmtMoney(x.value) }}</span>
+              </div>
             </div>
             <div class="flex justify-between text-xs font-bold text-orange-700 border-t border-orange-200 mt-1 pt-1">
               <span>小计</span><span>{{ fmtMoney(alipayBreakdown.outSubtotal) }}</span>

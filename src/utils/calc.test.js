@@ -37,13 +37,15 @@ describe('calc utilities', () => {
   })
 
   it('buildAlipayBreakdown should group by incoming/outgoing with subtotals', () => {
-    const b = buildAlipayBreakdown(108504.41, 6000, 21512, 94821.31, 1006, -4887.14, 37398.38)
-    expect(b.incoming.map((x) => x.label)).toEqual(['挖财总负债', '借贷余额', '总实盈利润'])
+    const b = buildAlipayBreakdown(108504.41, 6000, 21512, 0, 94821.31, 1006, -4887.14, 37398.38)
+    expect(b.incoming.map((x) => x.label)).toEqual(['挖财总负债', '借贷余额', '总实盈利润', '公共支出'])
     expect(b.outgoing.map((x) => x.label)).toEqual(['库存总货值', '采购中金额', '未确认交易', "Payton's基金"])
     expect(b.inSubtotal).toBeCloseTo(136016.41, 2)
     expect(b.outSubtotal).toBeCloseTo(-138112.83, 2)
     // 基金是负值(借出)，出栏中直接取 fund
     expect(b.outgoing[3].value).toBe(-4887.14)
+    // 公共支出为 0 时不影响小计
+    expect(b.incoming[3].value).toBe(0)
     // 两栏小计与应有余额恒等式：进 + 出 = 应有余额
     expect(b.inSubtotal + b.outSubtotal).toBeCloseTo(
       calcAlipayBalance(108504.41, 6000, 21512, 94821.31, 1006, -4887.14, 37398.38),

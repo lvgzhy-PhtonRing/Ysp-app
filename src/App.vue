@@ -176,6 +176,32 @@ function kindText(kind) {
   return '两边不同'
 }
 
+// 双子卡布局：本机 vs 云端 相对时间标签
+function relativeLabel(at) {
+  if (!at) return '未知'
+  const t = new Date(at).getTime()
+  if (!Number.isFinite(t)) return '未知'
+  const diff = Date.now() - t
+  if (diff < 0) return '将来'
+  const m = Math.floor(diff / 60000)
+  if (m < 1) return '刚刚'
+  if (m < 60) return `${m} 分钟前`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h} 小时前`
+  return `${Math.floor(h / 24)} 天前`
+}
+
+// 差异条目按类型聚合计数：{localOnly, cloudOnly, modified, total}
+function conflictSummary(entries = []) {
+  const s = { localOnly: 0, cloudOnly: 0, modified: 0, total: entries.length }
+  for (const e of entries) {
+    if (e.kind === 'localOnly') s.localOnly++
+    else if (e.kind === 'cloudOnly') s.cloudOnly++
+    else if (e.kind === 'modified') s.modified++
+  }
+  return s
+}
+
 function tsToEpoch(t) {
   const n = t ? new Date(t).getTime() : 0
   return Number.isFinite(n) ? n : 0
@@ -229,6 +255,55 @@ function resolveCloudConflict(choice) {
     cloudConflictResolver = null
   }
 }
+
+// 确认层状态
+const showConfirm = ref(false)
+const confirmChoice = ref(null)
+
+function computeImpact(choice) {
+  const entries = cloudConflictInfo.value.entries || []
+  if (choice === 'upload') {
+    return {
+      gain: entries.filter((e) => e.kind === 'localOnly'),
+      lose: entries.filter((e) => e.kind === 'cloudOnly'),
+      change: entries.filter((e) => e.kind === 'modified'),
+    }
+  }
+  return {
+    gain: entries.filter((e) => e.kind === 'cloudOnly'),
+    lose: entries.filter((e) => e.kind === 'localOnly'),
+    change: entries.filter((e) => e.kind === 'modified'),
+  }
+}
+
+function shortTitle(items) {
+  if (items.length === 0) return '无'
+  if (items.length === 1) {
+    const i = items[0]
+    return i.recordLabel
+  }
+  return items[0].recordLabel + ' 等 ' + items.length + ' 项'
+}
+
+function showConfirmLayer(choice) {
+  confirmChoice.value = choice
+  showConfirm.value = true
+}
+
+function cancelConfirm() {
+  showConfirm.value = false
+  confirmChoice.value = null
+}
+
+function doConfirm() {
+  const choice = confirmChoice.value
+  cancelConfirm()
+  resolveCloudConflict(choice)
+}
+
+// 卡片摘要：压缩的 gain/lose/change 信息
+const localImpact = computed(() => computeImpact('upload'))
+const cloudImpact = computed(() => computeImpact('use-cloud'))
 
 const cloudUnhealthy = computed(() => isCloudSyncUnhealthy())
 const showUnsyncedList = ref(false)
@@ -728,6 +803,9 @@ onMounted(async () => {
   registerCloudApplyHandler((payload, options = {}) => applyCloudDataToStore(payload, options))
 
   document.addEventListener('visibilitychange', syncSilentlyOnHidden)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && showConfirm.value) cancelConfirm()
+  })
 
   // === 新增：程序启动时自动从云端加载数据 ===
   const cloudLoaded = await loadCloudOnStartup()
@@ -951,101 +1029,173 @@ watch(
       </div>
     </GlassModal>
 
-    <GlassModal v-model="cloudConflict" panel-class="w-full max-w-md p-6 relative max-h-[80vh] overflow-y-auto" :close-on-overlay="false">
+    <GlassModal v-model="cloudConflict" panel-class="w-full max-w-lg p-6 relative max-h-[80vh] overflow-y-auto" :close-on-overlay="false">
       <div class="mb-1 text-xl font-bold">检测到数据冲突</div>
       <p class="text-sm text-gray-600 mb-4">
-        {{ cloudConflictType === 'upload-local' ? '本机数据比云端新，请选择使用哪一份数据：' : (cloudConflictType === 'manual-sync' ? '本地与云端数据不一致，请选择保留哪一份：' : '云端数据比本地新或存在差异，请选择使用哪一份数据：') }}
+        悬停预览，点击提交。两张卡片底部展示选它的收益与损失。
       </p>
-      <div class="mb-4 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 space-y-1">
-        <div class="flex justify-between gap-3">
-          <span class="shrink-0">本机数据时间</span>
-          <span class="font-mono text-gray-800">{{ formatConflictTime(cloudConflictInfo.localAt) }}</span>
-        </div>
-        <div class="flex justify-between gap-3">
-          <span class="shrink-0">云端数据时间</span>
-          <span class="font-mono text-gray-800">{{ formatConflictTime(cloudConflictInfo.cloudAt) }}</span>
-        </div>
-      </div>
-      <div class="mb-4 space-y-2">
+
+      <!-- 差异摘要（默认折叠） -->
+      <div v-if="cloudConflictInfo.total" class="mb-3">
         <button
-          v-if="primaryConflictActionValue === 'upload'"
-          class="btn btn-primary w-full !py-4 !text-lg"
-          @click="resolveCloudConflict('upload')"
+          class="w-full flex items-center justify-between text-xs text-gray-500 hover:text-gray-700 rounded-lg bg-gray-50 px-3 py-2"
+          @click="showAllDifferences = !showAllDifferences"
         >
-          <span class="flex items-center justify-center gap-2">
-            <i class="fa-solid fa-arrow-up text-xl"></i>
-            <span class="text-2xl font-bold">{{ cloudConflictInfo.total }}</span>
-            <span>上传</span>
+          <span>
+            <i class="fa-solid fa-circle-exclamation text-gray-400 mr-1"></i>
+            <span class="font-medium text-gray-700">{{ cloudConflictInfo.total }}</span> 处差异
+            <span v-if="conflictSummary(cloudConflictInfo.entries).localOnly"> · 本机独有 {{ conflictSummary(cloudConflictInfo.entries).localOnly }}</span>
+            <span v-if="conflictSummary(cloudConflictInfo.entries).cloudOnly"> · 云端独有 {{ conflictSummary(cloudConflictInfo.entries).cloudOnly }}</span>
+            <span v-if="conflictSummary(cloudConflictInfo.entries).modified"> · 两边不同 {{ conflictSummary(cloudConflictInfo.entries).modified }}</span>
           </span>
-          <span class="block text-xs font-normal text-blue-100">用本机数据覆盖云端</span>
+          <i :class="showAllDifferences ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'"></i>
         </button>
-        <button
-          v-else
-          class="btn btn-primary w-full !py-4 !text-lg"
-          @click="resolveCloudConflict('use-cloud')"
-        >
-          <span class="flex items-center justify-center gap-2">
-            <i class="fa-solid fa-arrow-down text-xl"></i>
-            <span class="text-2xl font-bold">{{ cloudConflictInfo.total }}</span>
-            <span>下载</span>
-          </span>
-          <span class="block text-xs font-normal text-blue-100">用云端数据覆盖本地</span>
-        </button>
-      </div>
-      <div v-if="cloudConflictInfo.total" class="mb-4 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
-        <div class="font-medium text-gray-700 mb-1">差异明细（{{ cloudConflictInfo.total }} 处）</div>
-        <div class="space-y-2 max-h-48 overflow-y-auto">
+        <div v-if="showAllDifferences" class="mt-2 space-y-1.5 max-h-56 overflow-y-auto rounded-lg bg-gray-50 p-2">
           <div
             v-for="e in cloudConflictInfo.entries.slice(0, DIFF_DISPLAY_LIMIT)"
             :key="e.key"
-            class="border-t border-gray-200/70 pt-1.5 first:border-t-0 first:pt-0"
+            class="border-t border-gray-200/70 pt-1.5 first:border-t-0 first:pt-0 text-xs text-gray-600"
           >
             <div class="flex items-center gap-2">
               <span class="min-w-0 truncate font-medium text-gray-700">{{ e.collectionLabel }}·{{ e.recordLabel }}</span>
               <span class="shrink-0 rounded bg-white/70 px-1.5 py-0.5 text-gray-500">{{ kindText(e.kind) }}</span>
             </div>
             <p v-if="e.kind === 'modified' && e.summary" class="mt-0.5 text-gray-500 line-clamp-1">{{ e.summary }}</p>
-            <p v-else-if="e.kind === 'modified'" class="mt-0.5 text-gray-400 text-xs">(字段差异细节被压缩)</p>
           </div>
-          <div v-if="cloudConflictInfo.total > DIFF_DISPLAY_LIMIT" class="border-t border-gray-200/70 pt-1.5 text-gray-500">
-            另有 {{ cloudConflictInfo.total - DIFF_DISPLAY_LIMIT }} 处差异未显示
-          </div>
-          <div v-if="cloudConflictInfo.total > DIFF_DISPLAY_LIMIT" class="mt-2 text-xs text-gray-500 cursor-pointer" @click="showAllDifferences = !showAllDifferences">
-            <i class="fa-solid fa-eye text-gray-400 mr-1"></i> {{ showAllDifferences ? '收起全部差异' : '查看全部 ' + cloudConflictInfo.total + ' 处差异' }}
+          <div v-if="cloudConflictInfo.total > DIFF_DISPLAY_LIMIT" class="text-xs text-gray-500 border-t border-gray-200/70 pt-1.5">
+            另有 {{ cloudConflictInfo.total - DIFF_DISPLAY_LIMIT }} 处未显示
           </div>
         </div>
       </div>
-      <div v-if="cloudConflictInfo.total > DIFF_DISPLAY_LIMIT && showAllDifferences" class="mt-4 p-3 bg-gray-50 rounded border border-gray-200/50 text-xs text-gray-700">
-        <div class="font-medium text-gray-700 mb-2">全部 {{ cloudConflictInfo.total }} 处差异明细</div>
-        <div class="space-y-1 max-h-64 overflow-y-auto">
-          <div
-            v-for="e in cloudConflictInfo.entries"
-            :key="e.key"
-            class="border-t border-gray-200/70 pt-1.5 first:border-t-0 first:pt-0"
-          >
-            <div class="flex items-center gap-2">
-              <span class="min-w-0 truncate font-medium text-gray-700">{{ e.collectionLabel }}·{{ e.recordLabel }}</span>
-              <span class="shrink-0 rounded bg-white/70 px-1.5 py-0.5 text-gray-500">{{ kindText(e.kind) }}</span>
+
+      <!-- 双子卡「选边」布局 -->
+      <div id="pickRow" class="pick-row grid grid-cols-2 gap-2.5 mb-3">
+        <!-- 云端卡（左） -->
+        <div
+          tabindex="0"
+          class="pick-card rounded-xl border-2 border-gray-300 bg-gray-50 p-3 flex flex-col items-center text-center"
+          data-choice="cloud"
+          @click="showConfirmLayer('use-cloud')"
+          @keydown.enter="showConfirmLayer('use-cloud')"
+        >
+          <div class="flex items-center gap-1.5 mb-1">
+            <i class="fa-solid fa-cloud text-gray-600 text-lg"></i>
+            <span class="text-xl font-bold text-gray-800">云端</span>
+            <span class="pick-check bg-gray-700 text-white"><i class="fa-solid fa-check"></i></span>
+          </div>
+          <div class="text-base font-semibold text-gray-800">{{ cloudConflictInfo.cloudAt ? '云端数据' : '-' }}</div>
+          <div class="text-[11px] text-gray-400 mb-2">{{ relativeLabel(cloudConflictInfo.cloudAt) }}</div>
+          <div class="w-full space-y-1.5">
+            <div class="rounded bg-green-100/70 px-2 py-1.5 text-left">
+              <div class="text-[10px] font-semibold text-green-700 mb-0.5"><i class="fa-solid fa-plus mr-0.5"></i>将新增 ({{ cloudImpact.gain.length }})</div>
+              <div class="text-[11px] text-gray-700 truncate">{{ shortTitle(cloudImpact.gain) }}</div>
             </div>
-            <p v-if="e.kind === 'modified' && e.summary" class="mt-0.5 text-gray-500 line-clamp-1">{{ e.summary }}</p>
-            <p v-else-if="e.kind === 'modified'" class="mt-0.5 text-gray-400 text-xs">(字段差异细节被压缩)</p>
-            <p v-if="e.kind === 'localOnly'" class="mt-0.5 text-gray-500 text-blue-600">仅本地存在</p>
-            <p v-if="e.kind === 'cloudOnly'" class="mt-0.5 text-gray-500 text-green-600">仅云端存在</p>
+            <div class="rounded bg-red-100/70 px-2 py-1.5 text-left">
+              <div class="text-[10px] font-semibold text-red-700 mb-0.5"><i class="fa-solid fa-minus mr-0.5"></i>将丢失 ({{ cloudImpact.lose.length }})</div>
+              <div class="text-[11px] text-gray-700 truncate">{{ shortTitle(cloudImpact.lose) }}</div>
+            </div>
+            <div class="rounded bg-yellow-100/70 px-2 py-1.5 text-left">
+              <div class="text-[10px] font-semibold text-yellow-700 mb-0.5"><i class="fa-solid fa-arrow-right-left mr-0.5"></i>将覆盖 ({{ cloudImpact.change.length }})</div>
+              <div class="text-[11px] text-gray-700 truncate">{{ shortTitle(cloudImpact.change) }}</div>
+            </div>
           </div>
+          <div class="mt-2 flex-1 w-full"></div>
+        </div>
+
+        <!-- 本机卡（右） -->
+        <div
+          tabindex="0"
+          class="pick-card rounded-xl border-2 border-gray-300 bg-gray-50 p-3 flex flex-col items-center text-center"
+          data-choice="local"
+          @click="showConfirmLayer('upload')"
+          @keydown.enter="showConfirmLayer('upload')"
+        >
+          <div class="flex items-center gap-1.5 mb-1">
+            <i class="fa-solid fa-laptop text-gray-600 text-lg"></i>
+            <span class="text-xl font-bold text-gray-800">本机</span>
+            <span class="pick-check bg-gray-700 text-white"><i class="fa-solid fa-check"></i></span>
+          </div>
+          <div class="text-base font-semibold text-gray-800">{{ cloudConflictInfo.localAt ? '本机数据' : '-' }}</div>
+          <div class="text-[11px] text-gray-400 mb-2">{{ relativeLabel(cloudConflictInfo.localAt) }}</div>
+          <div class="w-full space-y-1.5">
+            <div class="rounded bg-green-100/70 px-2 py-1.5 text-left">
+              <div class="text-[10px] font-semibold text-green-700 mb-0.5"><i class="fa-solid fa-plus mr-0.5"></i>将新增 ({{ localImpact.gain.length }})</div>
+              <div class="text-[11px] text-gray-700 truncate">{{ shortTitle(localImpact.gain) }}</div>
+            </div>
+            <div class="rounded bg-red-100/70 px-2 py-1.5 text-left">
+              <div class="text-[10px] font-semibold text-red-700 mb-0.5"><i class="fa-solid fa-minus mr-0.5"></i>将丢失 ({{ localImpact.lose.length }})</div>
+              <div class="text-[11px] text-gray-700 truncate">{{ shortTitle(localImpact.lose) }}</div>
+            </div>
+            <div class="rounded bg-yellow-100/70 px-2 py-1.5 text-left">
+              <div class="text-[10px] font-semibold text-yellow-700 mb-0.5"><i class="fa-solid fa-arrow-right-left mr-0.5"></i>将覆盖 ({{ localImpact.change.length }})</div>
+              <div class="text-[11px] text-gray-700 truncate">{{ shortTitle(localImpact.change) }}</div>
+            </div>
+          </div>
+          <div class="mt-2 flex-1 w-full"></div>
         </div>
       </div>
+
       <div class="space-y-2">
-        <button
-          v-if="primaryConflictActionValue !== 'upload'"
-          class="btn btn-outline w-full"
-          @click="resolveCloudConflict('upload')"
-        >用本机数据覆盖云端</button>
-        <button
-          v-else
-          class="btn btn-outline w-full"
-          @click="resolveCloudConflict('use-cloud')"
-        >用云端数据覆盖本地</button>
-        <button class="btn btn-outline w-full" @click="resolveCloudConflict('cancel')">取消</button>
+        <button class="btn btn-outline w-full" @click="resolveCloudConflict('cancel')">
+          保留两者不动（稍后处理）
+        </button>
+      </div>
+
+      <!-- 确认层 -->
+      <div v-if="showConfirm" class="confirm-overlay show">
+        <div class="confirm-box">
+          <div class="flex items-center gap-2 mb-1 text-lg font-bold text-gray-800">
+            <i class="fa-solid fa-circle-question"></i>
+            {{ confirmChoice === 'upload' ? '确定用本机数据？' : '确定用云端数据？' }}
+          </div>
+          <p class="text-sm text-gray-600 mb-3">
+            用 <b>{{ confirmChoice === 'upload' ? '本机' : '云端' }}</b>（{{ confirmChoice === 'upload' ? relativeLabel(cloudConflictInfo.localAt) : relativeLabel(cloudConflictInfo.cloudAt) }}）覆盖{{ confirmChoice === 'upload' ? '云端' : '本机' }}。
+            <span class="text-xs text-gray-500">{{ confirmChoice === 'upload' ? '云端' : '本机' }}独有的 {{ confirmChoice === 'upload' ? cloudImpact.lose.length : localImpact.lose.length }} 条将丢失，{{ confirmChoice === 'upload' ? localImpact.change.length : cloudImpact.change.length }} 处字段将被覆盖。</span>
+          </p>
+
+          <div class="impact-grid mb-4">
+            <div class="impact-col gain">
+              <div class="text-xs font-semibold text-green-700 mb-1">
+                <i class="fa-solid fa-plus mr-1"></i>将获得 ({{ confirmChoice === 'upload' ? localImpact.gain.length : cloudImpact.gain.length }})
+              </div>
+              <div class="impact-list space-y-1.5 text-[11px] text-gray-700">
+                <div v-for="(it, i) in (confirmChoice === 'upload' ? localImpact.gain : cloudImpact.gain)" :key="i" :class="i > 0 ? 'border-t border-green-200/60 pt-1.5' : ''">
+                  <div class="font-medium">{{ it.collectionLabel }}·{{ it.recordLabel }}</div>
+                </div>
+              </div>
+            </div>
+            <div class="impact-col lose">
+              <div class="text-xs font-semibold text-red-700 mb-1">
+                <i class="fa-solid fa-minus mr-1"></i>将丢失 ({{ confirmChoice === 'upload' ? localImpact.lose.length : cloudImpact.lose.length }})
+              </div>
+              <div class="impact-list space-y-1.5 text-[11px] text-gray-700">
+                <div v-for="(it, i) in (confirmChoice === 'upload' ? localImpact.lose : cloudImpact.lose)" :key="i" :class="i > 0 ? 'border-t border-red-200/60 pt-1.5' : ''">
+                  <div class="font-medium">{{ it.collectionLabel }}·{{ it.recordLabel }}</div>
+                </div>
+              </div>
+            </div>
+            <div class="impact-col change">
+              <div class="text-xs font-semibold text-yellow-700 mb-1">
+                <i class="fa-solid fa-arrow-right-left mr-1"></i>将覆盖 ({{ confirmChoice === 'upload' ? localImpact.change.length : cloudImpact.change.length }})
+              </div>
+              <div class="impact-list space-y-1.5 text-[11px] text-gray-700">
+                <div v-for="(it, i) in (confirmChoice === 'upload' ? localImpact.change : cloudImpact.change)" :key="i" :class="i > 0 ? 'border-t border-yellow-200/60 pt-1.5' : ''">
+                  <div class="font-medium">{{ it.collectionLabel }}·{{ it.recordLabel }}</div>
+                  <div v-if="it.summary" class="text-gray-500 font-mono truncate">{{ it.summary }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="confirm-actions grid grid-cols-2 gap-2">
+            <button class="btn btn-outline cancel-btn" @click="cancelConfirm()">
+              <i class="fa-solid fa-xmark mr-1"></i>取消
+            </button>
+            <button class="btn btn-outline confirm-btn" @click="doConfirm()">
+              <i class="fa-solid fa-check mr-1"></i>确认
+            </button>
+          </div>
+        </div>
       </div>
     </GlassModal>
 
@@ -1176,3 +1326,127 @@ watch(
     </Transition>
   </div>
 </template>
+
+<style>
+.pick-card {
+  transition: opacity .18s ease, transform .18s ease, box-shadow .18s ease;
+  cursor: pointer;
+  border-width: 2px;
+}
+.pick-row:hover .pick-card:not(:hover) {
+  opacity: .42;
+  filter: grayscale(.6);
+}
+.pick-row:hover .pick-card:hover {
+  transform: translateY(-2px) scale(1.015);
+  box-shadow: 0 12px 28px rgba(0,0,0,.12);
+}
+.pick-card:focus-visible {
+  outline: none;
+}
+.pick-row:has(.pick-card:focus-visible) .pick-card:not(:focus-visible) {
+  opacity: .42;
+  filter: grayscale(.6);
+}
+.pick-card:focus-visible {
+  transform: translateY(-2px) scale(1.015);
+  box-shadow: 0 12px 28px rgba(0,0,0,.12);
+}
+
+/* 卡片标题的"打勾"徽章：默认隐藏，悬停/聚焦时显示 */
+.pick-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 9999px;
+  font-size: .6875rem;
+  opacity: 0;
+  transform: scale(.6) rotate(-15deg);
+  transition: opacity .18s ease, transform .18s ease;
+  margin-left: .25rem;
+}
+.pick-card:hover .pick-check,
+.pick-card:focus-visible .pick-check {
+  opacity: 1;
+  transform: scale(1) rotate(0);
+}
+
+/* 确认层 */
+.confirm-overlay {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,.82);
+  backdrop-filter: blur(2px);
+  border-radius: 1rem;
+  z-index: 10;
+  padding: 1rem;
+}
+.confirm-overlay.show {
+  display: flex;
+}
+.confirm-box {
+  background: white;
+  border-radius: .875rem;
+  padding: 1.5rem;
+  box-shadow: 0 10px 30px rgba(0,0,0,.18);
+  width: 100%;
+  max-width: 44rem;
+}
+
+/* 三列差异展示 */
+.impact-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: .75rem;
+}
+.impact-col {
+  border-radius: .5rem;
+  padding: .75rem .875rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  transition: background-color .18s ease, border-color .18s ease;
+}
+.impact-col:hover {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+.impact-col.gain:hover {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+.impact-col.lose:hover {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+.impact-col.change:hover {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+.impact-list {
+  margin-top: .5rem;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+/* 确认按钮：同色，悬停时差异 */
+.confirm-actions .btn {
+  transition: all .15s;
+}
+.confirm-actions .btn.cancel-btn:hover,
+.confirm-actions .btn.cancel-btn:focus-visible {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fecaca;
+}
+.confirm-actions .btn.confirm-btn:hover,
+.confirm-actions .btn.confirm-btn:focus-visible {
+  background: #3b82f6;
+  color: white;
+  border-color: #3b82f6;
+}
+</style>
