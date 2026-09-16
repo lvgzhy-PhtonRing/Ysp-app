@@ -72,6 +72,12 @@ function fmtBrief(v) {
   if (v === null || v === undefined || v === '') return '-'
   if (typeof v === 'number') return '¥' + Number(v).toFixed(0)
   if (typeof v === 'boolean') return v ? '是' : '否'
+  if (Array.isArray(v)) return v.length > 0 ? v.slice(0, 3).map(fmtBrief).join(',') + (v.length > 3 ? '...' : '') : '空'
+  if (typeof v === 'object') {
+    const keys = Object.keys(v)
+    if (keys.length === 0) return '{}'
+    return '{' + keys.slice(0, 3).join(',') + (keys.length > 3 ? '...' : '') + '}'
+  }
   return String(v).slice(0, 20)
 }
 
@@ -911,12 +917,7 @@ function diffRecordFields(cloudRecord, localRecord) {
     const a = cloudRecord && cloudRecord[key]
     const b = localRecord && localRecord[key]
     if (stableSerialize(a) === stableSerialize(b)) continue
-    const isObject = (a !== null && typeof a === 'object') || (b !== null && typeof b === 'object')
-    if (isObject) {
-      changes[key] = { changed: true }
-    } else {
-      changes[key] = { before: a, after: b }
-    }
+    changes[key] = { before: a, after: b }
   }
   return changes
 }
