@@ -285,6 +285,18 @@ function shortTitle(items) {
   return items[0].recordLabel + ' 等 ' + items.length + ' 项'
 }
 
+// 解析 summary 字符串为字段变化对数组
+function parseSummaryPairs(summary) {
+  if (!summary) return []
+  return summary.split(', ').map((part) => {
+    const m = part.match(/^(.+?):(.+?)→(.+)$/)
+    if (m) {
+      return { field: m[1], before: m[2], after: m[3] }
+    }
+    return { field: part, before: '', after: '' }
+  })
+}
+
 function showConfirmLayer(choice) {
   confirmChoice.value = choice
   showConfirm.value = true
@@ -1177,8 +1189,17 @@ watch(
               </div>
               <div class="impact-list space-y-1.5 text-[11px] text-gray-700">
                 <div v-for="(it, i) in (confirmChoice === 'upload' ? localImpact.change : cloudImpact.change)" :key="i" :class="i > 0 ? 'border-t border-yellow-200/60 pt-1.5' : ''">
-                  <div class="font-medium">{{ it.collectionLabel }}·{{ it.recordLabel }}</div>
-                  <div v-if="it.summary" class="text-gray-500 font-mono truncate">{{ it.summary }}</div>
+                  <div class="font-medium truncate">{{ it.collectionLabel }}·{{ it.recordLabel }}</div>
+                  <div v-if="it.summary" class="mt-0.5 space-y-0.5">
+                    <div v-for="(pair, pi) in parseSummaryPairs(it.summary)" :key="pi" class="flex items-center justify-between gap-2">
+                      <span class="text-gray-500 truncate">{{ pair.field }}</span>
+                      <span class="flex items-center gap-1 shrink-0">
+                        <span class="px-1 py-0.5 rounded bg-red-100 text-red-700 font-mono font-bold">{{ pair.before }}</span>
+                        <i class="fa-solid fa-arrow-right text-gray-400 text-[9px]"></i>
+                        <span class="px-1 py-0.5 rounded bg-green-100 text-green-700 font-mono font-bold">{{ pair.after }}</span>
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
