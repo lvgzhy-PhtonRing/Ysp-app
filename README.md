@@ -102,6 +102,8 @@ VITE_SUPABASE_PUBLIC_READ=true
 
 > 注意：只能放 `anon key`，不要放 `service_role key`。
 
+> `main` 行 `payload` 内含 `_rev`（每数据集合独立版本号）。两设备各改不同集合可自动合并；仅当双方都改同一集合时弹逐槽位冲突框。
+
 ## 页面说明
 
 - 主程序：`/`（`index.html`）
