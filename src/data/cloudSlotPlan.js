@@ -39,6 +39,20 @@ export function setSlotValue(payload, slot, value) {
   cur[path[path.length - 1]] = value
 }
 
+/** 云槽位是否可采纳：路径存在且类型正确（calc→object，其余→array） */
+export function hasUsableSlotValue(payload, slot) {
+  if (!payload || typeof payload !== 'object') return false
+  const path = SLOT_PATHS[slot] || []
+  let cur = payload
+  for (const k of path) {
+    if (!cur || typeof cur !== 'object' || !(k in cur)) return false
+    cur = cur[k]
+  }
+  return slot === 'calc'
+    ? cur !== null && typeof cur === 'object' && !Array.isArray(cur)
+    : Array.isArray(cur)
+}
+
 export function revOf(payload, slot) {
   const n = Number(payload?._rev?.[slot]?.rev)
   return Number.isFinite(n) && n >= 0 ? n : 0

@@ -2,7 +2,7 @@
 
 import { reactive } from 'vue'
 
-import { SLOT_KEYS, slotValue, normalizeRev, computeSlotPlan, buildMerged, revOf } from './cloudSlotPlan'
+import { SLOT_KEYS, slotValue, normalizeRev, computeSlotPlan, buildMerged, revOf, hasUsableSlotValue } from './cloudSlotPlan'
 
 import {
   downloadJsonBackup,
@@ -330,7 +330,7 @@ function hasCloudSyncConfig() {
   )
 }
 
-export async function performSyncDecision({ reason = 'auto', force = false, silent = false } = {}) {
+export async function performSyncDecision({ reason = 'auto', force = false, silent = false, pull = false } = {}) {
   if (suppressCloudSync) return null
   if (!state.cloudSettings.enabled && !force) return null
   if (!hasCloudSyncConfig()) return null
@@ -344,9 +344,12 @@ export async function performSyncDecision({ reason = 'auto', force = false, sile
     const cloudPayload = cloudResult?.payload
     const cloudUpdatedAt = cloudResult?.updatedAt || ''
 
-    // 2. 云端无行 → 上传本地初始化（含 _rev 印章）
+    // 2. 云端无行 → 上传本地初始化（含 _rev 印章），并在上传后建立槽位基线
     if (!cloudPayload && !cloudResult?.row) {
       const result = await cloudSyncHandler(exportData(), { reason })
+      for (const slot of SLOT_KEYS) {
+        state.cloudStatus.cloudRev[slot] = revOf(exportData(), slot)
+      }
       setCloudStatusPatch({ syncing: false, connected: true, lastSyncAt: result?.updatedAt || new Date().toISOString(), lastSyncError: '' })
       saveUiStateToLocalStorage()
       addOperationLog('cloud_sync', force ? '手动同步：云端无数据，已上传本地完成初始化' : '首次启动：无云端数据，本地数据保持不变', { reason })
@@ -386,13 +389,16 @@ export async function performSyncDecision({ reason = 'auto', force = false, sile
       return { updatedAt: cloudUpdatedAt, row: cloudPayload }
     }
 
-    // 6. 需用户决策的槽位（adopt-cloud / conflict）
+    // 6. 需用户决策的槽位（adopt-cloud / conflict；pull 模式额外并入 upload 槽，默认偏云端）
+    const decisionSlots = pull
+      ? SLOT_KEYS.filter((s) => plan[s] === 'adopt-cloud' || plan[s] === 'conflict' || plan[s] === 'upload')
+      : [...adoptSlots, ...conflictSlots]
     let decisions = {}
     let copies = []
-    if (adoptSlots.length > 0 || conflictSlots.length > 0) {
+    if (decisionSlots.length > 0) {
       if (typeof cloudConflictHandler === 'function') {
         const userChoice = await cloudConflictHandler('slot-conflict', {
-          plan, localPayload, cloudPayload, cloudUpdatedAt, localModifiedAt: getLocalModifiedAt(),
+          plan, localPayload, cloudPayload, cloudUpdatedAt, localModifiedAt: getLocalModifiedAt(), decisionSlots,
         })
         if (!userChoice) {
           // 用户取消：本地不动、不上传、不覆盖云端任何槽位（与 silent 同级，整轮跳过）
@@ -407,26 +413,40 @@ export async function performSyncDecision({ reason = 'auto', force = false, sile
         decisions = {}
       }
     }
+    if (pull) {
+      // 拉取默认偏云端：upload 槽未显式决策时采纳云端
+      for (const s of uploadSlots) if (!(s in decisions)) decisions[s] = 'cloud'
+    }
 
-    // 7. 合并（upload 槽走本地；adopt 默认云端、conflict 默认本地，决策可覆盖）
+    // 7. I1 逐槽守卫：采纳云端内容前校验 cloud 槽位存在且类型正确，缺失/错型 → 该槽回退本地
+    for (const slot of SLOT_KEYS) {
+      const wantsCloud = decisions[slot] === 'cloud' || (plan[slot] === 'adopt-cloud' && decisions[slot] !== 'local')
+      if (!wantsCloud) continue
+      if (!hasUsableSlotValue(cloudPayload, slot)) {
+        decisions[slot] = 'local'
+        addOperationLog('cloud_sync', '云端槽位损坏/缺失，已回退本地', { slot })
+      }
+    }
+
+    // 8. 合并 + 有采纳云端内容 → 应用合并结果到本地（loadData 恢复 merged._rev）
     const merged = buildMerged(localPayload, cloudPayload, plan, decisions)
-
-    // 8. 有采纳云端内容 → 应用合并结果到本地（loadData 恢复 merged._rev）
-    const adoptToLocal = !silent && adoptSlots.some((s) => decisions[s] !== 'local')
-    const conflictToCloud = !silent && conflictSlots.some((s) => decisions[s] === 'cloud')
+    const adoptToLocal = adoptSlots.some((s) => decisions[s] !== 'local') || (pull && uploadSlots.some((s) => decisions[s] === 'cloud'))
+    const conflictToCloud = conflictSlots.some((s) => decisions[s] === 'cloud')
     if (adoptToLocal || conflictToCloud) {
       const applied = await applyCloudPayload(merged, { trackHistory: force, sourceUpdatedAt: cloudUpdatedAt })
       if (!applied) {
         addOperationLog('cloud_sync', '云端载荷损坏/缺失，已拒绝应用，保留本地', { adoptSlots, conflictSlots, cloudUpdatedAt })
         setCloudStatusPatch({ syncing: false, connected: false, lastSyncError: '云端数据不完整，已拒绝应用' })
+        saveUiStateToLocalStorage()
         return { updatedAt: getLocalModifiedAt(), row: cloudPayload }
       }
       setCloudLoadSuccess?.(cloudUpdatedAt)
     }
 
-    // 9. 需上传（有本地获胜槽位，或云端缺 _rev 需印章一次性自愈）
+    // 9. 需上传（有本地获胜槽位，或云端缺 _rev 需印章一次性自愈；pull 已采纳云端的槽不重复上传）
     let result = null
-    const mustUpload = uploadSlots.length > 0 || !hasRevEqual(merged, cloudPayload)
+    const localWinUploadSlots = pull ? uploadSlots.filter((s) => decisions[s] !== 'cloud') : uploadSlots
+    const mustUpload = localWinUploadSlots.length > 0 || !hasRevEqual(merged, cloudPayload)
     if (mustUpload) {
       result = await cloudSyncHandler(merged, { reason: 'sync' })
       setLocalModifiedAt(result?.updatedAt || cloudUpdatedAt)
@@ -880,6 +900,12 @@ export async function runCloudSyncCheck() {
 export async function runStartupSync() {
   clearCloudSyncTimer()
   return performSyncDecision({ reason: 'startup' })
+}
+
+/** 拉取云端：pull 模式，upload 槽也并入决策、默认偏云端（拉取 = 从云端优先采纳） */
+export async function runPullSync() {
+  clearCloudSyncTimer()
+  return performSyncDecision({ reason: 'pull', pull: true })
 }
 
 export function undoLastChange() {

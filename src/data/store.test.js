@@ -14,6 +14,7 @@ import {
   registerCloudConflictHandler,
   registerCloudSyncHandler,
   runCloudSyncCheck,
+  runPullSync,
   saveToLocalStorage,
   saveUiStateToLocalStorage,
   stableSerialize,
@@ -226,6 +227,7 @@ describe('cloudRev 持久化', () => {
 })
 
 describe('手动同步(force) 智能比对', () => {
+  const FULL_CALC = { debt: 0, wechat: 0, publicExp: 0, unconfirmed: 0, fund: 0, forwarderBalance: 0, watchBalance: 0 }
   const CLOUD_PAYLOAD = {
     items: [{ id: 1, sid: 'JP-1', name: '云端商品', cost: 100, status: 'inventory' }],
     calc: { debt: 0, wechat: 0 },
@@ -302,7 +304,7 @@ describe('手动同步(force) 智能比对', () => {
     let conflictCalled = false
     registerCloudConflictHandler(async () => {
       conflictCalled = true
-      return 'cancel'
+      return null
     })
 
     await syncToCloudNow()
@@ -401,5 +403,109 @@ describe('手动同步(force) 智能比对', () => {
 
     expect(state.cloudStatus.connected).toBe(true)
     expect(state.cloudStatus.lastCloudLoadError).toBe('')
+  })
+
+  it('云端为空初始化上传成功后建立 cloudRev 基线（M12）', async () => {
+    loadData({ items: [{ id: 1, name: '本地商品', cost: 5 }], _rev: { items: { rev: 4, at: '' } } })
+    const env = setupCloudEnv({ cloudPayload: null, cloudRow: null })
+
+    await syncToCloudNow()
+
+    expect(env.calls.map((c) => c.reason)).toEqual(['pre-check', 'manual'])
+    expect(state.cloudStatus.cloudRev.items).toBe(4)
+    expect(state.cloudStatus.cloudRev.calc).toBe(0)
+  })
+
+  it('云端 adopt 槽值缺失/错型 → 该槽回退本地并记录日志，其余采纳槽正常（I1）', async () => {
+    loadData({
+      items: [{ id: 1, name: 'local' }],
+      calc: FULL_CALC,
+      _rev: { items: { rev: 2, at: '' } },
+    })
+    const env = setupCloudEnv({
+      cloudPayload: {
+        ...CLOUD_PAYLOAD,
+        items: [{ id: 1, sid: 'JP-1', name: 'cloud', cost: 100, status: 'inventory' }],
+        calc: 'not-an-object',
+        _rev: { items: { rev: 5, at: '' }, calc: { rev: 3, at: '' } },
+      },
+    })
+    state.cloudStatus.cloudRev = { items: 1, calc: 1 }
+    registerCloudConflictHandler(async () => ({
+      decisions: { items: 'cloud', calc: 'cloud' },
+      copies: [],
+    }))
+
+    await runCloudSyncCheck()
+
+    expect(state.items[0].name).toBe('cloud') // items 正常采纳云端
+    expect(state.calc).toEqual(FULL_CALC) // calc 错型回退本地
+    expect(state.operationLogs.some((l) => l.type === 'cloud_sync' && l.message.includes('云端槽位损坏'))).toBe(true)
+  })
+
+  it('pull 模式下本地较新(upload)槽也需决策：选云端则采纳云端、不上传本地（I2）', async () => {
+    loadData({
+      items: [{ id: 1, name: 'local' }],
+      calc: FULL_CALC,
+      _rev: { items: { rev: 3, at: '' } },
+    })
+    const env = setupCloudEnv({
+      cloudPayload: {
+        ...CLOUD_PAYLOAD,
+        items: [{ id: 1, name: 'cloud' }],
+        calc: FULL_CALC,
+        _rev: { items: { rev: 2, at: '' } },
+      },
+    })
+    state.cloudStatus.cloudRev = { items: 2 }
+    let decisionSlots = null
+    registerCloudConflictHandler(async (type, data) => {
+      decisionSlots = data.decisionSlots
+      return { decisions: { items: 'cloud' }, copies: [] }
+    })
+
+    await runPullSync()
+
+    expect(decisionSlots).toContain('items')
+    expect(state.items[0].name).toBe('cloud')
+    expect(env.calls.filter((c) => c.reason === 'sync')).toHaveLength(0) // 不上传本地
+  })
+
+  it('pull 模式下 handler 未决策的 upload 槽默认偏云端（I2）', async () => {
+    loadData({
+      items: [{ id: 1, name: 'local' }],
+      calc: FULL_CALC,
+      _rev: { items: { rev: 3, at: '' } },
+    })
+    const env = setupCloudEnv({
+      cloudPayload: {
+        ...CLOUD_PAYLOAD,
+        items: [{ id: 1, name: 'cloud' }],
+        calc: FULL_CALC,
+        _rev: { items: { rev: 2, at: '' } },
+      },
+    })
+    state.cloudStatus.cloudRev = { items: 2 }
+    registerCloudConflictHandler(async () => ({ decisions: {}, copies: [] }))
+
+    await runPullSync()
+
+    expect(state.items[0].name).toBe('cloud') // 未显式决策 → 默认采纳云端
+  })
+
+  it('apply 失败分支持久化 cloudStatus（M7）', async () => {
+    setupCloudEnv()
+    registerCloudApplyHandler(async () => false)
+    registerCloudConflictHandler(async () => ({ decisions: { items: 'cloud' }, copies: [] }))
+
+    await runCloudSyncCheck()
+
+    expect(state.cloudStatus.connected).toBe(false)
+    expect(state.cloudStatus.lastSyncError).toContain('拒绝')
+    state.cloudStatus.connected = true
+    state.cloudStatus.lastSyncError = ''
+    loadUiStateFromLocalStorage()
+    expect(state.cloudStatus.connected).toBe(false)
+    expect(state.cloudStatus.lastSyncError).toContain('拒绝')
   })
 })

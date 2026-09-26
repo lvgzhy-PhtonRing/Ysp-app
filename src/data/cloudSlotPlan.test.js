@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   SLOT_KEYS, SLOT_LABELS, slotValue, setSlotValue, revOf, normalizeRev,
-  computeSlotPlan, buildMerged,
+  computeSlotPlan, buildMerged, hasUsableSlotValue,
 } from './cloudSlotPlan'
 
 const ser = (v) => JSON.stringify(v)
@@ -100,5 +100,26 @@ describe('buildMerged', () => {
     const merged = buildMerged(L, C, plan, { transfers: 'local' })
     expect(merged.transfers).toEqual([])
     expect(merged._rev.transfers.rev).toBe(1)
+  })
+})
+
+describe('hasUsableSlotValue', () => {
+  it('缺失或路径中断 → false', () => {
+    expect(hasUsableSlotValue({}, 'items')).toBe(false)
+    expect(hasUsableSlotValue({}, 'calc')).toBe(false)
+    expect(hasUsableSlotValue({ items: [] }, 'finance.records')).toBe(false)
+    expect(hasUsableSlotValue(null, 'items')).toBe(false)
+  })
+  it('数组槽存在 → true，错型(对象) → false', () => {
+    expect(hasUsableSlotValue({ items: [{ id: 1 }] }, 'items')).toBe(true)
+    expect(hasUsableSlotValue({ items: [] }, 'items')).toBe(true)
+    expect(hasUsableSlotValue({ finance: { records: [1] } }, 'finance.records')).toBe(true)
+    expect(hasUsableSlotValue({ items: {} }, 'items')).toBe(false)
+  })
+  it('calc 槽对象存在 → true，错型 → false', () => {
+    expect(hasUsableSlotValue({ calc: { debt: 0 } }, 'calc')).toBe(true)
+    expect(hasUsableSlotValue({ calc: {} }, 'calc')).toBe(true)
+    expect(hasUsableSlotValue({ calc: [] }, 'calc')).toBe(false)
+    expect(hasUsableSlotValue({ calc: 'x' }, 'calc')).toBe(false)
   })
 })

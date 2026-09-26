@@ -30,6 +30,7 @@ import {
   registerCloudSyncHandler,
   resetCloudUnhealthyWarning,
   runCloudSyncCheck,
+  runPullSync,
   runStartupSync,
   saveToLocalStorage,
   setCloudLoadError,
@@ -222,10 +223,8 @@ function formatConflictTime(t) {
 
 /**
  * 冲突决策模态框（字段级差异展示）。
- * 由 store.js runCloudSync 通过 registerCloudConflictHandler 调用，也可在 loadCloudOnStartup 中直接调用。
- * @param {'upload-local'|'manual-sync'|'recovery'} type - 冲突类型
- * @param {object} data - { diff, warn, cloudUpdatedAt, localModifiedAt }
- * @returns {Promise<'upload'|'use-cloud'|'keep-local'|'cancel'>}
+ * 由 store.js performSyncDecision 通过 registerCloudConflictHandler 调用；
+ * 统一以 'slot-conflict' 逐槽位决策，旧式整包冲突弹窗保留兼容。
  */
 async function askCloudConflict(type, data = {}) {
   if (type === 'slot-conflict') return askSlotConflict(data)
@@ -256,11 +255,14 @@ async function askCloudConflict(type, data = {}) {
 }
 
 async function askSlotConflict(data) {
-  const { plan, localPayload, cloudPayload, cloudUpdatedAt, localModifiedAt } = data
-  const slots = Object.keys(plan).filter((s) => plan[s] === 'adopt-cloud' || plan[s] === 'conflict')
+  slotChoice.value = {}
+  const { plan, localPayload, cloudPayload, cloudUpdatedAt, localModifiedAt, decisionSlots } = data
+  const slots = Array.isArray(decisionSlots)
+    ? decisionSlots
+    : Object.keys(plan).filter((s) => plan[s] === 'adopt-cloud' || plan[s] === 'conflict')
   const diff = computeConflictDiff(localPayload, cloudPayload)
   const rows = slots.map((slot) => {
-    const entries = diff.entries.filter((e) => e.collectionLabel === SLOT_LABELS[slot] || (slot === 'calc' && e.collectionLabel === '财务结算'))
+    const entries = diff.entries.filter((e) => e.collectionLabel === SLOT_LABELS[slot])
     return { slot, label: SLOT_LABELS[slot] || slot, action: plan[slot], entries, defaultLocal: primaryConflictAction('manual-sync', localModifiedAt, cloudUpdatedAt) === 'upload' }
   })
   slotConflictInfo.value = { rows, plan, localPayload, cloudPayload, localAt: localModifiedAt, cloudAt: cloudUpdatedAt }
@@ -308,6 +310,7 @@ function resolveSlotConflict() {
       )
     }
   }
+  slotChoice.value = {}
   slotConflictResolver?.({ decisions, copies })
   slotConflictResolver = null
   slotConflict.value = false
@@ -572,10 +575,10 @@ async function pullFromCloud() {
   if (!isCloudConfigReady(store.cloudSettings)) { alert('请先配置云端参数'); return }
   cloudBusy.value = true
   try {
-    const result = await runStartupSync() // 复用引擎：adopt/conflict 槽位会弹窗，用户选云端即整包拉取
+    const result = await runPullSync() // pull 模式：upload 槽也并入决策、默认偏云端采纳
     setCloudLoadSuccess(result?.updatedAt || '')
     addOperationLog('cloud_pull', '从云端加载数据成功', { updatedAt: result?.updatedAt })
-    alert('已从云端加载最新数据')
+    alert('已从云端同步')
   } catch (err) {
     setCloudLoadError(err.message)
     alert(`从云端加载失败: ${err.message}`)
@@ -790,7 +793,7 @@ function periodicCloudCheck() {
     })
   } else if (store.cloudStatus.connected) {
     // 无未同步操作，但云端已连接 → 轻量检查云端是否有新数据
-    // 仅查询 updated_at 字段，若云端比本地 lastSyncAt 新则触发 runCloudSync
+    // 仅查询 updated_at 字段，若云端比本地 lastSyncAt 新则触发 runCloudSyncCheck
     fetchCloudState(store.cloudSettings, {
       session: store.cloudSession,
       onSession: (session) => setCloudSession(session),
@@ -982,7 +985,7 @@ watch(
 
     <GlassModal v-model="slotConflict" panel-class="w-full max-w-lg p-6 relative max-h-[80vh] overflow-y-auto" :close-on-overlay="false">
       <div class="mb-1 text-xl font-bold">检测到槽位冲突</div>
-      <p class="mb-3 text-xs text-gray-500">以下集合本地与云端都修改过，请逐项选择保留哪一侧（「都留」会先把云端一侧存为本地副本 JSON）。未冲突集合已自动合并。</p>
+      <p class="mb-3 text-xs text-gray-500">以下集合本地与云端存在分歧，请逐项选择保留哪一侧（「都留」会先把云端一侧存为本地副本 JSON）。未冲突集合已自动合并。</p>
       <div v-for="row in slotConflictInfo.rows" :key="row.slot" class="mb-3 rounded-lg border border-gray-200 p-3">
         <div class="flex items-center justify-between">
           <span class="font-semibold">{{ row.label }}</span>
