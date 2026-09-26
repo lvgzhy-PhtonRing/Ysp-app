@@ -217,33 +217,22 @@ const longTermBrandOptions = computed(() => {
 })
 
 const longTermBatchOptions = computed(() => {
-  if (!longTermForm.category || !longTermForm.brand) return []
-  return Array.from(
-    new Set(
-      store.items
-        .filter(
-          (i) =>
-            i.status === 'inventory' &&
-            i.category === longTermForm.category &&
-            i.brand === longTermForm.brand,
-        )
-        .map((i) => i.batch)
-        .filter(Boolean),
-    ),
-  )
+  if (!longTermForm.category) return []
+  const inCat = store.items.filter((i) => i.status === 'inventory' && i.category === longTermForm.category)
+  const inScope = longTermForm.brand ? inCat.filter((i) => i.brand === longTermForm.brand) : inCat
+  return Array.from(new Set(inScope.map((i) => i.batch).filter(Boolean)))
 })
 
 const longTermSidItems = computed(() => {
-  if (!longTermForm.category || !longTermForm.brand || !longTermForm.batch) return []
+  if (!longTermForm.category) return []
   const grouped = new Map()
   store.items
-    .filter(
-      (i) =>
-        i.status === 'inventory' &&
-        i.category === longTermForm.category &&
-        i.brand === longTermForm.brand &&
-        i.batch === longTermForm.batch,
-    )
+    .filter((i) => {
+      if (i.status !== 'inventory' || i.category !== longTermForm.category) return false
+      if (longTermForm.brand && i.brand !== longTermForm.brand) return false
+      if (longTermForm.batch && i.batch !== longTermForm.batch) return false
+      return true
+    })
     .forEach((i) => {
       const key = i.sid || String(i.id)
       if (!grouped.has(key)) {
@@ -283,7 +272,10 @@ watch(
 watch(
   () => longTermForm.brand,
   () => {
-    longTermForm.batch = ''
+    // 品牌变化：已选批次若不在该品牌下则清空，避免空交集
+    if (longTermForm.batch && !longTermBatchOptions.value.includes(longTermForm.batch)) {
+      longTermForm.batch = ''
+    }
     longTermForm.selectedSids = []
   },
 )
@@ -505,8 +497,8 @@ function canUnlist(item) {
 }
 
 function submitLongTermMark() {
-  if (!longTermForm.category || !longTermForm.brand || !longTermForm.batch) {
-    alert('请先选择大类、品牌和批次')
+  if (!longTermForm.category) {
+    alert('请先选择大类')
     return
   }
   const sidSet = new Set(longTermForm.selectedSids)
@@ -514,8 +506,8 @@ function submitLongTermMark() {
     (i) =>
       i.status === 'inventory' &&
       i.category === longTermForm.category &&
-      i.brand === longTermForm.brand &&
-      i.batch === longTermForm.batch,
+      (!longTermForm.brand || i.brand === longTermForm.brand) &&
+      (!longTermForm.batch || i.batch === longTermForm.batch),
   )
   // 捕获实际变更 isLongTerm 状态的商品
   const changedItems = target.filter((item) => item.isLongTerm !== sidSet.has(item.sid))
@@ -1149,23 +1141,26 @@ watch(invFilterMode, (val) => {
               </select>
             </div>
             <div>
-              <label class="block text-sm mb-1 text-gray-600">品牌</label>
+              <label class="block text-sm mb-1 text-gray-600">品牌（可选）</label>
               <select v-model="longTermForm.brand" class="apple-select" :disabled="!longTermForm.category">
-                <option value="">请选择</option>
+                <option value="">全部品牌</option>
                 <option v-for="b in longTermBrandOptions" :key="b">{{ b }}</option>
               </select>
             </div>
           </div>
           <div>
-            <label class="block text-sm mb-1 text-gray-600">批次</label>
-            <select v-model="longTermForm.batch" class="apple-select" :disabled="!longTermForm.brand">
-              <option value="">请选择</option>
+            <label class="block text-sm mb-1 text-gray-600">批次（可选）</label>
+            <select v-model="longTermForm.batch" class="apple-select" :disabled="!longTermForm.category">
+              <option value="">全部批次</option>
               <option v-for="b in longTermBatchOptions" :key="b">{{ b }}</option>
             </select>
           </div>
-          <div v-if="longTermForm.category && longTermForm.brand && longTermForm.batch" class="border rounded-lg max-h-60 overflow-y-auto">
-            <div class="text-sm text-gray-600 p-2 bg-gray-50 border-b">选择商品（同一SID商品将一起标记）</div>
-            <div v-if="longTermSidItems.length === 0" class="text-center text-gray-400 py-4">该批次暂无库存商品</div>
+          <div v-if="longTermForm.category && (longTermForm.brand || longTermForm.batch || longTermSidItems.length > 0)" class="border rounded-lg max-h-60 overflow-y-auto">
+            <div class="text-sm text-gray-600 p-2 bg-gray-50 border-b">
+              选择商品（同一SID商品将一起标记）
+              <span class="ml-2 text-xs text-gray-400">{{ longTermForm.brand ? '品牌：' + longTermForm.brand : '全部品牌' }} · {{ longTermForm.batch ? '批次：' + longTermForm.batch : '全部批次' }}</span>
+            </div>
+            <div v-if="longTermSidItems.length === 0" class="text-center text-gray-400 py-4">当前范围暂无库存商品</div>
             <div v-else v-for="group in longTermSidItems" :key="group.sid" class="flex items-center gap-2 p-2 hover:bg-gray-50">
               <input type="checkbox" :value="group.sid" v-model="longTermForm.selectedSids" class="w-4 h-4 text-purple-500" />
               <span class="text-sm">{{ group.name }} <span class="text-xs text-purple-500">x{{ group.qty }}</span> <span class="text-xs text-gray-400">¥{{ fmtNum(group.cost) }}/件</span></span>
