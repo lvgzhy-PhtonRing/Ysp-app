@@ -48,7 +48,7 @@ import {
   undoLastChange,
   unloadSync,
 } from './data/store'
-import { appendAdoptBefore } from './data/adoptLog'
+import { appendAdoptBefore, latestFullImportSnapshot } from './data/adoptLog'
 import { reconstructAtTime } from './data/logReplay'
 import { finalizeRestorePayload } from './data/restorePayload'
 import {
@@ -175,6 +175,21 @@ function handleRestoreFromHistory() {
   addOperationLog('app_history_restore', `恢复数据到 ${new Date(historyTargetTime.value).toLocaleString()}`, {
     targetTime: historyTargetTime.value,
   })
+  showHistoryRestore.value = false
+}
+
+// 恢复到最近一次导入前：消费 handleImport 落的 __full_import__ 快照。
+// 快照本身是含 _rev 的完整 exportData，但其 rev 反映的是导入前的同步基线，
+// 直接应用可能被 computeSlotPlan 判为 conflict（默认留本地、不上云），
+// 故复用 finalizeRestorePayload 对变更槽位 bump rev，与「恢复到所选时间点」路径一致地强制 upload。
+const fullImportSnapshot = computed(() => latestFullImportSnapshot())
+
+function handleRestoreBeforeImport() {
+  const snapshot = latestFullImportSnapshot()
+  if (!snapshot) return
+  if (!confirm('将当前数据恢复到最近一次导入前（会同步至云端），是否继续？')) return
+  applyCloudDataToStore(finalizeRestorePayload(snapshot, exportData()), { trackHistory: true })
+  addOperationLog('app_history_restore', '恢复到最近导入前状态', { source: '__full_import__' })
   showHistoryRestore.value = false
 }
 
@@ -1430,6 +1445,9 @@ watch(
         </div>
         <button class="btn btn-primary btn-sm mt-3" :disabled="!historyTargetState" @click="handleRestoreFromHistory">
           恢复到所选时间点
+        </button>
+        <button class="btn btn-outline btn-sm mt-3 ml-2" :disabled="!fullImportSnapshot" @click="handleRestoreBeforeImport">
+          恢复到最近一次导入前
         </button>
       </div>
       <div class="flex-1 overflow-y-auto space-y-2 p-4">

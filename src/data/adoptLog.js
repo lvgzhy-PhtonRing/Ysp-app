@@ -63,6 +63,17 @@ export function listAdoptBefore() {
   return readAll()
 }
 
+/**
+ * 取最近一次导入前的完整快照（slot 为 __full_import__）。
+ * @returns {object|null} 完整 exportData payload；无导入前快照时返回 null
+ */
+export function latestFullImportSnapshot() {
+  const snap = readAll()
+    .filter((item) => item && item.slot === '__full_import__' && item.before !== null && item.before !== undefined)
+    .sort((a, b) => new Date(b.time) - new Date(a.time))[0]
+  return snap ? JSON.parse(JSON.stringify(snap.before)) : null
+}
+
 export function pruneAdoptBefore(maxAgeMs = DEFAULT_MAX_AGE_MS) {
   const cutoff = Date.now() - maxAgeMs
   const next = readAll().filter((item) => {

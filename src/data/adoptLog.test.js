@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
-  appendAdoptBefore, getAdoptBeforeById, listAdoptBefore, pruneAdoptBefore, ADOPT_STORAGE_KEY,
+  appendAdoptBefore, getAdoptBeforeById, listAdoptBefore, pruneAdoptBefore, latestFullImportSnapshot, ADOPT_STORAGE_KEY,
 } from './adoptLog'
 
 describe('adoptLog（C 方案）', () => {
@@ -83,5 +83,14 @@ describe('adoptLog（C 方案）', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('latestFullImportSnapshot 返回最新 __full_import__ before，无则 null，非导入记录忽略', () => {
+    expect(latestFullImportSnapshot()).toBeNull()
+    appendAdoptBefore({ slot: 'items', before: [{ id: 'a' }], time: '2026-01-01T00:00:00Z' })
+    expect(latestFullImportSnapshot()).toBeNull()
+    appendAdoptBefore({ slot: '__full_import__', before: { items: [{ id: 'old' }], calc: {} }, time: '2026-01-02T00:00:00Z' })
+    appendAdoptBefore({ slot: '__full_import__', before: { items: [{ id: 'newer' }], calc: {} }, time: '2026-01-03T00:00:00Z' })
+    expect(latestFullImportSnapshot()).toEqual({ items: [{ id: 'newer' }], calc: {} })
   })
 })
