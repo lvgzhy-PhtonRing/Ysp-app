@@ -59,7 +59,7 @@ import {
   signInWithPassword,
   signOutCloudSession,
 } from './services/cloudStore'
-import { downloadJsonBackup } from './services/dataProtection'
+import { shouldWarnBeforeOverwrite, downloadJsonBackup } from './services/dataProtection'
 
 const tabs = [
   { id: 'home', name: '数据透视' },
@@ -268,8 +268,30 @@ async function askSlotConflict(data) {
   const choice = await new Promise((resolve) => { slotConflictResolver = resolve })
   slotConflict.value = false
   if (!choice) return null
-  // 强警告二次确认：选云端的冲突槽若命中 shouldWarnBeforeOverwrite 单项骤减 → 二次确认
-  return { decisions: choice.decisions, copies: choice.copies }
+  const decisions = { ...choice.decisions }
+  const copies = [...(choice.copies || [])]
+  if (Object.values(decisions).includes('cloud')) {
+    const warn = shouldWarnBeforeOverwrite(slotConflictInfo.value.localPayload, slotConflictInfo.value.cloudPayload)
+    if (warn.shouldWarn) {
+      const second = await askOverwriteWarn({
+        reasons: warn.reasons,
+        countLocal: warn.countDiff ?? 0,
+        countCloud: 0,
+        lastSaleLocal: warn.lastSaleLocal ?? '',
+        lastSaleCloud: warn.lastSaleCloud ?? '',
+      })
+      if (second === 'keep') {
+        for (const slot of Object.keys(decisions)) {
+          if (decisions[slot] === 'cloud') {
+            decisions[slot] = 'local'
+            const i = copies.indexOf(slot)
+            if (i >= 0) copies.splice(i, 1)
+          }
+        }
+      }
+    }
+  }
+  return { decisions, copies }
 }
 
 function resolveSlotConflict() {
@@ -287,9 +309,10 @@ function resolveSlotConflict() {
     }
   }
   slotConflictResolver?.({ decisions, copies })
+  slotConflictResolver = null
   slotConflict.value = false
 }
-function cancelSlotConflict() { slotConflictResolver?.(null); slotConflict.value = false; slotChoice.value = {} }
+function cancelSlotConflict() { slotConflictResolver?.(null); slotConflictResolver = null; slotConflict.value = false; slotChoice.value = {} }
 
 function resolveCloudConflict(choice) {
   cloudConflict.value = false
