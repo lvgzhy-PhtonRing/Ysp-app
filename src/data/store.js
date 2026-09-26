@@ -433,7 +433,14 @@ export async function performSyncDecision({ reason = 'auto', force = false, sile
     const adoptToLocal = adoptSlots.some((s) => decisions[s] !== 'local') || (pull && uploadSlots.some((s) => decisions[s] === 'cloud'))
     const conflictToCloud = conflictSlots.some((s) => decisions[s] === 'cloud')
     if (adoptToLocal || conflictToCloud) {
-      const applied = await applyCloudPayload(merged, { trackHistory: force, sourceUpdatedAt: cloudUpdatedAt })
+      const applied = await applyCloudPayload(merged, {
+        trackHistory: force,
+        sourceUpdatedAt: cloudUpdatedAt,
+        decisionSlots: SLOT_KEYS.filter((slot) => {
+          const wantsCloud = decisions[slot] === 'cloud' || (plan[slot] === 'adopt-cloud' && decisions[slot] !== 'local')
+          return wantsCloud
+        }),
+      })
       if (!applied) {
         addOperationLog('cloud_sync', '云端载荷损坏/缺失，已拒绝应用，保留本地', { adoptSlots, conflictSlots, cloudUpdatedAt })
         setCloudStatusPatch({ syncing: false, connected: false, lastSyncError: '云端数据不完整，已拒绝应用' })

@@ -46,6 +46,7 @@ import {
   syncToCloudNow,
   undoLastChange,
 } from './data/store'
+import { appendAdoptBefore } from './data/adoptLog'
 import {
   getLogBrief,
   getLogDetailSections,
@@ -530,6 +531,24 @@ function applyCloudDataToStore(payload = {}, options = {}) {
   for (const [label, value, localCount] of guards) {
     if (cloudFieldMissingGuard(label, value, localCount)) return false
   }
+
+  // C 方案：采纳云端前落档被覆盖槽位（loadData 前抓取）
+  const decisionSlots = Array.isArray(options.decisionSlots) ? options.decisionSlots : []
+  if (decisionSlots.length > 0) {
+    const current = exportData()
+    for (const slot of decisionSlots) {
+      const adoptId = appendAdoptBefore({
+        slot,
+        before: slotValue(current, slot),
+        beforeRev: current?._rev?.[slot]?.rev ?? null,
+        cloudRev: payload?._rev?.[slot]?.rev ?? null,
+      })
+      addOperationLog('cloud_adopt_before', `采纳云端前已备份槽位「${SLOT_LABELS[slot] || slot}」`, {
+        adoptId, slot, beforeRev: current?._rev?.[slot]?.rev ?? null, cloudRev: payload?._rev?.[slot]?.rev ?? null,
+      })
+    }
+  }
+
   const trackHistory = options.trackHistory !== false
 
   setCloudSyncSuppressed(true)
