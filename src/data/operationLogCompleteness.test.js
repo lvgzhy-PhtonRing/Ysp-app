@@ -10,7 +10,7 @@ import {
 import { deleteItem, editItem, submitManualAdd } from '../modules/inventory/useInventory'
 import { addPurchaseItem, deletePurchaseItem, moveToInventory, submitTransfer } from '../modules/purchase/usePurchase'
 import { editSaleRecord, submitSell, unlistItem } from '../modules/sales/useSales'
-import { ADOPT_STORAGE_KEY, appendAdoptBefore } from './adoptLog'
+import { appendAdoptBefore } from './adoptLog'
 import { addOperationLog, clearOperationLogs, clone, loadData, state as store } from './store'
 import {
   LOG_DETAIL_CONTRACT,
