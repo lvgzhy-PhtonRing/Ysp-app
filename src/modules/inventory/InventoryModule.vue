@@ -121,6 +121,7 @@ const invFilterMode = ref('all')
 
 const longTermForm = reactive({
   category: '',
+  brand: '',
   batch: '',
   selectedSids: [],
 })
@@ -203,12 +204,29 @@ const editBatchOptions = computed(() => {
   return Array.from(new Set([...fallback, ...fromData]))
 })
 
-const longTermBatchOptions = computed(() => {
+const longTermBrandOptions = computed(() => {
   if (!longTermForm.category) return []
   return Array.from(
     new Set(
       store.items
         .filter((i) => i.status === 'inventory' && i.category === longTermForm.category)
+        .map((i) => i.brand)
+        .filter(Boolean),
+    ),
+  )
+})
+
+const longTermBatchOptions = computed(() => {
+  if (!longTermForm.category || !longTermForm.brand) return []
+  return Array.from(
+    new Set(
+      store.items
+        .filter(
+          (i) =>
+            i.status === 'inventory' &&
+            i.category === longTermForm.category &&
+            i.brand === longTermForm.brand,
+        )
         .map((i) => i.batch)
         .filter(Boolean),
     ),
@@ -216,13 +234,14 @@ const longTermBatchOptions = computed(() => {
 })
 
 const longTermSidItems = computed(() => {
-  if (!longTermForm.category || !longTermForm.batch) return []
+  if (!longTermForm.category || !longTermForm.brand || !longTermForm.batch) return []
   const grouped = new Map()
   store.items
     .filter(
       (i) =>
         i.status === 'inventory' &&
         i.category === longTermForm.category &&
+        i.brand === longTermForm.brand &&
         i.batch === longTermForm.batch,
     )
     .forEach((i) => {
@@ -254,6 +273,15 @@ watch(
 
 watch(
   () => longTermForm.category,
+  () => {
+    longTermForm.brand = ''
+    longTermForm.batch = ''
+    longTermForm.selectedSids = []
+  },
+)
+
+watch(
+  () => longTermForm.brand,
   () => {
     longTermForm.batch = ''
     longTermForm.selectedSids = []
@@ -454,6 +482,7 @@ function collapseAllGroups() {
 
 function openLongTermModal() {
   longTermForm.category = ''
+  longTermForm.brand = ''
   longTermForm.batch = ''
   longTermForm.selectedSids = []
   showLongTermModal.value = true
@@ -476,13 +505,17 @@ function canUnlist(item) {
 }
 
 function submitLongTermMark() {
-  if (!longTermForm.category || !longTermForm.batch) {
-    alert('请先选择大类和批次')
+  if (!longTermForm.category || !longTermForm.brand || !longTermForm.batch) {
+    alert('请先选择大类、品牌和批次')
     return
   }
   const sidSet = new Set(longTermForm.selectedSids)
   const target = store.items.filter(
-    (i) => i.status === 'inventory' && i.category === longTermForm.category && i.batch === longTermForm.batch,
+    (i) =>
+      i.status === 'inventory' &&
+      i.category === longTermForm.category &&
+      i.brand === longTermForm.brand &&
+      i.batch === longTermForm.batch,
   )
   // 捕获实际变更 isLongTerm 状态的商品
   const changedItems = target.filter((item) => item.isLongTerm !== sidSet.has(item.sid))
@@ -493,6 +526,7 @@ function submitLongTermMark() {
   saveToLocalStorage()
   addOperationLog('inventory_long_term', `长线库存`, {
     category: longTermForm.category,
+    brand: longTermForm.brand,
     batch: longTermForm.batch,
     count: longTermForm.selectedSids.length,
     itemNames: changedNames,
@@ -1115,14 +1149,21 @@ watch(invFilterMode, (val) => {
               </select>
             </div>
             <div>
-              <label class="block text-sm mb-1 text-gray-600">批次</label>
-              <select v-model="longTermForm.batch" class="apple-select" :disabled="!longTermForm.category">
+              <label class="block text-sm mb-1 text-gray-600">品牌</label>
+              <select v-model="longTermForm.brand" class="apple-select" :disabled="!longTermForm.category">
                 <option value="">请选择</option>
-                <option v-for="b in longTermBatchOptions" :key="b">{{ b }}</option>
+                <option v-for="b in longTermBrandOptions" :key="b">{{ b }}</option>
               </select>
             </div>
           </div>
-          <div v-if="longTermForm.category && longTermForm.batch" class="border rounded-lg max-h-60 overflow-y-auto">
+          <div>
+            <label class="block text-sm mb-1 text-gray-600">批次</label>
+            <select v-model="longTermForm.batch" class="apple-select" :disabled="!longTermForm.brand">
+              <option value="">请选择</option>
+              <option v-for="b in longTermBatchOptions" :key="b">{{ b }}</option>
+            </select>
+          </div>
+          <div v-if="longTermForm.category && longTermForm.brand && longTermForm.batch" class="border rounded-lg max-h-60 overflow-y-auto">
             <div class="text-sm text-gray-600 p-2 bg-gray-50 border-b">选择商品（同一SID商品将一起标记）</div>
             <div v-if="longTermSidItems.length === 0" class="text-center text-gray-400 py-4">该批次暂无库存商品</div>
             <div v-else v-for="group in longTermSidItems" :key="group.sid" class="flex items-center gap-2 p-2 hover:bg-gray-50">
