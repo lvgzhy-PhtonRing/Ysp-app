@@ -537,15 +537,18 @@ function applyCloudDataToStore(payload = {}, options = {}) {
   if (decisionSlots.length > 0) {
     const current = exportData()
     for (const slot of decisionSlots) {
-      const adoptId = appendAdoptBefore({
+      const snap = appendAdoptBefore({
         slot,
         before: slotValue(current, slot),
         beforeRev: current?._rev?.[slot]?.rev ?? null,
         cloudRev: payload?._rev?.[slot]?.rev ?? null,
       })
-      addOperationLog('cloud_adopt_before', `采纳云端前已备份槽位「${SLOT_LABELS[slot] || slot}」`, {
-        adoptId, slot, beforeRev: current?._rev?.[slot]?.rev ?? null, cloudRev: payload?._rev?.[slot]?.rev ?? null,
-      })
+      const detail = { adoptId: snap.adoptId, slot, beforeRev: current?._rev?.[slot]?.rev ?? null, cloudRev: payload?._rev?.[slot]?.rev ?? null }
+      if (snap.persisted) {
+        addOperationLog('cloud_adopt_before', `采纳云端前已备份槽位「${SLOT_LABELS[slot] || slot}」`, detail)
+      } else {
+        addOperationLog('cloud_adopt_before', `采纳云端前备份失败（存储已满），槽位「${SLOT_LABELS[slot] || slot}」无法回溯`, detail)
+      }
     }
   }
 

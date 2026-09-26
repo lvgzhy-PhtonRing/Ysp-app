@@ -18,8 +18,10 @@ function readAll() {
 function writeAll(adopts) {
   try {
     localStorage.setItem(ADOPT_STORAGE_KEY, JSON.stringify({ adopts }))
+    return true
   } catch (_) {
     // localStorage 满：放弃本次写入，不影响业务采纳逻辑
+    return false
   }
 }
 
@@ -30,7 +32,7 @@ function nowIso(fallbackTime) {
 
 /**
  * 落一条采纳前快照。
- * @returns {string} adoptId（生成失败/写入失败仍返回 id 用于日志关联）
+ * @returns {{ adoptId: string, persisted: boolean }} adoptId 用于日志关联；persisted 标记是否成功持久化
  */
 export function appendAdoptBefore({ slot = '', before = null, beforeRev = null, cloudRev = null, time = '' }) {
   const adopt = {
@@ -45,10 +47,10 @@ export function appendAdoptBefore({ slot = '', before = null, beforeRev = null, 
   for (const item of current) {
     if (!item || !item.adoptId) continue
     // 去重：同 slot 同 time 视为重复落档，跳过
-    if (item.slot === adopt.slot && item.time === adopt.time) return item.adoptId
+    if (item.slot === adopt.slot && item.time === adopt.time) return { adoptId: item.adoptId, persisted: true }
   }
-  writeAll([adopt, ...current])
-  return adopt.adoptId
+  const persisted = writeAll([adopt, ...current])
+  return { adoptId: adopt.adoptId, persisted }
 }
 
 export function getAdoptBeforeById(adoptId) {
