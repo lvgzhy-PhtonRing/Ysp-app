@@ -9,6 +9,7 @@ import {
   loadData,
   loadUiStateFromLocalStorage,
   markCloudConnected,
+  performSyncDecision,
   registerCloudApplyHandler,
   registerCloudConflictHandler,
   registerCloudSyncHandler,
@@ -282,16 +283,16 @@ describe('手动同步(force) 智能比对', () => {
     loadData({})
     const env = setupCloudEnv()
     let conflictType = ''
-    registerCloudConflictHandler(async (type) => {
+    registerCloudConflictHandler(async (type, data) => {
       conflictType = type
-      return 'cancel'
+      return null // null = 用户取消，整轮跳过
     })
 
     await syncToCloudNow()
 
     // 只发生了一次 pre-check(只读)，绝无第二次上传调用
     expect(env.calls.map((c) => c.reason)).toEqual(['pre-check'])
-    expect(conflictType).toBe('manual-sync')
+    expect(conflictType).toBe('slot-conflict')
     expect(state.items.length).toBe(0) // 本地保持未被云端覆盖
   })
 
@@ -314,11 +315,18 @@ describe('手动同步(force) 智能比对', () => {
   it('云端较新且不同、用户选择 use-cloud 时，应用云端数据覆盖本地', async () => {
     loadData({})
     const env = setupCloudEnv()
-    registerCloudConflictHandler(async () => 'use-cloud')
+    registerCloudConflictHandler(async (type, data) => ({
+      decisions: Object.fromEntries(
+        Object.keys(data.plan)
+          .filter((s) => data.plan[s] === 'adopt-cloud' || data.plan[s] === 'conflict')
+          .map((s) => [s, 'cloud']),
+      ),
+      copies: [],
+    }))
 
     await syncToCloudNow()
 
-    expect(env.calls.map((c) => c.reason)).toEqual(['pre-check'])
+    expect(env.calls.map((c) => c.reason)).toEqual(['pre-check', 'sync'])
     expect(state.items).toEqual(CLOUD_PAYLOAD.items)
   })
 
@@ -334,6 +342,49 @@ describe('手动同步(force) 智能比对', () => {
     vi.advanceTimersByTime(9000)
     expect(env.calls.length).toBe(callsBefore)
     vi.useRealTimers()
+  })
+
+  it('双方都改 items → 弹窗仅列 conflict 槽，用户选云端则采纳该槽', async () => {
+    loadData({
+      items: [{ id: 1, name: 'local' }],
+      calc: {},
+      _rev: { items: { rev: 2, at: '' }, calc: { rev: 1, at: '' } },
+    })
+    const env = setupCloudEnv({
+      cloudPayload: {
+        ...CLOUD_PAYLOAD,
+        items: [{ id: 1, sid: 'JP-1', name: 'cloud', cost: 100, status: 'inventory' }],
+        _rev: { items: { rev: 5, at: '' } },
+      },
+    })
+    state.cloudStatus.cloudRev = { items: 1 }
+    let conflictSlots = null
+    registerCloudConflictHandler(async (type, data) => {
+      conflictSlots = Object.keys(data.plan).filter((s) => data.plan[s] === 'conflict')
+      return { decisions: { items: 'cloud' }, copies: [] }
+    })
+
+    await runCloudSyncCheck()
+
+    expect(conflictSlots).toEqual(['items'])
+    expect(state.items[0].name).toBe('cloud')
+    const upload = env.calls.find((c) => c.reason === 'sync')?.payload
+    expect(upload.items[0].name).toBe('cloud')
+    expect(state.cloudStatus.cloudRev.items).toBe(5)
+  })
+
+  it('silent 遇 adopt/conflict 槽 → 整轮跳过不上传', async () => {
+    loadData({ items: [{ id: 1, name: 'local' }], _rev: { items: { rev: 2, at: '' } } })
+    const env = setupCloudEnv({
+      cloudPayload: {
+        ...CLOUD_PAYLOAD,
+        items: [{ id: 1, sid: 'JP-1', name: 'cloud', cost: 100, status: 'inventory' }],
+        _rev: { items: { rev: 5, at: '' } },
+      },
+    })
+    state.cloudStatus.cloudRev = { items: 1 }
+    await performSyncDecision?.({ reason: 'debounced', silent: true })
+    expect(env.calls.filter((c) => c.reason !== 'pre-check')).toHaveLength(0)
   })
 
   it('markCloudConnected 置 connected 为 true 并清除 lastCloudLoadError', () => {

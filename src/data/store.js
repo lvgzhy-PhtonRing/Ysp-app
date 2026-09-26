@@ -2,12 +2,11 @@
 
 import { reactive } from 'vue'
 
-import { SLOT_KEYS, slotValue, normalizeRev } from './cloudSlotPlan'
+import { SLOT_KEYS, slotValue, normalizeRev, computeSlotPlan, buildMerged, revOf } from './cloudSlotPlan'
 
 import {
   downloadJsonBackup,
   isBackupDue,
-  shouldWarnBeforeOverwrite as protectionWarn,
 } from '../services/dataProtection'
 
 const APP_VERSION = '3.12.10'
@@ -43,7 +42,7 @@ const DEFAULT_CLOUD_STATUS = {
   lastCloudLoadAt: '',
   lastCloudLoadError: '',
   lastAutoSyncAt: 0, // 上一次自动同步时间戳
-  cloudRev: {}, // 同步基线槽位版本：{ slot: { rev, at } }，随 cloudStatus 持久化
+  cloudRev: {}, // 同步基线槽位版本：{ slot: number }，随 cloudStatus 持久化
 }
 
 // === 新增：启动时的云端数据比对阈值（毫秒）===
@@ -82,12 +81,6 @@ function fmtBrief(v) {
     return '{' + keys.slice(0, 3).join(',') + (keys.length > 3 ? '...' : '') + '}'
   }
   return String(v).slice(0, 20)
-}
-
-/** 转换 ISO 字符串或时间对象为时间戳（毫秒） */
-function tsToEpoch(t) {
-  const n = t ? new Date(t).getTime() : 0
-  return Number.isFinite(n) ? n : 0
 }
 
 /**
@@ -216,13 +209,6 @@ export function needsAutoSyncOnStart() {
   return now - lastSync > CLOUD_SYNC_COMPARE_THRESHOLD_MS
 }
 
-export function isLocalDataNewerThanCloud(cloudUpdatedAt = '') {
-  // 比较本地数据最后修改时间 vs 云端 updatedAt
-  const localTs = tsToEpoch(getLocalModifiedAt())
-  const cloudTs = tsToEpoch(cloudUpdatedAt)
-  return localTs > cloudTs
-}
-
 export function resetCloudUnhealthyWarning() {
   _cloudUnhealthyWarned = false
 }
@@ -344,259 +330,127 @@ function hasCloudSyncConfig() {
   )
 }
 
-async function runCloudSync({ reason = 'auto', force = false } = {}) {
+export async function performSyncDecision({ reason = 'auto', force = false, silent = false } = {}) {
   if (suppressCloudSync) return null
   if (!state.cloudSettings.enabled && !force) return null
   if (!hasCloudSyncConfig()) return null
   if (typeof cloudSyncHandler !== 'function') return null
+  if (state.cloudStatus.syncing) return null // 重入锁
 
-  // === 手动同步（force）：先比对云端，存在差异时交由用户决策，避免无条件覆盖 ===
-  if (force) {
-    setCloudStatusPatch({
-      syncing: true,
-      lastSyncError: '',
-    })
-    try {
-      // 先拉取云端做比对，而不是直接上传覆盖（reason 必须为 pre-check 才会走只读拉取）
-      const cloudResult = await cloudSyncHandler(exportData(), { reason: 'pre-check' })
-      const cloudPayload = cloudResult?.payload
-      const cloudUpdatedAt = cloudResult?.updatedAt || ''
-
-      // 云端无数据（首次使用）：上传本地完成初始化
-      if (!cloudPayload && !cloudResult?.row) {
-        const result = await cloudSyncHandler(exportData(), { reason })
-        setCloudStatusPatch({
-          syncing: false,
-          connected: true,
-          lastSyncAt: result?.updatedAt || new Date().toISOString(),
-          lastSyncError: '',
-        })
-        saveUiStateToLocalStorage()
-        addOperationLog('cloud_sync', '手动同步：云端无数据，已上传本地完成初始化', { reason })
-        return result
-      }
-
-      // 内容完全一致：仅对齐时间戳，不打扰用户
-      const localPayload = exportData()
-      if (isContentEqual(localPayload, cloudPayload)) {
-        setLocalModifiedAt(cloudUpdatedAt)
-        saveToLocalStorage({ bumpTimestamp: false })
-        setCloudStatusPatch({
-          syncing: false,
-          connected: true,
-          lastSyncAt: cloudUpdatedAt || new Date().toISOString(),
-          lastSyncError: '',
-        })
-        addOperationLog('cloud_sync', '手动同步：云端与本地一致，已对齐时间戳', { cloudUpdatedAt })
-        return { updatedAt: cloudUpdatedAt, row: cloudPayload }
-      }
-
-      // 内容不一致：绝不静默覆盖，交由用户选择（upload / use-cloud / cancel）
-      const diff = computeConflictDiff(localPayload, cloudPayload)
-      const warn = shouldWarnBeforeOverwrite(localPayload, cloudPayload)
-      let userChoice = 'cancel'
-      if (typeof cloudConflictHandler === 'function') {
-        userChoice = await cloudConflictHandler('manual-sync', {
-          diff,
-          warn,
-          cloudUpdatedAt,
-          localModifiedAt: getLocalModifiedAt(),
-        })
-      }
-
-      if (userChoice === 'upload') {
-        const result = await cloudSyncHandler(exportData(), { reason: 'manual-upload' })
-        setCloudStatusPatch({
-          syncing: false,
-          connected: true,
-          lastSyncAt: result?.updatedAt || new Date().toISOString(),
-          lastSyncError: '',
-        })
-        setLocalModifiedAt(result?.updatedAt || cloudUpdatedAt)
-        saveUiStateToLocalStorage()
-        addOperationLog('cloud_sync', '手动同步：已上传本地覆盖云端', { diffCount: diff.total, cloudUpdatedAt })
-        return result
-      }
-      if (userChoice === 'use-cloud') {
-        const applied = await applyCloudPayload(cloudPayload, { trackHistory: true, sourceUpdatedAt: cloudUpdatedAt })
-        setCloudStatusPatch({
-          syncing: false,
-          connected: true,
-          lastSyncAt: cloudUpdatedAt || new Date().toISOString(),
-          lastSyncError: '',
-        })
-        if (!applied) {
-          addOperationLog('cloud_sync', '手动同步：云端载荷损坏/缺失，已拒绝应用，保留本地', { diffCount: diff.total, cloudUpdatedAt })
-          return { updatedAt: getLocalModifiedAt(), row: cloudPayload }
-        }
-        addOperationLog('cloud_sync', '手动同步：已下载云端覆盖本地', { diffCount: diff.total, cloudUpdatedAt })
-        return { updatedAt: cloudUpdatedAt, row: cloudPayload }
-      }
-
-      // cancel / keep-local：保持本地不变
-      setCloudStatusPatch({
-        syncing: false,
-        connected: true,
-        lastSyncError: '',
-      })
-      addOperationLog('cloud_sync', '手动同步：用户取消，保持本地不变', { diffCount: diff.total, cloudUpdatedAt })
-      return { updatedAt: getLocalModifiedAt(), row: cloudPayload }
-    } catch (err) {
-      setCloudStatusPatch({
-        syncing: false,
-        connected: false,
-        lastSyncError: err?.message || '云端同步失败',
-      })
-      saveUiStateToLocalStorage()
-      throw err
-    }
-  }
-
-  // 2. 正常自动同步：先尝试从云端下载，本地作为兜底
-  setCloudStatusPatch({
-    syncing: true,
-    lastSyncError: '',
-  })
-
+  setCloudStatusPatch({ syncing: true, lastSyncError: '' })
   try {
-    // 获取云端状态
+    // 1. 只读预检
     const cloudResult = await cloudSyncHandler(exportData(), { reason: 'pre-check' })
-    // 云端是否"无有效数据"：无行，或行存在但载荷损坏/缺少 items（M2 边界修复）
-    const hasUsableCloudPayload =
-      cloudResult?.payload &&
-      typeof cloudResult.payload === 'object' &&
-      !Array.isArray(cloudResult.payload) &&
-      Array.isArray(cloudResult.payload.items)
+    const cloudPayload = cloudResult?.payload
+    const cloudUpdatedAt = cloudResult?.updatedAt || ''
+
+    // 2. 云端无行 → 上传本地初始化（含 _rev 印章）
+    if (!cloudPayload && !cloudResult?.row) {
+      const result = await cloudSyncHandler(exportData(), { reason })
+      setCloudStatusPatch({ syncing: false, connected: true, lastSyncAt: result?.updatedAt || new Date().toISOString(), lastSyncError: '' })
+      saveUiStateToLocalStorage()
+      addOperationLog('cloud_sync', force ? '手动同步：云端无数据，已上传本地完成初始化' : '首次启动：无云端数据，本地数据保持不变', { reason })
+      return result
+    }
+
+    // 3. 云端载荷损坏（无 items）→ 视为无数据（沿用 B1 边界）
+    const hasUsableCloudPayload = cloudPayload && typeof cloudPayload === 'object' && !Array.isArray(cloudPayload) && Array.isArray(cloudPayload.items)
     if (!hasUsableCloudPayload) {
-      // 本地无数据也无报错，视为首次使用
-      setCloudStatusPatch({
-        syncing: false,
-        connected: true,
-        lastSyncAt: new Date().toISOString(),
-        lastSyncError: '',
-        lastAutoSyncAt: Date.now(),
-      })
+      setCloudStatusPatch({ syncing: false, connected: true, lastSyncAt: new Date().toISOString(), lastSyncError: '', lastAutoSyncAt: Date.now() })
       saveUiStateToLocalStorage()
       addOperationLog('cloud_sync', '首次启动：无云端数据，本地数据保持不变', { reason })
       return { updatedAt: new Date().toISOString(), row: null }
     }
 
-    // 有云端数据，进行内容比对
-    const cloudPayload = cloudResult.payload || {}
     const localPayload = exportData()
+    const plan = computeSlotPlan(localPayload, cloudPayload, state.cloudStatus.cloudRev, stableSerialize)
 
-    // 比对内容是否一致
-    const contentEqual = isContentEqual(localPayload, cloudPayload)
-    const localModifiedAt = getLocalModifiedAt()
-    const cloudUpdatedAt = cloudResult.updatedAt || ''
+    const adoptSlots = SLOT_KEYS.filter((s) => plan[s] === 'adopt-cloud')
+    const conflictSlots = SLOT_KEYS.filter((s) => plan[s] === 'conflict')
+    const uploadSlots = SLOT_KEYS.filter((s) => plan[s] === 'upload')
 
-    setCloudStatusPatch({
-      syncing: false,
-      connected: true,
-      lastSyncAt: cloudUpdatedAt || new Date().toISOString(),
-      lastAutoSyncAt: Date.now(),
-      lastSyncError: '',
-    })
+    // 4. silent：存在 adopt/conflict → 整轮跳过（不静默覆盖，也不上传导致顺带覆盖）
+    if (silent && (adoptSlots.length > 0 || conflictSlots.length > 0)) {
+      setCloudStatusPatch({ syncing: false, connected: true, lastSyncAt: cloudUpdatedAt || new Date().toISOString(), lastAutoSyncAt: Date.now(), lastSyncError: '' })
+      addOperationLog('cloud_sync', '后台同步：与云端存在分歧槽位，暂不动作，等待定期检测提示', { reason, adoptSlots, conflictSlots })
+      return { updatedAt: getLocalModifiedAt(), row: cloudPayload }
+    }
 
-    // 情况A：内容完全一致 → 仅对齐时间戳，不影响用户数据
-    if (contentEqual) {
+    // 5. 全对齐 → 仅对齐时间戳
+    if (adoptSlots.length === 0 && conflictSlots.length === 0 && uploadSlots.length === 0) {
       setLocalModifiedAt(cloudUpdatedAt)
       saveToLocalStorage({ bumpTimestamp: false })
-      addOperationLog('cloud_sync', '内容一致，已对齐时间戳', { localModifiedAt, cloudUpdatedAt })
+      setCloudStatusPatch({ syncing: false, connected: true, lastSyncAt: cloudUpdatedAt || new Date().toISOString(), lastAutoSyncAt: Date.now(), lastSyncError: '' })
+      saveUiStateToLocalStorage()
+      addOperationLog('cloud_sync', force ? '手动同步：云端与本地一致，已对齐时间戳' : '内容一致，已对齐时间戳', { localModifiedAt: getLocalModifiedAt(), cloudUpdatedAt })
       return { updatedAt: cloudUpdatedAt, row: cloudPayload }
     }
 
-    // 情况B：本地数据比云端新 → 询问用户上传本地还是保留云端
-    if (isLocalDataNewerThanCloud(cloudUpdatedAt)) {
-      const diff = computeConflictDiff(localPayload, cloudPayload)
-      let userChoice = 'upload'
-      if (typeof cloudConflictHandler === 'function' && diff.total > 0) {
-        userChoice = await cloudConflictHandler('upload-local', {
-          diff, cloudUpdatedAt, localModifiedAt, warn: shouldWarnBeforeOverwrite(localPayload, cloudPayload),
-        })
-      }
-      if (userChoice === 'upload') {
-        setCloudStatusPatch({ syncing: true })
-        try {
-          const uploadResult = await cloudSyncHandler(exportData(), { reason: 'local-newer' })
-          setCloudStatusPatch({
-            syncing: false,
-            connected: true,
-            lastSyncAt: uploadResult?.updatedAt || cloudUpdatedAt,
-            lastSyncError: '',
-          })
-          setLocalModifiedAt(uploadResult?.updatedAt || cloudUpdatedAt)
-          saveUiStateToLocalStorage()
-          addOperationLog('cloud_sync', '本地数据较新，已上传覆盖云端', { localModifiedAt, cloudUpdatedAt, diffCount: diff.total })
-          return { updatedAt: uploadResult?.updatedAt || cloudUpdatedAt, row: uploadResult }
-        } catch (err) {
-          setCloudStatusPatch({ syncing: false, connected: false, lastSyncError: err?.message || '上传云端失败' })
-          addOperationLog('cloud_sync', '本地数据上传云端失败', { error: err.message, localModifiedAt, cloudUpdatedAt })
-          throw err
-        }
-      } else if (userChoice === 'use-cloud') {
-        const applied = await applyCloudPayload(cloudPayload, { trackHistory: false, sourceUpdatedAt: cloudUpdatedAt })
-        if (!applied) {
-          addOperationLog('cloud_sync', '云端载荷损坏/缺失，已拒绝应用，保留本地', { localModifiedAt, cloudUpdatedAt, diffCount: diff.total })
-          setCloudLoadError('云端数据不完整，已拒绝应用')
-          return { updatedAt: localModifiedAt, row: cloudPayload }
-        }
-        setCloudLoadSuccess(cloudUpdatedAt)
-        addOperationLog('cloud_sync', '用户保留云端数据，已下载到本地', { localModifiedAt, cloudUpdatedAt, diffCount: diff.total })
-        return { updatedAt: cloudUpdatedAt, row: cloudPayload }
-      }
-      // cancel / keep-local：保持本地，不上传不下载
-      addOperationLog('cloud_sync', '用户取消同步，保持本地数据', { localModifiedAt, cloudUpdatedAt, diffCount: diff.total })
-      return { updatedAt: localModifiedAt, row: localPayload }
-    }
-
-    // 情况C/D：云端数据比本地新（或时间戳相等但内容不同）
-    const diff = computeConflictDiff(localPayload, cloudPayload)
-    const warn = shouldWarnBeforeOverwrite(localPayload, cloudPayload)
-
-    // 内容不一致即需用户决策（不再有"自动覆盖无确认"的情况D）
-    if (diff.total > 0 || warn.shouldWarn) {
-      let userChoice = 'use-cloud'
+    // 6. 需用户决策的槽位（adopt-cloud / conflict）
+    let decisions = {}
+    let copies = []
+    if (adoptSlots.length > 0 || conflictSlots.length > 0) {
       if (typeof cloudConflictHandler === 'function') {
-        userChoice = await cloudConflictHandler('recovery', {
-          diff, warn, cloudUpdatedAt, localModifiedAt,
+        const userChoice = await cloudConflictHandler('slot-conflict', {
+          plan, localPayload, cloudPayload, cloudUpdatedAt, localModifiedAt: getLocalModifiedAt(),
         })
-      }
-      if (userChoice === 'use-cloud') {
-        const applied = await applyCloudPayload(cloudPayload, { trackHistory: false, sourceUpdatedAt: cloudUpdatedAt })
-        if (!applied) {
-          addOperationLog('cloud_sync', '云端载荷损坏/缺失，已拒绝应用，保留本地', { cloudUpdatedAt, localModifiedAt, diffCount: diff.total })
-          setCloudLoadError('云端数据不完整，已拒绝应用')
-          return { updatedAt: localModifiedAt, row: cloudPayload }
+        if (!userChoice) {
+          // 用户取消：本地不动、不上传、不覆盖云端任何槽位（与 silent 同级，整轮跳过）
+          setCloudStatusPatch({ syncing: false, connected: true, lastSyncAt: cloudUpdatedAt || new Date().toISOString(), lastAutoSyncAt: Date.now(), lastSyncError: '' })
+          saveUiStateToLocalStorage()
+          addOperationLog('cloud_sync', '用户取消同步，保持本地数据', { adoptSlots, conflictSlots, reason })
+          return { updatedAt: getLocalModifiedAt(), row: cloudPayload }
         }
-        setCloudLoadSuccess(cloudUpdatedAt)
-        addOperationLog('cloud_sync', '用户选择使用云端数据', { cloudUpdatedAt, localModifiedAt, diffCount: diff.total })
-        return { updatedAt: cloudUpdatedAt, row: cloudPayload }
-      } else if (userChoice === 'keep-local' || userChoice === 'upload') {
-        addOperationLog('cloud_sync', '用户选择保留本地数据', { cloudUpdatedAt, localModifiedAt, diffCount: diff.total })
-        setCloudLoadError('用户已拒绝云端数据覆盖')
-        return { updatedAt: localModifiedAt, row: localPayload }
+        decisions = userChoice.decisions || {}
+        copies = Array.isArray(userChoice.copies) ? userChoice.copies : []
+      } else {
+        decisions = {}
       }
-      // cancel：保持现状
-      addOperationLog('cloud_sync', '用户取消云端数据覆盖决定', { cloudUpdatedAt, localModifiedAt, diffCount: diff.total })
-      return { updatedAt: localModifiedAt, row: localPayload }
     }
 
-    // 内容一致（diff.total===0 且无警告）→ 仅对齐时间戳
-    setLocalModifiedAt(cloudUpdatedAt)
-    saveToLocalStorage({ bumpTimestamp: false })
-    addOperationLog('cloud_sync', '云端数据较新且内容一致，已对齐时间戳', { cloudUpdatedAt, localModifiedAt })
-    return { updatedAt: cloudUpdatedAt, row: cloudPayload }
+    // 7. 合并（upload 槽走本地；adopt 默认云端、conflict 默认本地，决策可覆盖）
+    const merged = buildMerged(localPayload, cloudPayload, plan, decisions)
 
+    // 8. 有采纳云端内容 → 应用合并结果到本地（loadData 恢复 merged._rev）
+    const adoptToLocal = !silent && adoptSlots.some((s) => decisions[s] !== 'local')
+    const conflictToCloud = !silent && conflictSlots.some((s) => decisions[s] === 'cloud')
+    if (adoptToLocal || conflictToCloud) {
+      const applied = await applyCloudPayload(merged, { trackHistory: force, sourceUpdatedAt: cloudUpdatedAt })
+      if (!applied) {
+        addOperationLog('cloud_sync', '云端载荷损坏/缺失，已拒绝应用，保留本地', { adoptSlots, conflictSlots, cloudUpdatedAt })
+        setCloudStatusPatch({ syncing: false, connected: false, lastSyncError: '云端数据不完整，已拒绝应用' })
+        return { updatedAt: getLocalModifiedAt(), row: cloudPayload }
+      }
+      setCloudLoadSuccess?.(cloudUpdatedAt)
+    }
+
+    // 9. 需上传（有本地获胜槽位，或云端缺 _rev 需印章一次性自愈）
+    let result = null
+    const mustUpload = uploadSlots.length > 0 || !hasRevEqual(merged, cloudPayload)
+    if (mustUpload) {
+      result = await cloudSyncHandler(merged, { reason: 'sync' })
+      setLocalModifiedAt(result?.updatedAt || cloudUpdatedAt)
+      saveToLocalStorage({ bumpTimestamp: false })
+    }
+
+    // 10. 更新基线 & 状态
+    for (const slot of SLOT_KEYS) {
+      state.cloudStatus.cloudRev[slot] = revOf(merged, slot)
+    }
+    setCloudStatusPatch({ syncing: false, connected: true, lastSyncAt: result?.updatedAt || cloudUpdatedAt || new Date().toISOString(), lastAutoSyncAt: Date.now(), lastSyncError: '' })
+    saveUiStateToLocalStorage()
+    addOperationLog('cloud_sync', '同步完成', { reason, adoptSlots, conflictSlots, uploadSlots, copies })
+    return { updatedAt: result?.updatedAt || cloudUpdatedAt, row: cloudPayload }
   } catch (err) {
-    setCloudStatusPatch({
-      syncing: false,
-      connected: false,
-      lastSyncError: err?.message || '云端同步失败',
-    })
+    setCloudStatusPatch({ syncing: false, connected: false, lastSyncError: err?.message || '云端同步失败' })
     saveUiStateToLocalStorage()
     throw err
   }
+}
+
+function hasRevEqual(a, b) {
+  // 缺失 _rev（云端旧数据）按 null 处理：与显式 `{}` 不相等，触发一次印章上传自愈
+  return stableSerialize(a?._rev ?? null) === stableSerialize(b?._rev ?? null)
 }
 
 function scheduleCloudSync() {
@@ -607,7 +461,7 @@ function scheduleCloudSync() {
 
   clearCloudSyncTimer()
   cloudSyncTimer = setTimeout(() => {
-    runCloudSync({ reason: 'debounced' }).catch(() => {
+    performSyncDecision({ reason: 'debounced', silent: true }).catch(() => {
       // ignore
     })
   }, CLOUD_SYNC_DEBOUNCE_MS)
@@ -993,9 +847,11 @@ export function registerCloudSyncHandler(handler) {
 
 /**
  * 注册冲突决策 UI 回调（模态框）。
- * 由 App.vue 注册，runCloudSync 在需要用户决策时调用。
- * 回调签名: (type, data) => Promise<'upload'|'use-cloud'|'keep-local'|'cancel'>
- * type: 'upload-local'（本地较新，是否上传）| 'manual-sync'（手动同步遇差异）| 'recovery'（云端较新，疑似误操作）
+ * 由 App.vue 注册，performSyncDecision 在需要用户决策时调用。
+ * 回调签名: async (type, data) => { decisions, copies } | null
+ * type: 'slot-conflict'（本地与云端都修改过且内容不同的槽位）
+ * data: { plan, localPayload, cloudPayload, cloudUpdatedAt, localModifiedAt }
+ * 返回 null 表示用户取消，整轮跳过：本地不动、不上传、不覆盖云端任何槽位。
  */
 export function registerCloudConflictHandler(handler) {
   cloudConflictHandler = typeof handler === 'function' ? handler : null
@@ -1011,13 +867,19 @@ export function setHistorySuppressed(flag) {
 
 export async function syncToCloudNow() {
   clearCloudSyncTimer()
-  return runCloudSync({ reason: 'manual', force: true })
+  return performSyncDecision({ reason: 'manual', force: true })
 }
 
 /** 非强制同步：走完整冲突检测流程（pre-check → 比对 → 冲突决策） */
 export async function runCloudSyncCheck() {
   clearCloudSyncTimer()
-  return runCloudSync({ reason: 'periodic-check' })
+  return performSyncDecision({ reason: 'periodic-check' })
+}
+
+/** 启动时同步（供 App.vue loadCloudOnStartup 调用） */
+export async function runStartupSync() {
+  clearCloudSyncTimer()
+  return performSyncDecision({ reason: 'startup' })
 }
 
 export function undoLastChange() {
@@ -1311,48 +1173,4 @@ export function loadFromLocalStorage() {
   const parsed = JSON.parse(raw)
   loadData(parsed)
   setPersistedSnapshot(exportData())
-}
-
-/**
- * 检查是否应该在覆盖前警告用户
- * 在原有「本地比云端新 / 差异数」提示基础上，叠加 dataProtection 的
- * 「集合记录数骤减 ≥ max(5, 10%) / 最后销售日期倒挂」强警告（修复 C1 遮蔽）。
- * @param {object} localPayload - 本地数据导出
- * @param {object} cloudPayload - 云端数据
- * @returns {object} { shouldWarn: boolean, reasons: string[] }
- */
-function shouldWarnBeforeOverwrite(localPayload, cloudPayload) {
-  // 内容一致（只差时间戳/快照），无需警告
-  if (isContentEqual(localPayload, cloudPayload)) {
-    return { shouldWarn: false, reasons: [] }
-  }
-
-  const reasons = []
-
-  // 检查云端数据是否明显旧于本地（可能是误操作回退）
-  const localModifiedAt = getLocalModifiedAt()
-  const cloudUpdatedAt = cloudPayload?.updatedAt || ''
-  if (localModifiedAt && cloudUpdatedAt && localModifiedAt > cloudUpdatedAt) {
-    reasons.push(`本地数据(${localModifiedAt})比云端数据(${cloudUpdatedAt})新，覆盖可能丢失近期改动`)
-  }
-
-  // 增强检测：集合记录数骤减、最后销售日期倒挂（dataProtection 已实现）
-  const enhanced = protectionWarn(localPayload, cloudPayload)
-  for (const r of enhanced.reasons || []) {
-    reasons.push(r)
-  }
-
-  // 如果有冲突差异，记录数量
-  const diff = computeConflictDiff(localPayload, cloudPayload)
-  if (diff.total > 0) {
-    reasons.push(`存在 ${diff.total} 处数据差异`)
-  }
-
-  return {
-    shouldWarn: reasons.length > 0,
-    reasons,
-    countDiff: enhanced.countDiff ?? 0,
-    lastSaleLocal: enhanced.lastSaleLocal ?? '',
-    lastSaleCloud: enhanced.lastSaleCloud ?? '',
-  }
 }
