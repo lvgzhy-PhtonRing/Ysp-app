@@ -50,6 +50,7 @@ import {
 } from './data/store'
 import { appendAdoptBefore } from './data/adoptLog'
 import { reconstructAtTime } from './data/logReplay'
+import { finalizeRestorePayload } from './data/restorePayload'
 import {
   getLogBrief,
   getLogDetailSections,
@@ -158,8 +159,10 @@ function computeHistoryDiff(targetTime) {
   // 回溯引擎无法重建 rushcar 槽位，保留当前数据：既避免误清空美淘数据，
   // 也避免 applyCloudDataToStore 因 rushcar 缺失（非数组）拒绝应用
   priorPayload.rushcar = exportData().rushcar
-  const diff = computeConflictDiff(priorPayload, exportData())
-  historyTargetState.value = priorPayload
+  const currentPayload = exportData()
+  const diff = computeConflictDiff(priorPayload, currentPayload)
+  // 恢复目标带新 _rev/updatedAt：变更槽位 rev+1，使下次同步判 upload 自动上云
+  historyTargetState.value = finalizeRestorePayload(priorPayload, currentPayload)
   historyTargetTime.value = targetTime
   historyDiff.value = diff.entries || []
   void skipped
