@@ -11,6 +11,7 @@ import FinanceModule from './modules/finance/FinanceModule.vue'
 import RushCarPrototypeModule from './modules/rushcar/RushCarPrototypeModule.vue'
 import MarketPriceModule from './modules/market-price/MarketPriceModule.vue'
 import { primaryConflictAction } from './utils/cloudConflict'
+import { SLOT_LABELS, slotValue } from './data/cloudSlotPlan'
 import {
   addOperationLog,
   clearCloudSession,
@@ -20,7 +21,6 @@ import {
   getLocalModifiedAt,
   getUnsyncedOperations,
   isCloudSyncUnhealthy,
-  isContentEqual,
   loadData,
   loadFromLocalStorage,
   loadUiStateFromLocalStorage,
@@ -30,6 +30,7 @@ import {
   registerCloudSyncHandler,
   resetCloudUnhealthyWarning,
   runCloudSyncCheck,
+  runStartupSync,
   saveToLocalStorage,
   setCloudLoadError,
   setCloudLoadSuccess,
@@ -58,7 +59,6 @@ import {
   signInWithPassword,
   signOutCloudSession,
 } from './services/cloudStore'
-import { shouldWarnBeforeOverwrite } from './services/dataProtection'
 import { downloadJsonBackup } from './services/dataProtection'
 
 const tabs = [
@@ -106,6 +106,12 @@ const cloudConflict = ref(false)
 const cloudConflictType = ref('recovery')
 const cloudConflictInfo = ref({ localAt: '', cloudAt: '', entries: [], total: 0 })
 let cloudConflictResolver = null
+
+// 逐槽位冲突弹窗（Slot 版本化，本地与云端同槽都改过时按槽位选择）
+const slotConflict = ref(false)
+const slotConflictInfo = ref({ rows: [], plan: {}, localPayload: {}, cloudPayload: {}, localAt: '', cloudAt: '' })
+const slotChoice = ref({})
+let slotConflictResolver = null
 
 // 主操作按钮方向：本地更新→上传，云端更新→下载
 const primaryConflictActionValue = computed(() =>
@@ -222,6 +228,7 @@ function formatConflictTime(t) {
  * @returns {Promise<'upload'|'use-cloud'|'keep-local'|'cancel'>}
  */
 async function askCloudConflict(type, data = {}) {
+  if (type === 'slot-conflict') return askSlotConflict(data)
   const { diff, cloudUpdatedAt, localModifiedAt, warn } = data
   cloudConflictType.value = type || 'recovery'
   cloudConflictInfo.value = {
@@ -247,6 +254,42 @@ async function askCloudConflict(type, data = {}) {
   }
   return choice
 }
+
+async function askSlotConflict(data) {
+  const { plan, localPayload, cloudPayload, cloudUpdatedAt, localModifiedAt } = data
+  const slots = Object.keys(plan).filter((s) => plan[s] === 'adopt-cloud' || plan[s] === 'conflict')
+  const diff = computeConflictDiff(localPayload, cloudPayload)
+  const rows = slots.map((slot) => {
+    const entries = diff.entries.filter((e) => e.collectionLabel === SLOT_LABELS[slot] || (slot === 'calc' && e.collectionLabel === '财务结算'))
+    return { slot, label: SLOT_LABELS[slot] || slot, action: plan[slot], entries, defaultLocal: primaryConflictAction('manual-sync', localModifiedAt, cloudUpdatedAt) === 'upload' }
+  })
+  slotConflictInfo.value = { rows, plan, localPayload, cloudPayload, localAt: localModifiedAt, cloudAt: cloudUpdatedAt }
+  slotConflict.value = true
+  const choice = await new Promise((resolve) => { slotConflictResolver = resolve })
+  slotConflict.value = false
+  if (!choice) return null
+  // 强警告二次确认：选云端的冲突槽若命中 shouldWarnBeforeOverwrite 单项骤减 → 二次确认
+  return { decisions: choice.decisions, copies: choice.copies }
+}
+
+function resolveSlotConflict() {
+  const decisions = {}
+  const copies = []
+  for (const row of slotConflictInfo.value.rows) {
+    const sel = slotChoice.value[row.slot] || (row.defaultLocal ? 'local' : 'cloud')
+    decisions[row.slot] = sel === 'cloud' ? 'cloud' : 'local'
+    if (sel === 'both') {
+      copies.push(row.slot)
+      downloadJsonBackup(
+        { slot: row.slot, [SLOT_LABELS[row.slot] || row.slot]: slotValue(slotConflictInfo.value.cloudPayload, row.slot) },
+        `饮食派数据_${row.slot}_冲突副本_${Date.now()}.json`,
+      )
+    }
+  }
+  slotConflictResolver?.({ decisions, copies })
+  slotConflict.value = false
+}
+function cancelSlotConflict() { slotConflictResolver?.(null); slotConflict.value = false; slotChoice.value = {} }
 
 function resolveCloudConflict(choice) {
   cloudConflict.value = false
@@ -503,39 +546,17 @@ async function cloudSignOut() {
 }
 
 async function pullFromCloud() {
-  if (!isCloudConfigReady(store.cloudSettings)) {
-    alert('请先配置云端参数')
-    return
-  }
-
+  if (!isCloudConfigReady(store.cloudSettings)) { alert('请先配置云端参数'); return }
   cloudBusy.value = true
   try {
-    const result = await fetchCloudState(store.cloudSettings, {
-      session: store.cloudSession,
-      onSession: (session) => setCloudSession(session),
-      publicOnly: false,
-    })
-    if (!result?.payload) {
-      alert('云端没有可用数据')
-      return
-    }
-    const applied = applyCloudDataToStore(result.payload, { sourceUpdatedAt: result.updatedAt })
-    if (!applied) {
-      setCloudLoadError('云端数据不完整，已拒绝应用')
-      alert('云端数据不完整（缺失/损坏），已拒绝应用，本地数据保持不变')
-      return
-    }
-    setCloudLoadSuccess(result.updatedAt)
-    addOperationLog('cloud_pull', '从云端加载数据成功', {
-      updatedAt: result.updatedAt,
-    })
+    const result = await runStartupSync() // 复用引擎：adopt/conflict 槽位会弹窗，用户选云端即整包拉取
+    setCloudLoadSuccess(result?.updatedAt || '')
+    addOperationLog('cloud_pull', '从云端加载数据成功', { updatedAt: result?.updatedAt })
     alert('已从云端加载最新数据')
   } catch (err) {
     setCloudLoadError(err.message)
     alert(`从云端加载失败: ${err.message}`)
-  } finally {
-    cloudBusy.value = false
-  }
+  } finally { cloudBusy.value = false }
 }
 
 async function syncCloudNowFromUi() {
@@ -607,124 +628,9 @@ function syncSilentlyOnHidden() {
 async function loadCloudOnStartup() {
   if (!store.cloudSettings.enabled) return false
   if (!isCloudConfigReady(store.cloudSettings)) return false
-
   try {
-    const result = await fetchCloudState(store.cloudSettings, {
-      session: store.cloudSession,
-      onSession: (session) => setCloudSession(session),
-      publicOnly: false,
-    })
-    if (!result?.payload) return false
-
-    const cloudTs = tsToEpoch(result.updatedAt)
-    const localAt = getLocalModifiedAt()
-    const localTs = tsToEpoch(localAt)
-
-    // === 新增：云首选策略 ===
-    // 情况1：时间戳完全一致 → 内容必然一致，跳过同步
-    if (cloudTs && localTs && cloudTs === localTs) {
-      setCloudLoadSuccess(result.updatedAt)
-      // 更新最后自动同步时间
-      store.cloudStatus.lastAutoSyncAt = Date.now()
-      return true
-    }
-
-    // 情况2：本地数据比云端新
-    if (cloudTs && localTs && localTs > cloudTs) {
-      const localPayload = exportData()
-      const contentEqual = isContentEqual(localPayload, result.payload)
-
-      // 内容一致 → 静默对齐时间戳，不打扰用户
-      if (contentEqual) {
-        setLocalModifiedAt(result.updatedAt)
-        saveToLocalStorage({ bumpTimestamp: false })
-        setCloudLoadSuccess(result.updatedAt)
-        addOperationLog('cloud_sync', '内容一致，已静默对齐时间戳', { localUpdatedAt: localAt, cloudUpdatedAt: result.updatedAt })
-        store.cloudStatus.lastAutoSyncAt = Date.now()
-        return true
-      }
-
-      // 内容不一致，本地较新 → 弹模态框让用户决策
-      const diff = computeConflictDiff(localPayload, result.payload)
-      const userChoice = await askCloudConflict('upload-local', {
-        diff,
-        warn: shouldWarnBeforeOverwrite(localPayload, result.payload),
-        cloudUpdatedAt: result.updatedAt,
-        localModifiedAt: localAt,
-      })
-
-      if (userChoice === 'upload') {
-        try {
-          const syncResult = await syncToCloudNow()
-          addOperationLog('cloud_sync', '本地数据较新，用户确认上传覆盖云端', { updatedAt: syncResult?.updatedAt || result.updatedAt, localUpdatedAt: localAt, diffCount: diff.total })
-          setCloudLoadSuccess(syncResult?.updatedAt || result.updatedAt)
-          store.cloudStatus.lastAutoSyncAt = Date.now()
-          return true
-        } catch (err) {
-          addOperationLog('cloud_sync', '本地上传云端失败', { error: err.message, localUpdatedAt: localAt })
-          setCloudLoadError(err.message)
-          store.cloudStatus.lastAutoSyncAt = Date.now()
-          return false
-        }
-      } else if (userChoice === 'use-cloud') {
-        const applied = applyCloudDataToStore(result.payload, { trackHistory: false, sourceUpdatedAt: result.updatedAt })
-        store.cloudStatus.lastAutoSyncAt = Date.now()
-        if (!applied) {
-          addOperationLog('cloud_sync', '云端载荷损坏/缺失，已拒绝应用，保留本地', { localUpdatedAt: localAt, cloudUpdatedAt: result.updatedAt, diffCount: diff.total })
-          setCloudLoadError('云端数据不完整，已拒绝应用')
-          return false
-        }
-        setCloudLoadSuccess(result.updatedAt)
-        addOperationLog('cloud_sync', '用户选择保留云端数据，已下载到本地', { localUpdatedAt: localAt, cloudUpdatedAt: result.updatedAt, diffCount: diff.total })
-        return true
-      }
-      // cancel：保持本地不变
-      addOperationLog('cloud_sync', '用户取消同步，保持本地数据', { localUpdatedAt: localAt, cloudUpdatedAt: result.updatedAt, diffCount: diff.total })
-      store.cloudStatus.lastAutoSyncAt = Date.now()
-      return false
-    }
-
-    // 情况3：云端数据比本地新（或时间戳相等但内容不同）→ 弹模态框让用户决策
-    const localPayload = exportData()
-    const warn = shouldWarnBeforeOverwrite(localPayload, result.payload)
-    const diff = computeConflictDiff(localPayload, result.payload)
-
-    if (diff.total > 0 || warn.shouldWarn) {
-      const userChoice = await askCloudConflict('recovery', {
-        diff,
-        warn,
-        cloudUpdatedAt: result.updatedAt,
-        localModifiedAt: localAt,
-      })
-
-      if (userChoice === 'use-cloud') {
-        const applied = applyCloudDataToStore(result.payload, { trackHistory: false, sourceUpdatedAt: result.updatedAt })
-        store.cloudStatus.lastAutoSyncAt = Date.now()
-        if (!applied) {
-          addOperationLog('cloud_sync', '云端载荷损坏/缺失，已拒绝应用，保留本地', { cloudUpdatedAt: result.updatedAt, localUpdatedAt: localAt, diffCount: diff.total })
-          setCloudLoadError('云端数据不完整，已拒绝应用')
-          return false
-        }
-        setCloudLoadSuccess(result.updatedAt)
-        addOperationLog('cloud_sync', '用户选择使用云端数据', { cloudUpdatedAt: result.updatedAt, localUpdatedAt: localAt, diffCount: diff.total })
-        return true
-      } else if (userChoice === 'upload' || userChoice === 'keep-local') {
-        addOperationLog('cloud_sync', '用户选择保留本地数据', { cloudUpdatedAt: result.updatedAt, localUpdatedAt: localAt, diffCount: diff.total })
-        setCloudLoadError('用户已拒绝云端数据覆盖')
-        store.cloudStatus.lastAutoSyncAt = Date.now()
-        return false
-      }
-      // cancel：保持现状
-      addOperationLog('cloud_sync', '用户取消云端数据覆盖决定', { cloudUpdatedAt: result.updatedAt, localUpdatedAt: localAt, diffCount: diff.total })
-      store.cloudStatus.lastAutoSyncAt = Date.now()
-      return false
-    }
-
-    // 云端较新且内容一致 → 静默对齐时间戳
-    setLocalModifiedAt(result.updatedAt)
-    saveToLocalStorage({ bumpTimestamp: false })
-    setCloudLoadSuccess(result.updatedAt)
-    addOperationLog('cloud_sync', '云端数据较新且内容一致，已对齐时间戳', { cloudUpdatedAt: result.updatedAt, localUpdatedAt: localAt })
+    const result = await runStartupSync()
+    setCloudLoadSuccess(result?.updatedAt || '')
     store.cloudStatus.lastAutoSyncAt = Date.now()
     return true
   } catch (err) {
@@ -1048,6 +954,30 @@ watch(
         <button class="btn btn-outline" :disabled="cloudBusy" @click="cloudSignOut">退出登录</button>
         <button class="btn btn-outline" :disabled="cloudBusy" @click="pullFromCloud">从云端拉取</button>
         <button class="btn btn-primary" :disabled="cloudBusy" @click="syncCloudNowFromUi">立即同步</button>
+      </div>
+    </GlassModal>
+
+    <GlassModal v-model="slotConflict" panel-class="w-full max-w-lg p-6 relative max-h-[80vh] overflow-y-auto" :close-on-overlay="false">
+      <div class="mb-1 text-xl font-bold">检测到槽位冲突</div>
+      <p class="mb-3 text-xs text-gray-500">以下集合本地与云端都修改过，请逐项选择保留哪一侧（「都留」会先把云端一侧存为本地副本 JSON）。未冲突集合已自动合并。</p>
+      <div v-for="row in slotConflictInfo.rows" :key="row.slot" class="mb-3 rounded-lg border border-gray-200 p-3">
+        <div class="flex items-center justify-between">
+          <span class="font-semibold">{{ row.label }}</span>
+          <span class="rounded bg-orange-100 px-2 py-0.5 text-xs text-orange-600">{{ row.action === 'adopt-cloud' ? '云端有更新' : '两边不同' }}</span>
+        </div>
+        <div v-if="row.entries.length" class="mt-1 max-h-24 overflow-y-auto text-xs text-gray-500">
+          <div v-for="e in row.entries.slice(0, 3)" :key="e.key" class="truncate">{{ e.recordLabel }} · {{ kindText(e.kind) }}</div>
+          <div v-if="row.entries.length > 3" class="text-gray-400">另有 {{ row.entries.length - 3 }} 处</div>
+        </div>
+        <div class="mt-2 flex gap-2">
+          <button class="btn btn-outline btn-sm" :class="slotChoice[row.slot] === 'local' ? 'ring-2 ring-blue-400' : ''" @click="slotChoice[row.slot] = 'local'">本地</button>
+          <button class="btn btn-outline btn-sm" :class="slotChoice[row.slot] === 'cloud' ? 'ring-2 ring-blue-400' : ''" @click="slotChoice[row.slot] = 'cloud'">云端</button>
+          <button class="btn btn-outline btn-sm" :class="slotChoice[row.slot] === 'both' ? 'ring-2 ring-blue-400' : ''" @click="slotChoice[row.slot] = 'both'">都留</button>
+        </div>
+      </div>
+      <div class="space-y-2">
+        <button class="btn btn-outline w-full" @click="cancelSlotConflict">取消</button>
+        <button class="btn btn-primary w-full" @click="resolveSlotConflict">确认</button>
       </div>
     </GlassModal>
 
