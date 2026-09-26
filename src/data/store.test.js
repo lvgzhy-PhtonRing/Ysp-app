@@ -13,6 +13,7 @@ import {
   registerCloudConflictHandler,
   registerCloudSyncHandler,
   runCloudSyncCheck,
+  saveToLocalStorage,
   saveUiStateToLocalStorage,
   stableSerialize,
   state,
@@ -39,6 +40,33 @@ describe('data store', () => {
 
     expect(output.finance.records.length).toBe(sampleData.finance.records.length)
     expect(output.transfers.length).toBe(sampleData.transfers.length)
+  })
+
+  it('exportData 携带 _rev，loadData 恢复 _rev', () => {
+    loadData({ items: [{ id: 1 }], _rev: { items: { rev: 3, at: 't' } } })
+    expect(exportData()._rev).toEqual({ items: { rev: 3, at: 't' } })
+  })
+
+  it('saveToLocalStorage 改动槽位则 bump 对应 rev，未动槽位不变', () => {
+    const storeMap = new Map()
+    vi.stubGlobal('localStorage', {
+      getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
+      setItem: (k, v) => storeMap.set(k, String(v)),
+      removeItem: (k) => storeMap.delete(k),
+    })
+    loadData({ items: [{ id: 1, name: 'a' }] })
+    saveToLocalStorage() // 建立持久化基线，不应 bump（无 ._rev 基线 = {}）
+    expect(exportData()._rev).toEqual({})
+    loadData({ items: [{ id: 1, name: 'b' }] }) // items 变了
+    saveToLocalStorage()
+    const rev = exportData()._rev
+    expect(rev.items.rev).toBe(1)
+    expect(rev.calc).toBeUndefined() // calc 未变
+    // 再次保存相同内容 → 不再 bump
+    const before = rev.items.rev
+    saveToLocalStorage()
+    expect(exportData()._rev.items.rev).toBe(before)
+    vi.unstubAllGlobals()
   })
 })
 

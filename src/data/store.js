@@ -2,6 +2,8 @@
 
 import { reactive } from 'vue'
 
+import { SLOT_KEYS, slotValue, normalizeRev } from './cloudSlotPlan'
+
 import {
   downloadJsonBackup,
   isBackupDue,
@@ -195,6 +197,8 @@ let lastPersistedSerialized = ''
 let lastPersistedCompareSerialized = ''
 let hasPersistedSnapshot = false
 let pendingHistoryMeta = null
+let currentPayloadRev = {} // payload._rev 的本地真源（模块态，非响应式）
+let lastPersistedSlot = {} // { slot: 上次持久化的槽位序列化串 }（脏检测基线）
 // 本地数据最后修改时间（ISO 字符串），用于启动时与云端 updated_at 比较
 let localLastModifiedAt = ''
 let _cloudUnhealthyWarned = false
@@ -259,11 +263,12 @@ function clearCloudSyncTimer() {
   cloudSyncTimer = null
 }
 
-// 移除 updatedAt 字段，用于判断本地数据是否有"真实"变化（时间戳变化不算）
-function stripUpdatedAt(data) {
+// 移除 updatedAt 与 _rev 字段，用于判断本地数据是否有"真实"变化（时间戳/版本变化不算）
+function stripMeta(data) {
   if (!data || typeof data !== 'object') return data
   const copy = { ...data }
   delete copy.updatedAt
+  delete copy._rev
   return copy
 }
 
@@ -271,7 +276,11 @@ function setPersistedSnapshot(data) {
   const safeData = data && typeof data === 'object' ? clone(data) : exportData()
   lastPersistedData = safeData
   lastPersistedSerialized = JSON.stringify(safeData)
-  lastPersistedCompareSerialized = JSON.stringify(stripUpdatedAt(safeData))
+  lastPersistedCompareSerialized = JSON.stringify(stripMeta(safeData))
+  lastPersistedSlot = {}
+  for (const slot of SLOT_KEYS) {
+    lastPersistedSlot[slot] = stableSerialize(slotValue(safeData, slot))
+  }
   hasPersistedSnapshot = true
 }
 
@@ -662,6 +671,8 @@ export function loadData(jsonObject = {}) {
   if (typeof data.updatedAt === 'string') {
     localLastModifiedAt = data.updatedAt
   }
+
+  currentPayloadRev = normalizeRev(data._rev)
 }
 
 export function exportData() {
@@ -677,6 +688,7 @@ export function exportData() {
     version: state.version,
     snapshots: state.snapshots ? clone(state.snapshots) : [],
     updatedAt: localLastModifiedAt,
+    _rev: clone(currentPayloadRev),
   }
 }
 
@@ -760,12 +772,16 @@ export function saveToLocalStorage(options = {}) {
   const bumpTimestamp = options.bumpTimestamp !== false
   takeDailySnapshot()
   let currentData = exportData()
-  const compareSerialized = JSON.stringify(stripUpdatedAt(currentData))
+  const compareSerialized = JSON.stringify(stripMeta(currentData))
   const hasDataChange = hasPersistedSnapshot && compareSerialized !== lastPersistedCompareSerialized
 
   if (bumpTimestamp && hasDataChange) {
+    bumpSlotRevs(currentData)
     localLastModifiedAt = new Date().toISOString()
     currentData = exportData()
+  } else if (hasDataChange) {
+    // 纯时间戳对齐/外部应用：不 bump rev，但刷新槽位基线防止脏误判
+    refreshSlotBaseline(currentData)
   }
   const serialized = JSON.stringify(currentData)
 
@@ -780,6 +796,26 @@ export function saveToLocalStorage(options = {}) {
   // 仅在有真实内容变更时调度云同步；纯时间戳对齐/无变化时不再触发，避免同步死循环
   if (hasDataChange) scheduleCloudSync()
   maybeAutoBackup()
+}
+
+function bumpSlotRevs(currentData) {
+  const next = { ...(currentPayloadRev || {}) }
+  let touched = false
+  for (const slot of SLOT_KEYS) {
+    const ser = stableSerialize(slotValue(currentData, slot))
+    if (ser !== lastPersistedSlot[slot]) {
+      next[slot] = { rev: (Number(next[slot]?.rev) || 0) + 1, at: new Date().toISOString() }
+      lastPersistedSlot[slot] = ser
+      touched = true
+    }
+  }
+  if (touched) currentPayloadRev = next
+}
+
+function refreshSlotBaseline(currentData) {
+  for (const slot of SLOT_KEYS) {
+    lastPersistedSlot[slot] = stableSerialize(slotValue(currentData, slot))
+  }
 }
 
 /** 读取本地数据最后修改时间（ISO 字符串，可能为空） */
