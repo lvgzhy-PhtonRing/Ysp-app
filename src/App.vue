@@ -21,6 +21,7 @@ import {
   exportData,
   getLocalModifiedAt,
   getUnsyncedOperations,
+  hiddenSync,
   isCloudSyncUnhealthy,
   loadData,
   loadFromLocalStorage,
@@ -45,6 +46,7 @@ import {
   redoLastChange,
   syncToCloudNow,
   undoLastChange,
+  unloadSync,
 } from './data/store'
 import { appendAdoptBefore } from './data/adoptLog'
 import {
@@ -727,7 +729,7 @@ function getCloudLoadTimeText() {
 }
 
 /**
- * 页面切走/关闭时静默兜底上传：用 keepalive 请求把最新数据补传云端。
+ * 页面切走时静默兜底同步：走引擎 silent 模式（有分歧槽位则整轮跳过，不盲写）。
  * 尽力而为、不阻塞、不提示；有未同步操作且云同步可用时才触发。
  */
 function syncSilentlyOnHidden() {
@@ -736,18 +738,8 @@ function syncSilentlyOnHidden() {
   if (!isCloudConfigReady(store.cloudSettings)) return
   if (store.cloudStatus.syncing) return
   if (getUnsyncedOperations().length === 0) return
-  // 本次会话尚未成功同步过（可能是旧浏览器/长期未同步）→ 不静默盲写，留给启动冲突检测
   if (!store.cloudStatus.lastSyncAt) return
-
-  const payload = exportData()
-  saveCloudState(store.cloudSettings, payload, {
-    session: store.cloudSession,
-    onSession: (session) => setCloudSession(session),
-    makePublic: store.cloudSettings.publicRead,
-    keepalive: true,
-  }).catch(() => {
-    // 静默失败：尽力而为，不打扰用户
-  })
+  hiddenSync().catch(() => { /* 静默失败 */ })
 }
 
 async function loadCloudOnStartup() {
@@ -859,6 +851,7 @@ onMounted(async () => {
       session: store.cloudSession,
       onSession: (session) => setCloudSession(session),
       makePublic: store.cloudSettings.publicRead,
+      keepalive: Boolean(options?.keepalive),
     })
     return {
       updatedAt: result?.updatedAt,
@@ -942,8 +935,8 @@ onBeforeUnmount(() => {
   document.removeEventListener('mousedown', bumpTabTouch)
   document.removeEventListener('keydown', bumpTabTouch)
 
-  // 关闭前保底上传：页面卸载时 confirm 不可靠，不做复杂冲突检测。
-  // 若有未同步的本地修改，用 keepalive 静默上传保底；冲突决策推迟到下次启动 loadCloudOnStartup。
+  // 关闭前保底同步：页面卸载时 confirm 不可靠，不做复杂冲突提示。
+  // 走引擎 silent + keepalive：有分歧槽位则整轮跳过（不盲写），冲突推迟到下次启动 loadCloudOnStartup。
   ;(async () => {
     if (
       !store.cloudSettings.enabled ||
@@ -951,19 +944,13 @@ onBeforeUnmount(() => {
       store.cloudStatus.syncing
     ) return
 
-    // 仅在有未同步操作时才尝试 keepalive 上传
+    // 仅在有未同步操作时才尝试 keepalive 同步
     if (getUnsyncedOperations().length === 0) return
     // 本次会话尚未成功同步过 → 不静默盲写，留给下次启动冲突检测
     if (!store.cloudStatus.lastSyncAt) return
 
-    const payload = exportData()
     try {
-      await saveCloudState(store.cloudSettings, payload, {
-        session: store.cloudSession,
-        onSession: (session) => setCloudSession(session),
-        makePublic: store.cloudSettings.publicRead,
-        keepalive: true,
-      })
+      await unloadSync()
       addOperationLog('cloud_sync', '关闭前 keepalive 上传保底成功', { localUpdatedAt: getLocalModifiedAt() })
     } catch (err) {
       // 静默失败，下次启动 loadCloudOnStartup 会检测冲突并提示用户

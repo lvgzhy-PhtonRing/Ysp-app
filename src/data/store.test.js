@@ -5,6 +5,7 @@ import sampleData from '../__tests__/fixtures/sampleData.json'
 import {
   computeConflictDiff,
   exportData,
+  hiddenSync,
   isContentEqual,
   loadData,
   loadUiStateFromLocalStorage,
@@ -20,6 +21,7 @@ import {
   stableSerialize,
   state,
   syncToCloudNow,
+  unloadSync,
 } from './store'
 
 describe('data store', () => {
@@ -507,5 +509,69 @@ describe('手动同步(force) 智能比对', () => {
     loadUiStateFromLocalStorage()
     expect(state.cloudStatus.connected).toBe(false)
     expect(state.cloudStatus.lastSyncError).toContain('拒绝')
+  })
+})
+
+describe('blind sync 薄壳（B 方案）', () => {
+  const CLOUD_PAYLOAD = {
+    items: [], calc: {}, finance: { records: [], loans: [] }, transfers: [],
+    rushcar: { entries: [], forwarderInfos: [], mattelSiteInfos: [], paymentCards: [] },
+  }
+  const CLOUD_UPDATED_AT = '2026-09-02T10:00:00.000Z'
+
+  function makeSyncHandler(env) {
+    return async (payload, options = {}) => {
+      env.calls.push({ reason: options.reason || '', keepalive: Boolean(options.keepalive) })
+      if ((options.reason || '') === 'pre-check') {
+        return { updatedAt: env.cloudUpdatedAt, row: env.cloudRow ?? null, payload: env.cloudPayload }
+      }
+      return { updatedAt: env.cloudUpdatedAt, row: { id: 'main' }, payload }
+    }
+  }
+
+  function setupCloudEnv() {
+    const env = { calls: [], cloudPayload: CLOUD_PAYLOAD, cloudRow: { id: 'main' }, cloudUpdatedAt: CLOUD_UPDATED_AT }
+    const storeMap = new Map()
+    vi.stubGlobal('localStorage', {
+      getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
+      setItem: (k, v) => storeMap.set(k, String(v)),
+      removeItem: (k) => storeMap.delete(k),
+    })
+    Object.assign(state.cloudSettings, {
+      supabaseUrl: 'https://x.supabase.co', supabaseAnonKey: 'anon-key', stateId: 'main', enabled: true, publicRead: true,
+    })
+    registerCloudSyncHandler(makeSyncHandler(env))
+    return env
+  }
+
+  afterEach(() => {
+    registerCloudSyncHandler(null)
+    registerCloudConflictHandler(null)
+    registerCloudApplyHandler(null)
+    Object.assign(state.cloudSettings, { supabaseUrl: '', supabaseAnonKey: '', stateId: 'main', enabled: false, publicRead: true })
+    vi.unstubAllGlobals()
+    loadData({})
+  })
+
+  it('unloadSync: 本地与云端一致时不盲写上传（全 align）', async () => {
+    loadData(CLOUD_PAYLOAD)
+    const env = setupCloudEnv()
+    await unloadSync()
+    expect(env.calls.filter((c) => c.reason === 'sync')).toHaveLength(0)
+  })
+
+  it('hiddenSync: 本地与云端有分歧槽位 → silent 整轮跳过（不盲写、不弹窗）', async () => {
+    loadData({ ...CLOUD_PAYLOAD, items: [{ id: 1, name: 'x' }] })
+    const env = setupCloudEnv()
+    let conflictCalled = false
+    registerCloudConflictHandler(async () => {
+      conflictCalled = true
+      return null
+    })
+    await hiddenSync()
+    // 本地 items 有内容、云端 items 为空，双方均无 _rev → plan: conflict
+    // silent + conflict → 整轮跳过：无 sync 上传、不弹窗
+    expect(env.calls.filter((c) => c.reason === 'sync')).toHaveLength(0)
+    expect(conflictCalled).toBe(false)
   })
 })

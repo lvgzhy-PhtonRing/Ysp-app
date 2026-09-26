@@ -330,7 +330,7 @@ function hasCloudSyncConfig() {
   )
 }
 
-export async function performSyncDecision({ reason = 'auto', force = false, silent = false, pull = false } = {}) {
+export async function performSyncDecision({ reason = 'auto', force = false, silent = false, pull = false, keepalive = false } = {}) {
   if (suppressCloudSync) return null
   if (!state.cloudSettings.enabled && !force) return null
   if (!hasCloudSyncConfig()) return null
@@ -455,7 +455,7 @@ export async function performSyncDecision({ reason = 'auto', force = false, sile
     const localWinUploadSlots = pull ? uploadSlots.filter((s) => decisions[s] !== 'cloud') : uploadSlots
     const mustUpload = localWinUploadSlots.length > 0 || !hasRevEqual(merged, cloudPayload)
     if (mustUpload) {
-      result = await cloudSyncHandler(merged, { reason: 'sync' })
+      result = await cloudSyncHandler(merged, { reason: 'sync', keepalive })
       setLocalModifiedAt(result?.updatedAt || cloudUpdatedAt)
       saveToLocalStorage({ bumpTimestamp: false })
     }
@@ -907,6 +907,18 @@ export async function runCloudSyncCheck() {
 export async function runStartupSync() {
   clearCloudSyncTimer()
   return performSyncDecision({ reason: 'startup' })
+}
+
+/** 页面切走静默兜底同步：silent 模式，有分歧槽位则整轮跳过（不盲写） */
+export async function hiddenSync() {
+  clearCloudSyncTimer()
+  return performSyncDecision({ reason: 'hidden-sync', silent: true })
+}
+
+/** 关闭前 keepalive 兜底同步：silent 模式 + keepalive 透传（不盲写） */
+export async function unloadSync() {
+  clearCloudSyncTimer()
+  return performSyncDecision({ reason: 'unload-sync', silent: true, keepalive: true })
 }
 
 /** 拉取云端：pull 模式，upload 槽也并入决策、默认偏云端（拉取 = 从云端优先采纳） */
