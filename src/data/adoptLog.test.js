@@ -69,4 +69,19 @@ describe('adoptLog（C 方案）', () => {
     expect(getAdoptBeforeById(oldRes.adoptId)).toBeNull()
     expect(getAdoptBeforeById(newRes.adoptId)).not.toBeNull()
   })
+
+  it('append 时自动清理超过默认保留期（365 天）的旧记录', () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
+      const oldRes = appendAdoptBefore({ slot: 'items', before: [{ id: 'old' }] })
+      expect(getAdoptBeforeById(oldRes.adoptId)).not.toBeNull()
+      vi.setSystemTime(new Date('2026-01-01T00:00:00Z').getTime() + 400 * 86400000)
+      const newRes = appendAdoptBefore({ slot: 'calc', before: {} })
+      expect(getAdoptBeforeById(oldRes.adoptId)).toBeNull()
+      expect(getAdoptBeforeById(newRes.adoptId)).not.toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

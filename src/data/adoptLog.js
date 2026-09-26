@@ -50,6 +50,7 @@ export function appendAdoptBefore({ slot = '', before = null, beforeRev = null, 
     if (item.slot === adopt.slot && item.time === adopt.time) return { adoptId: item.adoptId, persisted: true }
   }
   const persisted = writeAll([adopt, ...current])
+  pruneAdoptBefore()
   return { adoptId: adopt.adoptId, persisted }
 }
 
