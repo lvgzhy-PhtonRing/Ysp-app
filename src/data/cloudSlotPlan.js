@@ -62,15 +62,16 @@ export function computeSlotPlan(localPayload, cloudPayload, baselineRev = {}, se
   for (const slot of SLOT_KEYS) {
     const localSer = serialize(slotValue(localPayload, slot))
     const cloudSer = serialize(slotValue(cloudPayload, slot))
+    if (localSer === cloudSer) { plan[slot] = 'align'; continue }
     const localRev = revOf(localPayload, slot)
     const cloudRev = revOf(cloudPayload, slot)
     const base = Number(baselineRev?.[slot]) || 0
-    const localMoved = localRev !== 0 && localRev !== base // rev 缺失(0)视为未动
+    const localMoved = localRev !== 0 && localRev !== base
     const cloudMoved = cloudRev !== 0 && cloudRev !== base
-    if (localMoved && cloudMoved) plan[slot] = localSer === cloudSer ? 'align' : 'conflict'
+    if (localMoved && cloudMoved) plan[slot] = 'conflict'
     else if (cloudMoved) plan[slot] = 'adopt-cloud'
     else if (localMoved) plan[slot] = 'upload'
-    else plan[slot] = localSer === cloudSer ? 'align' : 'conflict' // 皆未越基线：一致对齐，不同保守冲突
+    else plan[slot] = 'conflict'
   }
   return plan
 }

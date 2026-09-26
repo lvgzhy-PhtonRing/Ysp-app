@@ -49,6 +49,11 @@ describe('computeSlotPlan', () => {
     const b = p([{ id: 1 }], { debt: 0 }, { items: { rev: 7, at: '' } })
     expect(computeSlotPlan(a, b, {}, ser).items).toBe('align')
   })
+  it('内容一致且单侧 rev 移动 → 仍为 align（spec 判定表次序 #1）', () => {
+    const L = p([{ id: 1 }], { debt: 0 }, { items: { rev: 2, at: '' } })
+    const C = p([{ id: 1 }], { debt: 0 }, { items: { rev: 3, at: '' } })
+    expect(computeSlotPlan(L, C, { items: 1 }, ser).items).toBe('align')
+  })
   it('仅本地越基线 → upload', () => {
     expect(computeSlotPlan(L, p([], {}, {}), { items: 1 }, ser).items).toBe('upload')
   })
@@ -89,6 +94,7 @@ describe('buildMerged', () => {
   it('adopt 槽显式决策 local 时保本地内容与 rev', () => {
     const L = p([], { debt: 0 }, { items: { rev: 1, at: '' }, transfers: { rev: 1, at: '' } })
     const C = p([] , { debt: 0 }, { transfers: { rev: 5, at: '' } })
+    C.transfers = [{ id: 9 }]
     const plan = computeSlotPlan(L, C, { items: 1, transfers: 1 }, ser)
     expect(plan.transfers).toBe('adopt-cloud')
     const merged = buildMerged(L, C, plan, { transfers: 'local' })
