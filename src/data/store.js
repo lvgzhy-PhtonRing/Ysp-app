@@ -43,6 +43,7 @@ const DEFAULT_CLOUD_STATUS = {
   lastCloudLoadAt: '',
   lastCloudLoadError: '',
   lastAutoSyncAt: 0, // 上一次自动同步时间戳
+  cloudRev: {}, // 同步基线槽位版本：{ slot: { rev, at } }，随 cloudStatus 持久化
 }
 
 // === 新增：启动时的云端数据比对阈值（毫秒）===

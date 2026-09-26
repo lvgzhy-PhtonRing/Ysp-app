@@ -207,6 +207,23 @@ describe('autoBackup 持久化', () => {
   })
 })
 
+describe('cloudRev 持久化', () => {
+  it('cloudRev 随 cloudStatus 持久化与恢复', () => {
+    const storeMap = new Map()
+    vi.stubGlobal('localStorage', {
+      getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
+      setItem: (k, v) => storeMap.set(k, String(v)),
+      removeItem: (k) => storeMap.delete(k),
+    })
+    state.cloudStatus.cloudRev = { items: 3, calc: 1 }
+    saveUiStateToLocalStorage()
+    state.cloudStatus.cloudRev = {}
+    loadUiStateFromLocalStorage()
+    expect(state.cloudStatus.cloudRev).toEqual({ items: 3, calc: 1 })
+    vi.unstubAllGlobals()
+  })
+})
+
 describe('手动同步(force) 智能比对', () => {
   const CLOUD_PAYLOAD = {
     items: [{ id: 1, sid: 'JP-1', name: '云端商品', cost: 100, status: 'inventory' }],
