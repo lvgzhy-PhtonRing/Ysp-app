@@ -51,8 +51,8 @@
 ### App.vue 锁层
 
 - 新增响应式 `tabLocked = ref(false)`，由 `tabLeaseTick` 派生（`parseTabLease(other) → shouldHoldLock(other, own)`）
-- 锁定时：主内容区整体加 `pointer-events:none; user-select:none` 的 overlay 遮罩（复用现有横幅位置改为全页遮罩），文案改为真实描述"另一标签页正在编辑，本页已只读（点击可接管）"
-- 点击遮罩 → `bumpTabTouch()` 抢锁解锁（当前实现已支持：被锁 tab 一旦交互，touch 反超即成为 active）
+- 锁定时：主内容区整体加 `pointer-events:none; user-select:none` 的 overlay 遮罩，文案真实描述"另一标签页正在编辑，本页已只读"
+- **抢占接管用按钮而非整块遮罩**（用户确认的 UX 修正）：遮罩本体不响应点击，内部放一个明确的"接管编辑（另一标签页可能有未保存操作）"按钮；仅按钮 `pointer-events:auto`，点击 → `bumpTabTouch()` 抢锁解锁。避免"只想滚动查看却误触抢锁"变成隐性的假禁用翻版
 - **关键**: 锁定不阻断心跳写入（被锁 tab 也要持续写心跳，才能让对方知道它还活着），只阻断业务输入
 
 ### 改动文件
@@ -61,7 +61,7 @@
 |---|---|
 | `src/utils/tabLease.js` | 新增纯函数 `shouldHoldLock(other, own, now)`；`shouldWarnEditorLock` 保留兼容 |
 | `src/utils/tabLease.test.js` | 新增 `shouldHoldLock` 用例（同 tab、TTL 过期、空、touch 比较） |
-| `src/App.vue` | `tabLocked` 状态 + 全页遮罩 + 点击抢锁；`mousemove` 也计入手动交互 |
+| `src/App.vue` | `tabLocked` 状态 + 全页遮罩（仅按钮可点击抢锁）；`mousemove` 也计入手动交互 |
 
 ---
 
@@ -270,7 +270,7 @@ Device2 ──► performSyncDecision({ silent:true })（分歧→跳过）   �
 
 ## 验收标准
 
-1. 打开两个 tab 编辑同一表单 → 仅 active 可输入，另一个被遮罩；点击遮罩可抢锁
+1. 打开两个 tab 编辑同一表单 → 仅 active 可输入，另一个被遮罩（遮罩本体不响应点击，仅"接管编辑"按钮可抢锁）
 2. 手机开旧缓存 + 电脑改数据后，手机切走页面 → 云端不被回滚；手机重新打开 → 正常冲突检测
 3. 冲突弹窗采纳云端后，`ysp_adopt_before` 有完整 before；回溯该时点前可还原该槽位
 4. 导入无确认框不放行；导入后可通过回溯还原到导入前
