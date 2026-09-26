@@ -70,6 +70,7 @@ import {
   TAB_HEARTBEAT_MS,
   TAB_LEASE_KEY,
   parseTabLease,
+  shouldHoldLock,
   shouldWarnEditorLock,
 } from './utils/tabLease'
 
@@ -213,6 +214,7 @@ const TAB_ID =
     : `tab-${Date.now()}-${Math.random().toString(36).slice(2)}`
 const lastTouch = ref(Date.now())
 const otherTabEditing = ref(false)
+const tabLocked = ref(false)
 let tabLeaseTimer = null
 let tabLockDismissUntil = 0
 
@@ -225,6 +227,7 @@ function tabLeaseTick() {
   const other = parseTabLease(localStorage.getItem(TAB_LEASE_KEY))
   const own = { id: TAB_ID, at: Date.now(), touch: lastTouch.value }
   localStorage.setItem(TAB_LEASE_KEY, JSON.stringify(own))
+  tabLocked.value = shouldHoldLock(other, own)
 
   if (shouldWarnEditorLock(other, own)) {
     // 用户手动关掉提示后有静默期，避免每 2s 反复弹出
@@ -232,6 +235,10 @@ function tabLeaseTick() {
   } else {
     otherTabEditing.value = false
   }
+}
+
+function takeoverEditing() {
+  bumpTabTouch()
 }
 
 function dismissOtherTabEditing() {
@@ -1417,6 +1424,21 @@ watch(
         <span>另一标签页正在编辑，本页已锁定为只读（建议只保留一个编辑页）。</span>
         <button class="font-semibold underline text-blue-600" @click="dismissOtherTabEditing">我在此页编辑</button>
         <button class="ml-1 text-amber-500 hover:text-amber-700" @click="dismissOtherTabEditing">✕</button>
+      </div>
+    </Transition>
+    <Transition name="fade">
+      <div
+        v-if="tabLocked"
+        class="fixed inset-0 z-40 flex items-center justify-center bg-black/30"
+        style="pointer-events: none"
+      >
+        <div class="rounded-2xl bg-white p-6 shadow-xl text-center max-w-sm"
+             style="pointer-events: auto">
+          <i class="fa-solid fa-lock text-amber-500 text-2xl mb-2"></i>
+          <p class="text-gray-800 font-medium mb-1">另一标签页正在编辑</p>
+          <p class="text-sm text-gray-500 mb-4">本页已只读。对方可能有未保存操作，接管前请确认。</p>
+          <button class="btn btn-primary" @click="takeoverEditing">接管编辑</button>
+        </div>
       </div>
     </Transition>
     <Transition name="fade">

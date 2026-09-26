@@ -1,7 +1,7 @@
 // tabLease.js 单元测试：跨标签页编辑租约判定
 
 import { describe, expect, it } from 'vitest'
-import { TAB_LEASE_TTL_MS, parseTabLease, shouldWarnEditorLock } from './tabLease'
+import { TAB_LEASE_TTL_MS, parseTabLease, shouldHoldLock, shouldWarnEditorLock } from './tabLease'
 
 const NOW = Date.parse('2026-09-26T10:00:00.000Z')
 
@@ -48,5 +48,39 @@ describe('shouldWarnEditorLock', () => {
 
   it('本页最近更活跃 → false（避免互相锁定）', () => {
     expect(shouldWarnEditorLock(tab('o', -500, -5000), tab('own', 0, -500), NOW)).toBe(false)
+  })
+})
+
+describe('shouldHoldLock（A 方案）', () => {
+  const now = 1_000_000
+
+  it('对方新鲜且 touch 更大 → 本页锁定', () => {
+    const other = { id: 'tab-b', at: now, touch: 500 }
+    const own = { id: 'tab-a', at: now, touch: 100 }
+    expect(shouldHoldLock(other, own, now)).toBe(true)
+  })
+
+  it('自己 touch 更大 → 不锁定（自己活跃）', () => {
+    const other = { id: 'tab-b', at: now, touch: 100 }
+    const own = { id: 'tab-a', at: now, touch: 500 }
+    expect(shouldHoldLock(other, own, now)).toBe(false)
+  })
+
+  it('touch 相等 → 不锁定（避免同时互锁）', () => {
+    const other = { id: 'tab-b', at: now, touch: 300 }
+    const own = { id: 'tab-a', at: now, touch: 300 }
+    expect(shouldHoldLock(other, own, now)).toBe(false)
+  })
+
+  it('TTL 过期 → 不锁定', () => {
+    const other = { id: 'tab-b', at: now - 6000, touch: 500 }
+    const own = { id: 'tab-a', at: now, touch: 100 }
+    expect(shouldHoldLock(other, own, now)).toBe(false)
+  })
+
+  it('同 id / 空 → 不锁定', () => {
+    expect(shouldHoldLock({ id: 'tab-a', at: now, touch: 500 }, { id: 'tab-a', at: now, touch: 100 }, now)).toBe(false)
+    expect(shouldHoldLock(null, { id: 'tab-a', at: now, touch: 100 }, now)).toBe(false)
+    expect(shouldHoldLock({ id: 'tab-b', at: now, touch: 500 }, null, now)).toBe(false)
   })
 })

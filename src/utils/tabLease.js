@@ -35,3 +35,15 @@ export function shouldWarnEditorLock(other, own, now = Date.now()) {
   if (!other.touch) return false
   return other.touch >= own.touch
 }
+
+/**
+ * 判定本页是否被另一 tab 锁住（最后交互者持锁）。
+ * 锁定条件：对方活跃（TTL 内）、非本页、对方 touch 严格大于本页。
+ * return true 表示"本页应进入只读（遮罩）"。
+ */
+export function shouldHoldLock(other, own, now = Date.now()) {
+  if (!other || !own) return false
+  if (!other.id || other.id === own.id) return false
+  if (!other.at || now - other.at > TAB_LEASE_TTL_MS) return false
+  return other.touch > own.touch
+}
