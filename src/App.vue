@@ -49,6 +49,7 @@ import {
   unloadSync,
 } from './data/store'
 import { appendAdoptBefore } from './data/adoptLog'
+import { reconstructAtTime } from './data/logReplay'
 import {
   getLogBrief,
   getLogDetailSections,
@@ -100,6 +101,78 @@ function toggleExpand(log) {
 
 function toggleRaw(log) {
   rawExpanded.value = rawExpanded.value === log.id ? null : log.id
+}
+
+// ── 数据回溯（操作日志模态框内） ─────────────────────────────────
+const showHistoryRestore = ref(false)
+const historyTargetTime = ref('')
+const historyDiff = ref([])
+const historyTargetState = ref(null)
+
+// reconstructAtTime 的输出是扁平结构（financeRecords/loanRecords），
+// 需转换为 exportData() 的嵌套 payload 形状，才能喂给 computeConflictDiff / applyCloudDataToStore
+function replayStateToPayload(state) {
+  const src = state || {}
+  const calc = src.calc && typeof src.calc === 'object' ? src.calc : {}
+  return {
+    items: Array.isArray(src.items) ? src.items : [],
+    calc,
+    finance: {
+      records: Array.isArray(src.financeRecords) ? src.financeRecords : [],
+      loans: Array.isArray(src.loanRecords) ? src.loanRecords : [],
+    },
+    transfers: Array.isArray(src.transfers) ? src.transfers : [],
+    rushcar: src.rushcar && typeof src.rushcar === 'object' ? src.rushcar : {},
+    updatedAt: src.updatedAt || '',
+    _rev: src._rev && typeof src._rev === 'object' ? src._rev : {},
+  }
+}
+
+function buildHistoryTimeline() {
+  return store.operationLogs.map((log) => ({
+    id: log.id,
+    time: log.time,
+    type: log.type,
+    message: getLogBrief(log),
+  }))
+}
+
+function computeHistoryDiff(targetTime) {
+  // reconstructAtTime 要求扁平结构；exportData() 是嵌套结构（finance.records/loans），
+  // 直接传入会导致财务/借贷数据回放时被清空，故从 store 构造扁平输入
+  const currentFlat = {
+    items: store.items,
+    calc: store.calc,
+    financeRecords: store.financeRecords,
+    loanRecords: store.loanRecords,
+    transfers: store.transfers,
+  }
+  const { state: prior, barriers, skipped } = reconstructAtTime(currentFlat, store.operationLogs, targetTime)
+  if (barriers.length > 0) {
+    historyTargetState.value = null
+    historyDiff.value = []
+    alert('该时间点之前存在不可逆操作（导入/撤销/清空），无法精确还原。')
+    return
+  }
+  const priorPayload = replayStateToPayload(prior)
+  // 回溯引擎无法重建 rushcar 槽位，保留当前数据：既避免误清空美淘数据，
+  // 也避免 applyCloudDataToStore 因 rushcar 缺失（非数组）拒绝应用
+  priorPayload.rushcar = exportData().rushcar
+  const diff = computeConflictDiff(priorPayload, exportData())
+  historyTargetState.value = priorPayload
+  historyTargetTime.value = targetTime
+  historyDiff.value = diff.entries || []
+  void skipped
+}
+
+function handleRestoreFromHistory() {
+  if (!historyTargetState.value) return
+  if (!confirm('将当前数据恢复到所选时间点（会同步至云端），是否继续？')) return
+  applyCloudDataToStore(historyTargetState.value, { trackHistory: true })
+  addOperationLog('app_history_restore', `恢复数据到 ${new Date(historyTargetTime.value).toLocaleString()}`, {
+    targetTime: historyTargetTime.value,
+  })
+  showHistoryRestore.value = false
 }
 
 const showCloudSettings = ref(false)
@@ -1324,8 +1397,37 @@ watch(
         <div class="flex items-center gap-2">
           <button class="btn btn-outline btn-sm" :disabled="!canUndo" @click="handleUndo">撤销 {{ store.undoStack.length }}</button>
           <button class="btn btn-outline btn-sm" :disabled="!canRedo" @click="handleRedo">重做 {{ store.redoStack.length }}</button>
+          <button class="btn btn-outline btn-sm" @click="showHistoryRestore = true">数据回溯</button>
           <button class="btn btn-outline btn-sm" @click="clearOperationLogs">清空日志</button>
         </div>
+      </div>
+      <div v-if="showHistoryRestore" class="px-4 py-4 border-b border-gray-100">
+        <div class="flex items-center justify-between mb-3">
+          <h4 class="font-bold text-lg">数据回溯</h4>
+          <button class="text-xs text-gray-500 hover:text-gray-700" @click="showHistoryRestore = false">关闭</button>
+        </div>
+        <p class="text-sm text-gray-500 mb-3">选择一个历史时间点，查看当时的差异摘要并可恢复。</p>
+        <select class="apple-select w-full mb-3" v-model="historyTargetTime" @change="computeHistoryDiff(historyTargetTime)">
+          <option value="">选择时间点…</option>
+          <option v-for="t in buildHistoryTimeline()" :key="t.id" :value="t.time">
+            {{ new Date(t.time).toLocaleString() }} · {{ t.message }}
+          </option>
+        </select>
+        <div v-if="historyDiff.length" class="text-xs text-gray-600 space-y-1">
+          <div v-for="(e, i) in historyDiff.slice(0, 20)" :key="i"
+               class="flex items-start gap-2 border-b border-gray-50 pb-1">
+            <span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium"
+                  :class="e.kind === 'localOnly' ? 'bg-red-100 text-red-700' :
+                          e.kind === 'cloudOnly' ? 'bg-green-100 text-green-700' :
+                          'bg-blue-100 text-blue-700'">
+              {{ e.kind === 'localOnly' ? '将删除' : e.kind === 'cloudOnly' ? '将新增' : '将修改' }}
+            </span>
+            <span>{{ e.collectionLabel }} · {{ e.recordLabel }}</span>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm mt-3" :disabled="!historyTargetState" @click="handleRestoreFromHistory">
+          恢复到所选时间点
+        </button>
       </div>
       <div class="flex-1 overflow-y-auto space-y-2 p-4">
         <div v-if="store.operationLogs.length === 0" class="text-center text-gray-400 py-8">暂无日志记录</div>

@@ -3,6 +3,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import sampleData from '../__tests__/fixtures/sampleData.json'
 import {
+  addOperationLog,
+  clearOperationLogs,
   computeConflictDiff,
   exportData,
   hiddenSync,
@@ -573,5 +575,26 @@ describe('blind sync 薄壳（B 方案）', () => {
     // silent + conflict → 整轮跳过：无 sync 上传、不弹窗
     expect(env.calls.filter((c) => c.reason === 'sync')).toHaveLength(0)
     expect(conflictCalled).toBe(false)
+  })
+})
+
+describe('回溯恢复落日志（E 方案）', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    })
+    loadData({})
+    clearOperationLogs()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('恢复时写入 app_history_restore 日志', () => {
+    addOperationLog('app_history_restore', '恢复数据到 2026-09-10 状态', { targetTime: '2026-09-10T00:00:00Z' })
+    expect(state.operationLogs[0].type).toBe('app_history_restore')
   })
 })

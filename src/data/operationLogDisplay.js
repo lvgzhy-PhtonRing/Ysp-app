@@ -11,6 +11,7 @@ export const LOG_TYPE_META = {
   app_undo: { label: '系统撤销', color: 'text-orange-600', icon: 'fa-solid fa-rotate-left', pillClass: 'bg-orange-100 text-orange-700' },
   app_redo: { label: '系统重做', color: 'text-emerald-600', icon: 'fa-solid fa-rotate-right', pillClass: 'bg-emerald-100 text-emerald-700' },
   app_auto_backup: { label: '系统备份', color: 'text-teal-600', icon: 'fa-solid fa-floppy-disk', pillClass: 'bg-teal-100 text-teal-700' },
+  app_history_restore: { label: '历史恢复', color: 'text-purple-600', icon: 'fa-solid fa-clock-rotate-left', pillClass: 'bg-purple-100 text-purple-700' },
   cloud_settings: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-cloud', pillClass: 'bg-cyan-100 text-cyan-700' },
   cloud_signin: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-user-check', pillClass: 'bg-cyan-100 text-cyan-700' },
   cloud_signout: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-user-slash', pillClass: 'bg-cyan-100 text-cyan-700' },
