@@ -222,6 +222,11 @@ function bumpTabTouch() {
   lastTouch.value = Date.now()
 }
 
+function bumpTabTouchUnlessLocked() {
+  if (tabLocked.value) return
+  bumpTabTouch()
+}
+
 function tabLeaseTick() {
   // 先读他人上一次心跳，再写自己的（共享 key 后写覆盖先写）
   const other = parseTabLease(localStorage.getItem(TAB_LEASE_KEY))
@@ -239,6 +244,7 @@ function tabLeaseTick() {
 
 function takeoverEditing() {
   bumpTabTouch()
+  tabLocked.value = false
 }
 
 function dismissOtherTabEditing() {
@@ -875,8 +881,8 @@ onMounted(async () => {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && showConfirm.value) cancelConfirm()
   })
-  document.addEventListener('mousedown', bumpTabTouch)
-  document.addEventListener('keydown', bumpTabTouch)
+  document.addEventListener('mousedown', bumpTabTouchUnlessLocked)
+  document.addEventListener('keydown', bumpTabTouchUnlessLocked)
   tabLeaseTick()
   tabLeaseTimer = setInterval(tabLeaseTick, TAB_HEARTBEAT_MS)
 
@@ -939,8 +945,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('storage', onStorageDataChange)
   clearInterval(tabLeaseTimer)
   releaseTabLease()
-  document.removeEventListener('mousedown', bumpTabTouch)
-  document.removeEventListener('keydown', bumpTabTouch)
+  document.removeEventListener('mousedown', bumpTabTouchUnlessLocked)
+  document.removeEventListener('keydown', bumpTabTouchUnlessLocked)
 
   // 关闭前保底同步：页面卸载时 confirm 不可靠，不做复杂冲突提示。
   // 走引擎 silent + keepalive：有分歧槽位则整轮跳过（不盲写），冲突推迟到下次启动 loadCloudOnStartup。
