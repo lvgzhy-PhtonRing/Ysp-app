@@ -48,6 +48,7 @@ export const LOG_REPLAY_CAPABILITY = {
   cloud_pull: CAP.BARRIER,
   app_undo: CAP.BARRIER,
   app_redo: CAP.BARRIER,
+  app_history_restore: CAP.BARRIER,
   cloud_sync: CAP.NOOP,
   cloud_settings: CAP.NOOP,
   cloud_signin: CAP.NOOP,

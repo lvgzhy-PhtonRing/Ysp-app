@@ -243,6 +243,18 @@ describe('reconstructAtTime 逆序回放', () => {
     expect(rebuilt.items.find((x) => x.id === a.id)).toBeTruthy()
   })
 
+  it('遇到 app_history_restore 屏障即中止回放并记录', () => {
+    const a = addPurchaseItem({ name: '恢复点前', sid: 'JP-9701' })
+    addOperationLog('app_history_restore', '恢复数据到某时间点', { targetTime: '2026-09-20T00:00:00Z' })
+    deletePurchaseItem(a.id)
+
+    const { state: rebuilt, barriers } = reconstructAtTime(captureState(), store.operationLogs, null)
+
+    expect(barriers).toHaveLength(1)
+    expect(barriers[0].type).toBe('app_history_restore')
+    expect(rebuilt.items.find((x) => x.id === a.id)).toBeTruthy()
+  })
+
   it('旧式无 adoptId 的 cloud_sync → 跳过（不可逆），不再误判屏障', () => {
     const a = addPurchaseItem({ name: '云端屏障', sid: 'JP-9601' })
     addOperationLog('cloud_sync', '用户选择使用云端数据', { cloudUpdatedAt: 'x', localUpdatedAt: 'y' })
