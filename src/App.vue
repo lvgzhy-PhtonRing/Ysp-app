@@ -182,7 +182,9 @@ function handleRestoreFromHistory() {
 // 快照本身是含 _rev 的完整 exportData，但其 rev 反映的是导入前的同步基线，
 // 直接应用可能被 computeSlotPlan 判为 conflict（默认留本地、不上云），
 // 故复用 finalizeRestorePayload 对变更槽位 bump rev，与「恢复到所选时间点」路径一致地强制 upload。
-const fullImportSnapshot = computed(() => latestFullImportSnapshot())
+// 按钮禁用态须响应式：不能直接用 latestFullImportSnapshot()（读 localStorage、无响应式依赖，
+// computed 零依赖时首次求值即永久缓存），改用显式 ref，在 onMounted 与 handleImport 落档后置位。
+const fullImportReady = ref(false)
 
 function handleRestoreBeforeImport() {
   const snapshot = latestFullImportSnapshot()
@@ -897,6 +899,8 @@ function handleImport(event) {
       addOperationLog('app_import', '导入数据成功', { file: file.name, snapshotAdoptId })
       if (!snap.persisted) {
         addOperationLog('app_import', '导入前快照落档失败（存储已满），无法回溯到导入前状态', { file: file.name })
+      } else {
+        fullImportReady.value = true
       }
       alert('导入成功')
     } catch (err) {
@@ -924,6 +928,7 @@ function handleExport() {
 onMounted(async () => {
   loadUiStateFromLocalStorage()
   loadFromLocalStorage()
+  fullImportReady.value = !!latestFullImportSnapshot()
 
   const envCloudSettings = getEnvCloudSettings()
   if (!isCloudConfigReady(store.cloudSettings) && isCloudConfigReady(envCloudSettings)) {
@@ -1446,7 +1451,7 @@ watch(
         <button class="btn btn-primary btn-sm mt-3" :disabled="!historyTargetState" @click="handleRestoreFromHistory">
           恢复到所选时间点
         </button>
-        <button class="btn btn-outline btn-sm mt-3 ml-2" :disabled="!fullImportSnapshot" @click="handleRestoreBeforeImport">
+        <button class="btn btn-outline btn-sm mt-3 ml-2" :disabled="!fullImportReady" @click="handleRestoreBeforeImport">
           恢复到最近一次导入前
         </button>
       </div>
