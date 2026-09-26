@@ -780,13 +780,28 @@ function handleImport(event) {
   const file = event.target.files?.[0]
   if (!file) return
 
+  const ok = confirm('导入将覆盖当前全部数据，且将同步至云端（如有启用）。建议先导出备份。是否继续？')
+  if (!ok) {
+    event.target.value = ''
+    return
+  }
+
   const reader = new FileReader()
   reader.onload = (e) => {
     try {
       const json = JSON.parse(e.target?.result)
+      // 导入前快照：把当前完整数据落档，便于日后回溯还原（Task 1 appendAdoptBefore）
+      const snap = appendAdoptBefore({
+        slot: '__full_import__',
+        before: exportData(),
+      })
+      const snapshotAdoptId = snap.adoptId
       loadData(json)
       saveToLocalStorage()
-      addOperationLog('app_import', '导入数据成功', { file: file.name })
+      addOperationLog('app_import', '导入数据成功', { file: file.name, snapshotAdoptId })
+      if (!snap.persisted) {
+        addOperationLog('app_import', '导入前快照落档失败（存储已满），无法回溯到导入前状态', { file: file.name })
+      }
       alert('导入成功')
     } catch (err) {
       alert(`导入失败：${err.message}`)
