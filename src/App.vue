@@ -13,6 +13,7 @@ import MarketPriceModule from './modules/market-price/MarketPriceModule.vue'
 import { primaryConflictAction } from './utils/cloudConflict'
 import { SLOT_LABELS, slotValue } from './data/cloudSlotPlan'
 import {
+  CLOUD_AUTO_SYNC_INTERVAL,
   addOperationLog,
   clearCloudSession,
   clearOperationLogs,
@@ -61,6 +62,13 @@ import {
   signOutCloudSession,
 } from './services/cloudStore'
 import { shouldWarnBeforeOverwrite, downloadJsonBackup } from './services/dataProtection'
+import {
+  TAB_DISMISS_COOLDOWN_MS,
+  TAB_HEARTBEAT_MS,
+  TAB_LEASE_KEY,
+  parseTabLease,
+  shouldWarnEditorLock,
+} from './utils/tabLease'
 
 const tabs = [
   { id: 'home', name: '数据透视' },
@@ -165,6 +173,75 @@ function downloadBackupManually() {
 
 function dismissBackupNotice() {
   backupNoticeVisible.value = false
+}
+
+// 另一标签页修改了共享 localStorage 数据时，本页提示刷新加载最新数据
+// storage 事件只在【其他】tab 触发（写入方自己收不到），天然排除本页自身写入
+const tabDataNotice = ref(false)
+const tabDataUpdatedAt = ref('')
+
+function onStorageDataChange(e) {
+  if (!e || e.key !== 'ysp_data') return
+  if (!e.newValue || e.newValue === JSON.stringify(exportData())) return
+  tabDataNotice.value = true
+  try {
+    const parsed = JSON.parse(e.newValue)
+    tabDataUpdatedAt.value = parsed?.updatedAt || ''
+  } catch (_) {
+    tabDataUpdatedAt.value = ''
+  }
+}
+
+function reloadFromOtherTab() {
+  location.reload()
+}
+
+function dismissTabDataNotice() {
+  tabDataNotice.value = false
+}
+
+// === 方案B：跨标签页编辑租约 ===
+// 每 TAB_HEARTBEAT_MS 写一次心跳（ysp_tab），展示最近一次用户交互时间；
+// 若读到另一 tab 的新鲜租约且其更活跃 → 提示"另一标签页正在编辑，本页只读"。
+// TTL 让崩溃/关闭的 tab 自动过期，无需手动解锁。
+const TAB_ID =
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `tab-${Date.now()}-${Math.random().toString(36).slice(2)}`
+const lastTouch = ref(Date.now())
+const otherTabEditing = ref(false)
+let tabLeaseTimer = null
+let tabLockDismissUntil = 0
+
+function bumpTabTouch() {
+  lastTouch.value = Date.now()
+}
+
+function tabLeaseTick() {
+  // 先读他人上一次心跳，再写自己的（共享 key 后写覆盖先写）
+  const other = parseTabLease(localStorage.getItem(TAB_LEASE_KEY))
+  const own = { id: TAB_ID, at: Date.now(), touch: lastTouch.value }
+  localStorage.setItem(TAB_LEASE_KEY, JSON.stringify(own))
+
+  if (shouldWarnEditorLock(other, own)) {
+    // 用户手动关掉提示后有静默期，避免每 2s 反复弹出
+    otherTabEditing.value = Date.now() >= tabLockDismissUntil
+  } else {
+    otherTabEditing.value = false
+  }
+}
+
+function dismissOtherTabEditing() {
+  otherTabEditing.value = false
+  tabLockDismissUntil = Date.now() + TAB_DISMISS_COOLDOWN_MS
+}
+
+function releaseTabLease() {
+  try {
+    localStorage.setItem(TAB_LEASE_KEY, JSON.stringify({ id: TAB_ID, at: 0, touch: 0 }))
+  } catch (_) {
+    // 尽力而为
+  }
 }
 
 function todayStr() {
@@ -757,9 +834,14 @@ onMounted(async () => {
   registerCloudApplyHandler((payload, options = {}) => applyCloudDataToStore(payload, options))
 
   document.addEventListener('visibilitychange', syncSilentlyOnHidden)
+  window.addEventListener('storage', onStorageDataChange)
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && showConfirm.value) cancelConfirm()
   })
+  document.addEventListener('mousedown', bumpTabTouch)
+  document.addEventListener('keydown', bumpTabTouch)
+  tabLeaseTick()
+  tabLeaseTimer = setInterval(tabLeaseTick, TAB_HEARTBEAT_MS)
 
   // === 新增：程序启动时自动从云端加载数据 ===
   const cloudLoaded = await loadCloudOnStartup()
@@ -780,6 +862,9 @@ let periodicTimer = null
  * - 如果云端数据比本地新，静默下载
  */
 function periodicCloudCheck() {
+  // 重排必须先行：守卫 return 不得跳过重排，否则检测链会永久中断
+  periodicTimer = setTimeout(periodicCloudCheck, CLOUD_AUTO_SYNC_INTERVAL)
+
   if (!store.cloudSettings.enabled) return
   if (!isCloudConfigReady(store.cloudSettings)) return
   if (store.cloudStatus.syncing) return
@@ -809,14 +894,16 @@ function periodicCloudCheck() {
       // 静默失败，下次再试
     })
   }
-
-  // 继续下一次检测
-  periodicTimer = setTimeout(periodicCloudCheck, CLOUD_AUTO_SYNC_INTERVAL)
 }
 
 onBeforeUnmount(() => {
   clearTimeout(periodicTimer)
   document.removeEventListener('visibilitychange', syncSilentlyOnHidden)
+  window.removeEventListener('storage', onStorageDataChange)
+  clearInterval(tabLeaseTimer)
+  releaseTabLease()
+  document.removeEventListener('mousedown', bumpTabTouch)
+  document.removeEventListener('keydown', bumpTabTouch)
 
   // 关闭前保底上传：页面卸载时 confirm 不可靠，不做复杂冲突检测。
   // 若有未同步的本地修改，用 keepalive 静默上传保底；冲突决策推迟到下次启动 loadCloudOnStartup。
@@ -1297,6 +1384,30 @@ watch(
         </div>
       </div>
     </GlassModal>
+    <Transition name="fade">
+      <div
+        v-if="otherTabEditing"
+        class="fixed left-1/2 top-16 z-50 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 shadow-lg"
+      >
+        <i class="fa-solid fa-lock text-amber-500"></i>
+        <span>另一标签页正在编辑，本页已锁定为只读（建议只保留一个编辑页）。</span>
+        <button class="font-semibold underline text-blue-600" @click="dismissOtherTabEditing">我在此页编辑</button>
+        <button class="ml-1 text-amber-500 hover:text-amber-700" @click="dismissOtherTabEditing">✕</button>
+      </div>
+    </Transition>
+    <Transition name="fade">
+      <div
+        v-if="tabDataNotice"
+        class="fixed left-1/2 top-40 z-50 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 shadow-lg"
+      >
+        <i class="fa-solid fa-triangle-exclamation text-amber-500"></i>
+        <span>
+          另一标签页已修改数据<span v-if="tabDataUpdatedAt">（{{ relativeLabel(tabDataUpdatedAt) }}）</span>，刷新以加载最新数据。
+        </span>
+        <button class="font-semibold underline text-blue-600" @click="reloadFromOtherTab">刷新</button>
+        <button class="ml-1 text-amber-500 hover:text-amber-700" @click="dismissTabDataNotice">✕</button>
+      </div>
+    </Transition>
     <Transition name="fade">
       <div
         v-if="backupNoticeVisible"
