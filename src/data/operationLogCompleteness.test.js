@@ -10,6 +10,7 @@ import {
 import { deleteItem, editItem, submitManualAdd } from '../modules/inventory/useInventory'
 import { addPurchaseItem, deletePurchaseItem, moveToInventory, submitTransfer } from '../modules/purchase/usePurchase'
 import { editSaleRecord, submitSell, unlistItem } from '../modules/sales/useSales'
+import { ADOPT_STORAGE_KEY, appendAdoptBefore } from './adoptLog'
 import { addOperationLog, clearOperationLogs, clone, loadData, state as store } from './store'
 import {
   LOG_DETAIL_CONTRACT,
@@ -28,10 +29,68 @@ function stubEnv() {
   vi.stubGlobal('alert', vi.fn())
 }
 
+function memStorage() {
+  const map = new Map()
+  return {
+    getItem: (k) => (map.has(k) ? map.get(k) : null),
+    setItem: (k, v) => map.set(k, String(v)),
+    removeItem: (k) => map.delete(k),
+    clear: () => map.clear(),
+  }
+}
+
 beforeEach(() => {
   stubEnv()
   loadData({})
   clearOperationLogs()
+})
+
+describe('cloud_adopt_before 逆操作（E 方案）', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', memStorage())
+    loadData({})
+    clearOperationLogs()
+  })
+
+  it('标记为 FULL 能力', () => {
+    expect(LOG_REPLAY_CAPABILITY.cloud_adopt_before).toBe('full')
+  })
+
+  it('回放时按 adoptId 还原被采纳的槽位', () => {
+    const { adoptId } = appendAdoptBefore({
+      slot: 'items', before: [{ id: 'old', name: 'A' }], time: '2026-09-10T00:00:00Z',
+    })
+    const current = { items: [{ id: 'new', name: 'B' }] }
+    const logs = [
+      { id: 1, time: '2026-09-11T00:00:00Z', type: 'cloud_adopt_before', message: '采纳', detail: { adoptId, slot: 'items' } },
+    ]
+    const { state } = reconstructAtTime(current, logs, null)
+    expect(state.items[0].name).toBe('A')
+  })
+
+  it('回放时序：target 时间点在采纳之后 → 不还原', () => {
+    const { adoptId } = appendAdoptBefore({
+      slot: 'items', before: [{ id: 'old', name: 'A' }], time: '2026-09-01T00:00:00Z',
+    })
+    const current = { items: [{ id: 'new', name: 'B' }] }
+    const logs = [
+      { id: 2, time: '2026-09-10T00:00:00Z', type: 'cloud_adopt_before', message: '采纳', detail: { adoptId, slot: 'items' } },
+    ]
+    const { state } = reconstructAtTime(current, logs, '2026-09-11T00:00:00Z')
+    expect(state.items[0].name).toBe('B')
+  })
+
+  it('嵌套槽位 finance.records 还原到扁平字段', () => {
+    const { adoptId } = appendAdoptBefore({
+      slot: 'finance.records', before: [{ id: 'r1', item: '旧记录', type: 'expense', amount: 10 }], time: '2026-09-10T00:00:00Z',
+    })
+    const current = { items: [], calc: {}, financeRecords: [{ id: 'r1', item: '新记录', type: 'expense', amount: 99 }], loanRecords: [], transfers: [] }
+    const logs = [
+      { id: 1, time: '2026-09-11T00:00:00Z', type: 'cloud_adopt_before', message: '采纳', detail: { adoptId, slot: 'finance.records' } },
+    ]
+    const { state } = reconstructAtTime(current, logs, null)
+    expect(state.financeRecords[0].amount).toBe(10)
+  })
 })
 
 const captureState = () => ({
@@ -184,17 +243,19 @@ describe('reconstructAtTime 逆序回放', () => {
     expect(rebuilt.items.find((x) => x.id === a.id)).toBeTruthy()
   })
 
-  it('云端下载覆盖本地的 cloud_sync 判定为屏障，纯同步不判定', () => {
+  it('旧式无 adoptId 的 cloud_sync → 跳过（不可逆），不再误判屏障', () => {
     const a = addPurchaseItem({ name: '云端屏障', sid: 'JP-9601' })
     addOperationLog('cloud_sync', '用户选择使用云端数据', { cloudUpdatedAt: 'x', localUpdatedAt: 'y' })
     addOperationLog('cloud_sync', '内容一致，已对齐时间戳', { cloudUpdatedAt: 'x', localUpdatedAt: 'y' })
     deletePurchaseItem(a.id)
 
-    const { state: rebuilt, barriers } = reconstructAtTime(captureState(), store.operationLogs, null)
+    const { state: rebuilt, skipped, barriers } = reconstructAtTime(captureState(), store.operationLogs, null)
 
-    expect(barriers).toHaveLength(1)
-    expect(barriers[0].message).toContain('使用云端数据')
-    expect(rebuilt.items.find((x) => x.id === a.id)).toBeTruthy()
+    // 不再因 message 正则误判屏障：两条 cloud_sync 均落入 skipped（不可逆但可继续回放）
+    expect(barriers).toEqual([])
+    expect(skipped.filter((s) => s.type === 'cloud_sync')).toHaveLength(2)
+    // 跳过日志后仍继续回放 purchase_add，add + delete 净效果为商品不存在
+    expect(rebuilt.items).toEqual([])
   })
 
   it('无逆操作类型的日志记入 skipped 而不中断回放', () => {

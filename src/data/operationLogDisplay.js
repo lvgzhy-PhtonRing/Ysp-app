@@ -17,6 +17,7 @@ export const LOG_TYPE_META = {
   cloud_sync: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-arrows-rotate', pillClass: 'bg-cyan-100 text-cyan-700' },
   cloud_pull: { label: '云端', color: 'text-cyan-600', icon: 'fa-solid fa-cloud-arrow-down', pillClass: 'bg-cyan-100 text-cyan-700' },
   cloud_conflict: { label: '云端冲突', color: 'text-orange-600', icon: 'fa-solid fa-triangle-exclamation', pillClass: 'bg-orange-100 text-orange-700' },
+  cloud_adopt_before: { label: '云端采纳备份', color: 'text-cyan-600', icon: 'fa-solid fa-floppy-disk', pillClass: 'bg-cyan-100 text-cyan-700' },
   purchase_add: { label: '采购新增', color: 'text-yellow-600', icon: 'fa-solid fa-plus', pillClass: 'bg-yellow-100 text-yellow-700' },
   purchase_transfer: { label: '采购转运', color: 'text-amber-600', icon: 'fa-solid fa-truck', pillClass: 'bg-amber-100 text-amber-700' },
   purchase_transfer_edit: { label: '采购转运编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen-to-square', pillClass: 'bg-blue-100 text-blue-700' },

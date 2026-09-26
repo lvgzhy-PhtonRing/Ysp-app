@@ -3,6 +3,8 @@
 // 用途：验证日志完整性 —— 从当前状态出发，仅凭操作日志反向回放，
 // 还原到任意时间点的数据。仅作验证/研究工具，不接入 UI。
 
+import { getAdoptBeforeById } from './adoptLog'
+
 const clone = (value) => JSON.parse(JSON.stringify(value))
 
 // ── 回放能力分级 ──────────────────────────────────────────────
@@ -51,6 +53,7 @@ export const LOG_REPLAY_CAPABILITY = {
   cloud_signin: CAP.NOOP,
   cloud_signout: CAP.NOOP,
   cloud_conflict: CAP.NOOP,
+  cloud_adopt_before: CAP.FULL,
   app_export: CAP.NOOP,
   app_auto_backup: CAP.NOOP,
 }
@@ -85,6 +88,7 @@ export const LOG_DETAIL_CONTRACT = {
   finance_update_loan: ['loanId', 'changes'],
   calc_update: ['field', 'before'],
   market_price_update: ['sid', 'name'],
+  cloud_adopt_before: ['adoptId'],
 }
 
 // 未知类型 / 无业务变更类型不参与契约校验
@@ -163,6 +167,23 @@ function revertSale(item) {
   item.status = 'inventory'
   item.stock = 1
   delete item.saleDetails
+}
+
+// reconstructAtTime 的 state 是扁平结构：items / calc / financeRecords / loanRecords / transfers
+// 而 adoptLog 的 slot 是嵌套路径（finance.records / rushcar.entries …）。
+// 此处把嵌套槽位名映射到 logReplay 能操作的扁平字段；无法映射的跳过。
+const SLOT_TO_FLAT = {
+  items: 'items',
+  calc: 'calc',
+  'finance.records': 'financeRecords',
+  'finance.loans': 'loanRecords',
+  transfers: 'transfers',
+}
+
+function applyAdoptRestore(state, slot, before) {
+  const flat = SLOT_TO_FLAT[slot]
+  if (!flat || !(flat in state)) return
+  state[flat] = JSON.parse(JSON.stringify(before))
 }
 
 // ── 逐类型逆操作 ──────────────────────────────────────────────
@@ -339,6 +360,12 @@ const INVERSE_HANDLERS = {
     if (!state.calc) state.calc = {}
     state.calc[d.field] = clone(d.before)
   },
+
+  cloud_adopt_before: (state, d) => {
+    const record = getAdoptBeforeById(d?.adoptId)
+    if (!record || record.before === null || record.before === undefined) return
+    applyAdoptRestore(state, record.slot, record.before)
+  },
 }
 
 /**
@@ -376,12 +403,6 @@ export function reconstructAtTime(currentState, logs = [], targetTime = null) {
     const d = log.detail || {}
 
     if (LOG_REPLAY_CAPABILITY[type] === CAP.BARRIER) {
-      barriers.push({ id: log.id, type, time: log.time, message: log.message })
-      break
-    }
-
-    // 云端"下载覆盖本地"类同步等同整体状态替换
-    if (type === 'cloud_sync' && /下载|选择使用云端数据/.test(String(log.message || ''))) {
       barriers.push({ id: log.id, type, time: log.time, message: log.message })
       break
     }
