@@ -260,12 +260,17 @@ watch(
   },
 )
 
+// 默认打勾当前 scope 内已标记为长线的商品
+function applyLongTermDefaultCheck() {
+  longTermForm.selectedSids = longTermSidItems.value.filter((g) => g.hasLongTerm).map((g) => g.sid)
+}
+
 watch(
   () => longTermForm.category,
   () => {
     longTermForm.brand = ''
     longTermForm.batch = ''
-    longTermForm.selectedSids = []
+    applyLongTermDefaultCheck()
   },
 )
 
@@ -276,15 +281,13 @@ watch(
     if (longTermForm.batch && !longTermBatchOptions.value.includes(longTermForm.batch)) {
       longTermForm.batch = ''
     }
-    longTermForm.selectedSids = []
+    applyLongTermDefaultCheck()
   },
 )
 
 watch(
   () => longTermForm.batch,
-  () => {
-    longTermForm.selectedSids = longTermSidItems.value.filter((g) => g.hasLongTerm).map((g) => g.sid)
-  },
+  applyLongTermDefaultCheck,
 )
 
 const inventoryItems = computed(() => {
