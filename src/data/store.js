@@ -16,6 +16,8 @@ const HISTORY_META_EXPIRE_MS = 3000
 export const CLOUD_AUTO_SYNC_INTERVAL = 30000 // 30秒自动检测
 var DELETE_MERGE_WINDOW_MS = 500
 var DELETE_LOG_TYPES = { inventory_delete: true, purchase_delete: true }
+var ALIGN_MERGE_WINDOW_MS = 300000 // 5分钟内连续的"对齐时间戳"日志合并
+var ALIGN_LOG_TYPES = { 'cloud_sync': true }
 
 // === 新增：云同步配置默认值 ===
 const DEFAULT_CLOUD_SETTINGS = {
@@ -1087,6 +1089,24 @@ export function addOperationLog(type, message, detail) {
       last.message = '删除商品: ' + (detail.name || '') + ' x' + newCount
       last.time = new Date().toISOString()
       last.id = Date.now() + Math.floor(Math.random() * 1000)
+      saveUiStateToLocalStorage()
+      return
+    }
+  }
+
+  // 对齐时间戳聚合：连续的"对齐时间戳"日志在 5 分钟内合并为 1 条
+  if (type === 'cloud_sync' && /对齐时间戳|内容一致/.test(message) && state.operationLogs.length > 0) {
+    var last = state.operationLogs[0]
+    var timeGap = Date.now() - new Date(last.time).getTime()
+    if (
+      last.type === 'cloud_sync' &&
+      /对齐时间戳|内容一致/.test(last.message) &&
+      timeGap < ALIGN_MERGE_WINDOW_MS
+    ) {
+      var prevCount = last.detail?.alignCount || 1
+      last.detail = Object.assign({}, last.detail, { alignCount: prevCount + 1 })
+      last.message = last.message.replace(/ x\d+$/, '') + ' x' + (prevCount + 1)
+      last.time = new Date().toISOString()
       saveUiStateToLocalStorage()
       return
     }
