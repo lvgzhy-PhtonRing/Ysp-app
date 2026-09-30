@@ -9,7 +9,7 @@ import {
   isBackupDue,
 } from '../services/dataProtection'
 
-const APP_VERSION = '3.12.10'
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0'
 const CLOUD_SYNC_DEBOUNCE_MS = 800
 const MAX_UNDO_STEPS = 20
 const HISTORY_META_EXPIRE_MS = 3000
