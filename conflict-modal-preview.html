@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>冲突弹窗 · 方案 A v5 预览</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+  body { font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: #f3f4f6; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; padding:.5rem .75rem; border-radius:.5rem; font-size:.875rem; font-weight:500; transition:all .15s; cursor:pointer; border:none; }
+  .btn-primary { background:#3b82f6; color:white; }
+  .btn-primary:hover { background:#2563eb; }
+  .btn-danger { background:#ef4444; color:white; }
+  .btn-danger:hover { background:#dc2626; }
+  .btn-outline { background:white; color:#374151; border:1px solid #e5e7eb; }
+  .btn-outline:hover { background:#f9fafb; }
+  .modal-panel { background:white; border-radius:1rem; box-shadow:0 20px 50px rgba(0,0,0,.15); }
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#111827; color:white; padding:.6rem 1rem; border-radius:.5rem; font-size:.875rem; z-index:99; opacity:0; transition:opacity .2s; pointer-events:none; }
+  .toast.show { opacity:1; }
+
+  .pick-card {
+    transition: opacity .18s ease, transform .18s ease, box-shadow .18s ease, border-color .18s ease, background-color .18s ease;
+    cursor: pointer;
+    border-width: 2px;
+  }
+  .pick-row:hover .pick-card:not(:hover) { opacity: .42; filter: grayscale(.6); }
+  .pick-row:hover .pick-card:hover {
+    transform: translateY(-2px) scale(1.015);
+    box-shadow: 0 12px 28px rgba(0,0,0,.12);
+  }
+  .pick-card:focus-visible { outline: none; }
+  .pick-row:has(.pick-card:focus-visible) .pick-card:not(:focus-visible) { opacity: .42; filter: grayscale(.6); }
+  .pick-card:focus-visible { transform: translateY(-2px) scale(1.015); box-shadow: 0 12px 28px rgba(0,0,0,.12); }
+
+  /* 卡片标题的"打勾"徽章：默认隐藏，悬停/聚焦时显示 */
+  .pick-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 9999px;
+    font-size: .6875rem;
+    opacity: 0;
+    transform: scale(.6) rotate(-15deg);
+    transition: opacity .18s ease, transform .18s ease;
+    margin-left: .25rem;
+  }
+  .pick-card:hover .pick-check,
+  .pick-card:focus-visible .pick-check {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+  }
+
+  /* 确认层：更大、三列、按钮同色+悬停差异 */
+  .confirm-overlay {
+    position: absolute; inset: 0;
+    display: none;
+    align-items: center; justify-content: center;
+    background: rgba(255,255,255,.82);
+    backdrop-filter: blur(2px);
+    border-radius: 1rem;
+    z-index: 10;
+    padding: 1rem;
+  }
+  .confirm-overlay.show { display: flex; }
+  .confirm-box {
+    background: white;
+    border-radius: .875rem;
+    padding: 1.5rem;
+    box-shadow: 0 10px 30px rgba(0,0,0,.18);
+    width: 100%;
+    max-width: 44rem;
+  }
+  .impact-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem; }
+  .impact-col { border-radius: .5rem; padding: .75rem .875rem; }
+  .impact-list { margin-top: .5rem; max-height: 14rem; overflow-y: auto; }
+  /* 三列默认同色（灰底），悬停/聚焦时上色 */
+  .impact-col { background:#f9fafb; border:1px solid #e5e7eb; transition: background-color .18s ease, border-color .18s ease; }
+  .impact-col:hover { background:#eff6ff; border-color:#bfdbfe; }
+  .impact-col.gain:hover { background:#f0fdf4; border-color:#bbf7d0; }
+  .impact-col.lose:hover { background:#fef2f2; border-color:#fecaca; }
+  .impact-col.change:hover { background:#fffbeb; border-color:#fde68a; }
+
+  /* 确认按钮：同色（都是 btn-outline），悬停时差异 */
+  .confirm-actions .btn { transition: all .15s; }
+  .confirm-actions .btn.cancel-btn:hover,
+  .confirm-actions .btn.cancel-btn:focus-visible { background:#fef2f2; color:#dc2626; border-color:#fecaca; }
+  .confirm-actions .btn.confirm-btn:hover,
+  .confirm-actions .btn.confirm-btn:focus-visible { background:#3b82f6; color:white; border-color:#3b82f6; }
+</style>
+</head>
+<body class="min-h-screen py-8">
+
+<div class="max-w-4xl mx-auto px-4">
+  <h1 class="text-2xl font-bold text-gray-800 mb-2">方案 A v5 · 大弹窗 + 三列差异 + 按钮同色</h1>
+  <p class="text-sm text-gray-500 mb-2">
+    ① 弹窗更大，② 三列（获得 / 丢失 / 覆盖）完整展示 modified 项，③ 三列默认同色（灰底），悬停时上色区分语义，④ 确认/取消按钮默认同色，悬停时差异。
+  </p>
+  <p class="text-xs text-gray-400 mb-6">下方弹窗可直接交互。</p>
+
+  <div id="main" class="relative modal-panel p-6 max-w-lg mx-auto">
+    <div class="mb-1 text-xl font-bold">检测到数据冲突</div>
+    <p class="text-sm text-gray-600 mb-4">悬停预览，点击提交。两张卡片底部展示选它的收益与损失。</p>
+
+    <div class="mb-3">
+      <button id="diffToggle" class="w-full flex items-center justify-between text-xs text-gray-500 hover:text-gray-700 rounded-lg bg-gray-50 px-3 py-2">
+        <span>
+          <i class="fa-solid fa-circle-exclamation text-gray-400 mr-1"></i>
+          <span class="font-medium text-gray-700">10</span> 处差异
+          <span> · 本机独有 3</span><span> · 云端独有 1</span><span> · 两边不同 6</span>
+        </span>
+        <i id="diffChevron" class="fa-solid fa-chevron-down"></i>
+      </button>
+      <div id="diffBody" class="mt-2 hidden space-y-1.5 max-h-56 overflow-y-auto rounded-lg bg-gray-50 p-2">
+        <div class="border-t border-gray-200/70 pt-1.5 first:border-t-0 first:pt-0 text-xs text-gray-600">
+          <div class="flex items-center gap-2"><span class="font-medium text-gray-700">商品 · iPhone 15</span><span class="rounded bg-white/70 px-1.5 py-0.5 text-gray-500">两边不同</span></div>
+          <p class="mt-0.5 text-gray-500">售价: 3200 → 3180</p>
+        </div>
+        <div class="border-t border-gray-200/70 pt-1.5 text-xs text-gray-600">
+          <div class="flex items-center gap-2"><span class="font-medium text-gray-700">收支 · 运费</span><span class="rounded bg-white/70 px-1.5 py-0.5 text-gray-500">本地独有</span></div>
+        </div>
+        <div class="border-t border-gray-200/70 pt-1.5 text-xs text-gray-500">另有 8 处未显示</div>
+      </div>
+    </div>
+
+    <div id="pickRow" class="pick-row grid grid-cols-2 gap-2.5 mb-3">
+      <!-- 云端卡（左） -->
+      <div
+        tabindex="0"
+        class="pick-card rounded-xl border-2 border-gray-300 bg-gray-50 p-3 flex flex-col items-center text-center"
+        data-choice="cloud"
+        onclick="onPickClick('cloud')"
+        onkeydown="if(event.key==='Enter')onPickClick('cloud')"
+      >
+        <div class="flex items-center gap-1.5 mb-1">
+          <i class="fa-solid fa-cloud text-gray-600 text-lg"></i>
+          <span class="text-xl font-bold text-gray-800">云端</span>
+          <span class="pick-check bg-gray-700 text-white"><i class="fa-solid fa-check"></i></span>
+        </div>
+        <div class="text-base font-semibold text-gray-800">308 <span class="text-xs font-normal text-gray-500">条</span></div>
+        <div class="text-[11px] text-gray-400 mb-2">2 天前</div>
+        <div class="w-full space-y-1.5">
+          <div class="rounded bg-green-100/70 px-2 py-1.5 text-left">
+            <div class="text-[10px] font-semibold text-green-700 mb-0.5"><i class="fa-solid fa-plus mr-0.5"></i>将新增 (1)</div>
+            <div class="text-[11px] text-gray-700 truncate">BMW 小车 转账 1200.00</div>
+          </div>
+          <div class="rounded bg-red-100/70 px-2 py-1.5 text-left">
+            <div class="text-[10px] font-semibold text-red-700 mb-0.5"><i class="fa-solid fa-minus mr-0.5"></i>将丢失 (3)</div>
+            <div class="text-[11px] text-gray-700 truncate">iPhone 15 售价等 3 项</div>
+          </div>
+          <div class="rounded bg-yellow-100/70 px-2 py-1.5 text-left">
+            <div class="text-[10px] font-semibold text-yellow-700 mb-0.5"><i class="fa-solid fa-arrow-right-left mr-0.5"></i>将覆盖 (6)</div>
+            <div class="text-[11px] text-gray-700 truncate">iPhone 15 售价 3200→3180 等</div>
+          </div>
+        </div>
+        <div class="mt-2 flex-1 w-full"></div>
+      </div>
+
+      <!-- 本机卡（右） -->
+      <div
+        tabindex="0"
+        class="pick-card rounded-xl border-2 border-gray-300 bg-gray-50 p-3 flex flex-col items-center text-center"
+        data-choice="local"
+        onclick="onPickClick('local')"
+        onkeydown="if(event.key==='Enter')onPickClick('local')"
+      >
+        <div class="flex items-center gap-1.5 mb-1">
+          <i class="fa-solid fa-laptop text-gray-600 text-lg"></i>
+          <span class="text-xl font-bold text-gray-800">本机</span>
+          <span class="pick-check bg-gray-700 text-white"><i class="fa-solid fa-check"></i></span>
+        </div>
+        <div class="text-base font-semibold text-gray-800">312 <span class="text-xs font-normal text-gray-500">条</span></div>
+        <div class="text-[11px] text-gray-400 mb-2">1 天前</div>
+        <div class="w-full space-y-1.5">
+          <div class="rounded bg-green-100/70 px-2 py-1.5 text-left">
+            <div class="text-[10px] font-semibold text-green-700 mb-0.5"><i class="fa-solid fa-plus mr-0.5"></i>将新增 (3)</div>
+            <div class="text-[11px] text-gray-700 truncate">iPhone 15 售价 3200 等 3 项</div>
+          </div>
+          <div class="rounded bg-red-100/70 px-2 py-1.5 text-left">
+            <div class="text-[10px] font-semibold text-red-700 mb-0.5"><i class="fa-solid fa-minus mr-0.5"></i>将丢失 (1)</div>
+            <div class="text-[11px] text-gray-700 truncate">BMW 小车 转账 1200.00</div>
+          </div>
+          <div class="rounded bg-yellow-100/70 px-2 py-1.5 text-left">
+            <div class="text-[10px] font-semibold text-yellow-700 mb-0.5"><i class="fa-solid fa-arrow-right-left mr-0.5"></i>将覆盖 (6)</div>
+            <div class="text-[11px] text-gray-700 truncate">iPhone 15 售价 3180→3200 等</div>
+          </div>
+        </div>
+        <div class="mt-2 flex-1 w-full"></div>
+      </div>
+    </div>
+
+    <div class="space-y-2">
+      <button class="btn btn-outline w-full" onclick="showToast('保留两者不动')">
+        保留两者不动（稍后处理）
+      </button>
+    </div>
+
+    <!-- 确认层 -->
+    <div id="confirm" class="confirm-overlay">
+      <div class="confirm-box">
+        <div id="confirmTitle" class="flex items-center gap-2 mb-1 text-lg font-bold text-gray-800">
+          <i class="fa-solid fa-circle-question"></i>
+          确定用本机数据？
+        </div>
+        <p id="confirmSummary" class="text-sm text-gray-600 mb-3">
+          用 <b class="text-blue-600">本机</b>（1 天前）覆盖云端。<span class="text-xs text-gray-500">云端独有的 1 条将丢失，6 处字段将被覆盖。</span>
+        </p>
+
+        <div class="impact-grid mb-4">
+          <div id="confirmGain" class="impact-col gain">
+            <div class="text-xs font-semibold text-green-700 mb-1">
+              <i class="fa-solid fa-plus mr-1"></i>将获得 (3)
+            </div>
+            <div id="confirmGainList" class="impact-list space-y-1.5 text-[11px] text-gray-700"></div>
+          </div>
+          <div id="confirmLose" class="impact-col lose">
+            <div class="text-xs font-semibold text-red-700 mb-1">
+              <i class="fa-solid fa-plus mr-1"></i>将丢失 (1)
+            </div>
+            <div id="confirmLoseList" class="impact-list space-y-1.5 text-[11px] text-gray-700"></div>
+          </div>
+          <div id="confirmChange" class="impact-col change">
+            <div class="text-xs font-semibold text-yellow-700 mb-1">
+              <i class="fa-solid fa-arrow-right-left mr-1"></i>将覆盖 (6)
+            </div>
+            <div id="confirmChangeList" class="impact-list space-y-1.5 text-[11px] text-gray-700"></div>
+          </div>
+        </div>
+
+        <div class="confirm-actions grid grid-cols-2 gap-2">
+          <button class="btn btn-outline cancel-btn" onclick="cancelConfirm()">
+            <i class="fa-solid fa-xmark mr-1"></i>取消
+          </button>
+          <button id="confirmBtn" class="btn btn-outline confirm-btn" onclick="doConfirm()">
+            <i class="fa-solid fa-check mr-1"></i>确认
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="max-w-lg mx-auto mt-4 text-center text-xs text-gray-400 space-y-1">
+    <p>• 三列默认灰底同色，悬停某列时该列上色（绿/红/黄）</p>
+    <p>• 确认/取消按钮默认同色（灰），悬停时取消变红、确认变蓝</p>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+const DIFF = {
+  localOnly: [
+    { label: 'iPhone 15', detail: '售价 3200' },
+    { label: '运费 · 9月', detail: '金额 280' },
+    { label: '借贷 · A 卡', detail: '余额 6000' },
+  ],
+  cloudOnly: [
+    { label: 'BMW 小车 转账', detail: '金额 1200' },
+  ],
+  modified: [
+    { label: 'iPhone 15 · 售价', from: '3200', to: '3180' },
+    { label: '库存总货值', from: '94821.31', to: '94700.00' },
+    { label: 'Payton 基金', from: '-4887.14', to: '-4880.00' },
+    { label: '挖财总负债', from: '108504.41', to: '108200.00' },
+    { label: '总实盈利润', from: '21512.00', to: '21400.00' },
+    { label: '公共支出', from: '1200', to: '1180' },
+  ],
+};
+
+let pendingChoice = null;
+
+function computeImpact(choice) {
+  if (choice === 'local') {
+    return { gain: DIFF.localOnly, lose: [...DIFF.cloudOnly], change: DIFF.modified };
+  }
+  return { gain: DIFF.cloudOnly, lose: [...DIFF.localOnly], change: DIFF.modified };
+}
+
+function renderItem(it, borderColor) {
+  const border = borderColor ? `border-t ${borderColor}/60 pt-1.5` : '';
+  return `<div class="${border}">` +
+    `<div class="font-medium">${it.label}</div>` +
+    (it.detail ? `<div class="text-gray-500">${it.detail}</div>` : '') +
+    (it.from && it.to ? `<div class="text-gray-500 font-mono">${it.from} → ${it.to}</div>` : '') +
+    `</div>`;
+}
+
+function fillList(el, items, borderColor) {
+  el.innerHTML = items.length
+    ? items.map((it, i) => renderItem(it, i === 0 ? null : borderColor)).join('')
+    : '<div class="text-gray-400">无</div>';
+}
+
+function renderConfirm(choice) {
+  const impact = computeImpact(choice);
+  const isLocal = choice === 'local';
+  const name = isLocal ? '本机' : '云端';
+  const color = isLocal ? 'blue' : 'green';
+  const oppositeName = isLocal ? '云端' : '本机';
+
+  document.getElementById('confirmSummary').innerHTML =
+    `用 <b class="text-${color}-600">${name}</b>（${isLocal ? '1' : '2'} 天前）覆盖${oppositeName}。` +
+    `<span class="text-xs text-gray-500">${oppositeName}独有的 ${impact.lose.length} 条将丢失，${impact.change.length} 处字段将被覆盖。</span>`;
+
+  fillList(document.getElementById('confirmGainList'), impact.gain, 'border-green-200');
+  fillList(document.getElementById('confirmLoseList'), impact.lose, 'border-red-200');
+  fillList(document.getElementById('confirmChangeList'), impact.change, 'border-yellow-200');
+
+  document.getElementById('confirmTitle').innerHTML =
+    `<i class="fa-solid fa-circle-question text-${color}-500"></i>确定用${name}数据？`;
+}
+
+function onPickClick(choice) {
+  pendingChoice = choice;
+  renderConfirm(choice);
+  document.getElementById('confirm').classList.add('show');
+}
+
+function cancelConfirm() {
+  document.getElementById('confirm').classList.remove('show');
+  pendingChoice = null;
+}
+
+function doConfirm() {
+  cancelConfirm();
+  showToast(pendingChoice === 'local' ? '✔ 已用本机数据' : '✔ 已用云端数据');
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') cancelConfirm();
+});
+
+const diffToggle = document.getElementById('diffToggle');
+const diffBody = document.getElementById('diffBody');
+const diffChevron = document.getElementById('diffChevron');
+diffToggle.addEventListener('click', () => {
+  const hidden = diffBody.classList.toggle('hidden');
+  diffChevron.classList.toggle('fa-chevron-down', hidden);
+  diffChevron.classList.toggle('fa-chevron-up', !hidden);
+});
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.classList.remove('show'), 2200);
+}
+</script>
+
+</body>
+</html>
