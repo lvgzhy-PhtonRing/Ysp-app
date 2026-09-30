@@ -16,8 +16,8 @@ const HISTORY_META_EXPIRE_MS = 3000
 export const CLOUD_AUTO_SYNC_INTERVAL = 30000 // 30秒自动检测
 var DELETE_MERGE_WINDOW_MS = 500
 var DELETE_LOG_TYPES = { inventory_delete: true, purchase_delete: true }
-var ALIGN_MERGE_WINDOW_MS = 300000 // 5分钟内连续的"对齐时间戳"日志合并
 var ALIGN_LOG_TYPES = { 'cloud_sync': true }
+var _sessionStartAt = Date.now() // 会话开始时间，用于检测应用关闭再打开
 
 // === 新增：云同步配置默认值 ===
 const DEFAULT_CLOUD_SETTINGS = {
@@ -1094,14 +1094,15 @@ export function addOperationLog(type, message, detail) {
     }
   }
 
-  // 对齐时间戳聚合：连续的"对齐时间戳"日志在 5 分钟内合并为 1 条
-  if (type === 'cloud_sync' && /对齐时间戳|内容一致/.test(message) && state.operationLogs.length > 0) {
+  // 对齐时间戳聚合：同一会话内连续的对齐日志合并为 1 条
+  // 边界：用户操作日志、应用关闭再打开（会话时间检测）
+  if (ALIGN_LOG_TYPES[type] && /对齐时间戳|内容一致/.test(message) && state.operationLogs.length > 0) {
     var last = state.operationLogs[0]
-    var timeGap = Date.now() - new Date(last.time).getTime()
+    var lastTime = new Date(last.time).getTime()
     if (
-      last.type === 'cloud_sync' &&
+      ALIGN_LOG_TYPES[last.type] &&
       /对齐时间戳|内容一致/.test(last.message) &&
-      timeGap < ALIGN_MERGE_WINDOW_MS
+      lastTime >= _sessionStartAt // 只合并当前会话内的日志
     ) {
       var prevCount = last.detail?.alignCount || 1
       last.detail = Object.assign({}, last.detail, { alignCount: prevCount + 1 })
@@ -1259,6 +1260,7 @@ export function loadUiStateFromLocalStorage() {
 }
 
 export function loadFromLocalStorage() {
+  _sessionStartAt = Date.now() // 标记新会话开始
   const raw = localStorage.getItem('ysp_data')
   if (!raw) {
     hasPersistedSnapshot = false
