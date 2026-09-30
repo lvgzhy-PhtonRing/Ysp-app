@@ -70,6 +70,33 @@ export const FIELD_LABEL_MAP = {
   company: '转运公司', isRepaid: '已还款', repaid: '已还款',
 }
 
+// 状态值→中文映射（用于冲突差异展示）
+const STATUS_VALUE_MAP = {
+  // 商品状态
+  inventory: '库存', purchase: '采购', sold: '已售', unlisted: '已下架',
+  // 转运状态
+  pending: '待转运', completed: '已转运',
+  // 收支类型
+  expense: '支出', income: '收入',
+  // 借贷类型
+  borrow: '借入', lend: '借出',
+}
+
+// 值→人类可读文本映射
+export function formatValueForDisplay(field, value) {
+  if (value === null || value === undefined || value === '') return '无'
+  // 状态字段映射
+  if (field === 'status' || field === 'type') {
+    return STATUS_VALUE_MAP[value] || value
+  }
+  // 数字格式
+  if (typeof value === 'number') return Number(value).toFixed(0)
+  // 布尔值
+  if (typeof value === 'boolean') return value ? '是' : '否'
+  // 字符串截断
+  return String(value).slice(0, 20)
+}
+
 function fmtBrief(v) {
   if (v === null || v === undefined || v === '') return '-'
   if (typeof v === 'number') return '¥' + Number(v).toFixed(0)
@@ -786,20 +813,27 @@ export function computeConflictDiff(localPayload, cloudPayload) {
       const label = recordLabel(l || c, col)
       if (l && c) {
         if (stableSerialize(l) === stableSerialize(c)) continue
-        const summary = formatChangesSummary(diffRecordFields(c, l))
-        entries.push({ key: `${col.label}:${id}`, collectionLabel: col.label, recordLabel: label, kind: 'modified', summary })
+        // 字段级差异，每条记录每个变更字段一条 entry
+        const changes = diffRecordFields(c, l)
+        for (const [field, change] of Object.entries(changes)) {
+          const fieldName = FIELD_LABEL_MAP[field.split('.').pop()] || field.split('.').pop()
+          entries.push({
+            key: `${col.label}:${id}:${field}`,
+            collectionLabel: col.label,
+            recordLabel: label,
+            fieldName: fieldName,
+            kind: 'modified',
+            cloudValue: formatValueForDisplay(field.split('.').pop(), change.before),
+            localValue: formatValueForDisplay(field.split('.').pop(), change.after),
+            summary: `${fieldName}:${formatValueForDisplay(field.split('.').pop(), change.before)}→${formatValueForDisplay(field.split('.').pop(), change.after)}`,
+          })
+        }
       } else if (l) {
-        entries.push({ key: `${col.label}:${id}`, collectionLabel: col.label, recordLabel: label, kind: 'localOnly', summary: '' })
+        entries.push({ key: `${col.label}:${id}`, collectionLabel: col.label, recordLabel: label, fieldName: null, kind: 'localOnly', cloudValue: '无', localValue: formatValueForDisplay('name', l[col.nameField]), summary: '' })
       } else {
-        entries.push({ key: `${col.label}:${id}`, collectionLabel: col.label, recordLabel: label, kind: 'cloudOnly', summary: '' })
+        entries.push({ key: `${col.label}:${id}`, collectionLabel: col.label, recordLabel: label, fieldName: null, kind: 'cloudOnly', cloudValue: formatValueForDisplay('name', c[col.nameField]), localValue: '无', summary: '' })
       }
     }
-  }
-
-  // 财务结算 calc 单独比对（标量字段，字段级差异可读性好）
-  if (stableSerialize(local.calc) !== stableSerialize(cloud.calc)) {
-    const summary = formatChangesSummary(diffRecordFields(cloud.calc, local.calc))
-    entries.push({ key: 'calc', collectionLabel: '财务结算', recordLabel: '各项结算', kind: 'modified', summary })
   }
 
   return { entries, total: entries.length }

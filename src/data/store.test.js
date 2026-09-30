@@ -175,13 +175,12 @@ describe('computeConflictDiff', () => {
     expect(total - 5).toBe(3)
   })
 
-  it('should report calc difference as a single modified entry', () => {
+  it('should not report calc difference (derived data, auto-follows source slots)', () => {
     const diffLocal = { ...local, calc: { debt: 100, wechat: 0 } }
     const diffCloud = { ...cloud, calc: { debt: 50, wechat: 0 } }
     const { entries } = computeConflictDiff(diffLocal, diffCloud)
     const calc = entries.find((e) => e.key === 'calc')
-    expect(calc).toBeTruthy()
-    expect(calc.summary).toContain('总负债')
+    expect(calc).toBeUndefined()
   })
 
   it('should return empty when payloads are content-equal', () => {
