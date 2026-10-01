@@ -16,14 +16,16 @@ import {
 // 注册 annotation 插件
 Chart.register(annotationPlugin)
 
-// 非线性利润率刻度转换：0-60% 正常，60%-120% 压缩为 1/3
-// 0-60% 占据图表高度 75%，60%-120% 占据 25%（压缩为原来的 1/3）
+// 非线性利润率刻度转换：0-60% 正常，60%-120% 压缩
+// 刻度位置：0%(0/8), 10%(1/8), 20%(2/8), 30%(3/8), 40%(4/8), 50%(5/8), 60%(6/8), 90%(7/8), 120%(8/8)
 function nonlinearProfitScale(value) {
   const v = Number(value) || 0
+  // 8 个刻度点，每个间隔 1/8 高度
   if (v <= 0.6) {
-    return v / 0.6 * 0.75 // 0-60% 映射到 0-75% 高度
+    // 0-60% 对应 0-6/8 高度
+    return v / 0.6 * 0.75
   }
-  // 60%-120% 压缩到 75%-100% 高度（1/3 比例）
+  // 60%-120% 压缩到 6/8-8/8 高度（2/8 = 1/4 高度）
   return 0.75 + (v - 0.6) / 0.6 * 0.25
 }
 
@@ -35,6 +37,9 @@ function inverseNonlinearProfitScale(value) {
   }
   return 0.6 + (v - 0.75) / 0.25 * 0.6
 }
+
+// y 轴刻度值（8 个间隔，9 个刻度点）
+const Y_TICK_VALUES = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.9, 1.2]
 
 // 图表引用
 const scatterChartRef = ref(null)
@@ -188,15 +193,14 @@ function initScatterChart() {
             font: { size: 11 }
           },
           min: 0,
-          max: 1.25, // 0-60% 映射到 0-75%，60%-120% 映射到 75%-125%
+          max: 1.0, // 图表高度 0-1，数据经过非线性变换
           ticks: {
-            stepSize: 0.1,
+            stepSize: 0.125, // 8 个间隔，每个 1/8
             callback: (value) => {
               // 反向转换：图表值 -> 原始利润率
               const original = inverseNonlinearProfitScale(value)
-              // 只显示 0%, 10%, 20%, 30%, 40%, 50%, 60%, 75%, 90%, 105%, 120%
-              const displayValues = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.75, 0.9, 1.05, 1.2]
-              for (const v of displayValues) {
+              // 只显示 9 个刻度点
+              for (const v of Y_TICK_VALUES) {
                 if (Math.abs(original - v) < 0.02) {
                   return `${(v * 100).toFixed(0)}%`
                 }
@@ -419,15 +423,14 @@ function initDualAxisChart() {
             font: { size: 11 }
           },
           min: 0,
-          max: 1.25, // 0-60% 映射到 0-75%，60%-120% 映射到 75%-125%
+          max: 1.0, // 图表高度 0-1，数据经过非线性变换
           ticks: {
-            stepSize: 0.1,
+            stepSize: 0.125, // 8 个间隔，每个 1/8
             callback: (value) => {
               // 反向转换：图表值 -> 原始利润率
               const original = inverseNonlinearProfitScale(value)
-              // 只显示 0%, 10%, 20%, 30%, 40%, 50%, 60%, 75%, 90%, 105%, 120%
-              const displayValues = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.75, 0.9, 1.05, 1.2]
-              for (const v of displayValues) {
+              // 只显示 9 个刻度点
+              for (const v of Y_TICK_VALUES) {
                 if (Math.abs(original - v) < 0.02) {
                   return `${(v * 100).toFixed(0)}%`
                 }
