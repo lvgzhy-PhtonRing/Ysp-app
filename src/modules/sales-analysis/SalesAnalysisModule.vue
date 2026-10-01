@@ -16,6 +16,27 @@ import {
 // 注册 annotation 插件
 Chart.register(annotationPlugin)
 
+// 非线性利润率刻度转换：0-60% 正常，60%-120% 压缩为 1/3
+// 输入：原始利润率 (0-1.2)
+// 输出：变换后的值 (0-1) 用于图表绘制
+function nonlinearProfitScale(value) {
+  const v = Number(value) || 0
+  if (v <= 0.6) {
+    return v / 0.6 // 0-60% 映射到 0-1
+  }
+  // 60%-120% 压缩到 1-1.5（高度压缩为 1/3）
+  return 1 + (v - 0.6) / 0.6 * 0.5
+}
+
+// 反向转换：图表值 -> 原始利润率
+function inverseNonlinearProfitScale(value) {
+  const v = Number(value) || 0
+  if (v <= 1) {
+    return v * 0.6
+  }
+  return 0.6 + (v - 1) / 0.5 * 0.6
+}
+
 // 图表引用
 const scatterChartRef = ref(null)
 const paretoChartRef = ref(null)
@@ -163,19 +184,20 @@ function initScatterChart() {
           type: 'linear',
           title: {
             display: true,
-            text: '销售利润率',
+            text: '销售利润率（非线性）',
             font: { size: 11 }
           },
           min: 0,
           max: 1.2,
           ticks: {
-            stepSize: 0.1,
+            stepSize: 0.05,
             callback: (value) => {
-              // 显示关键刻度：0-60% 密集，60%-120% 稀疏
+              // 非线性刻度：0-60% 密集显示，60%-120% 稀疏显示
               if (value <= 0.6) {
-                return `${(value * 100).toFixed(0)}%`
+                if (value % 0.1 === 0) return `${(value * 100).toFixed(0)}%`
+                return ''
               }
-              // 60% 之后只显示 75%, 90%, 105%, 120%
+              // 60% 之后只显示关键刻度
               if (Math.abs(value - 0.75) < 0.01) return '75%'
               if (Math.abs(value - 0.9) < 0.01) return '90%'
               if (Math.abs(value - 1.05) < 0.01) return '105%'
@@ -390,19 +412,20 @@ function initDualAxisChart() {
           position: 'left',
           title: {
             display: true,
-            text: '利润率',
+            text: '利润率（非线性）',
             font: { size: 11 }
           },
           min: 0,
           max: 1.2,
           ticks: {
-            stepSize: 0.1,
+            stepSize: 0.05,
             callback: (value) => {
-              // 显示关键刻度：0-60% 密集，60%-120% 稀疏
+              // 非线性刻度：0-60% 密集显示，60%-120% 稀疏显示
               if (value <= 0.6) {
-                return `${(value * 100).toFixed(0)}%`
+                if (value % 0.1 === 0) return `${(value * 100).toFixed(0)}%`
+                return ''
               }
-              // 60% 之后只显示 75%, 90%, 105%, 120%
+              // 60% 之后只显示关键刻度
               if (Math.abs(value - 0.75) < 0.01) return '75%'
               if (Math.abs(value - 0.9) < 0.01) return '90%'
               if (Math.abs(value - 1.05) < 0.01) return '105%'
@@ -569,8 +592,29 @@ function toggleExpand(key) {
             <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">&gt;180天</span>
           </div>
         </div>
-        <div class="h-[320px]">
+        <div class="h-[280px]">
           <canvas ref="scatterChartRef"></canvas>
+        </div>
+        <!-- 象限分布统计 -->
+        <div class="mt-3 pt-3 border-t border-gray-100">
+          <div class="text-xs text-gray-500 mb-2">象限分布</div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div v-for="q in quadrantLabels" :key="q.label" class="p-2 rounded-lg border" :class="{
+              'border-green-200 bg-green-50': q.color === 'green',
+              'border-orange-200 bg-orange-50': q.color === 'orange',
+              'border-blue-200 bg-blue-50': q.color === 'blue',
+              'border-red-200 bg-red-50': q.color === 'red',
+            }">
+              <div class="text-[10px] text-gray-500 mb-0.5">{{ q.label }}</div>
+              <div class="text-lg font-bold" :class="{
+                'text-green-700': q.color === 'green',
+                'text-orange-700': q.color === 'orange',
+                'text-blue-700': q.color === 'blue',
+                'text-red-700': q.color === 'red',
+              }">{{ q.count }}</div>
+              <div class="text-[10px] text-gray-500 mt-0.5">¥{{ fmtMoney(q.profit) }}</div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -647,28 +691,6 @@ function toggleExpand(key) {
             </tr>
           </tbody>
         </table>
-      </div>
-    </div>
-
-    <!-- 四象限统计 -->
-    <div class="apple-card p-4">
-      <div class="text-xs text-gray-500 mb-3">象限分布</div>
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div v-for="q in quadrantLabels" :key="q.label" class="p-3 rounded-lg border" :class="{
-          'border-green-200 bg-green-50': q.color === 'green',
-          'border-orange-200 bg-orange-50': q.color === 'orange',
-          'border-blue-200 bg-blue-50': q.color === 'blue',
-          'border-red-200 bg-red-50': q.color === 'red',
-        }">
-          <div class="text-xs text-gray-500 mb-1">{{ q.label }}</div>
-          <div class="text-xl font-bold" :class="{
-            'text-green-700': q.color === 'green',
-            'text-orange-700': q.color === 'orange',
-            'text-blue-700': q.color === 'blue',
-            'text-red-700': q.color === 'red',
-          }">{{ q.count }}</div>
-          <div class="text-xs text-gray-500 mt-1">利润: ¥{{ fmtMoney(q.profit) }}</div>
-        </div>
       </div>
     </div>
 
