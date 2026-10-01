@@ -634,7 +634,7 @@ function toggleExpand(key) {
             <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">慢周转</span>
           </div>
         </div>
-        <div class="h-[240px]">
+        <div class="h-[200px]">
           <canvas ref="paretoChartRef"></canvas>
         </div>
       </div>
