@@ -112,13 +112,13 @@ function initScatterChart() {
           annotations: {
             lineX: {
               type: 'line',
-              xMin: 90,
-              xMax: 90,
+              xMin: 60,
+              xMax: 60,
               borderColor: 'rgba(239, 68, 68, 0.5)',
               borderWidth: 2,
               borderDash: [5, 5],
               label: {
-                content: '90天',
+                content: '60天',
                 display: true,
                 position: 'start',
                 backgroundColor: 'rgba(239, 68, 68, 0.8)',
@@ -129,13 +129,13 @@ function initScatterChart() {
             },
             lineY: {
               type: 'line',
-              yMin: 0.25,
-              yMax: 0.25,
+              yMin: 0.2,
+              yMax: 0.2,
               borderColor: 'rgba(239, 68, 68, 0.5)',
               borderWidth: 2,
               borderDash: [5, 5],
               label: {
-                content: '25%',
+                content: '20%',
                 display: true,
                 position: 'end',
                 backgroundColor: 'rgba(239, 68, 68, 0.8)',
@@ -534,14 +534,14 @@ function toggleExpand(key) {
       <!-- 四象限气泡散点图 -->
       <div class="apple-card p-4">
         <div class="flex justify-between items-center mb-3">
-          <div class="text-xs text-gray-500">四象限分析</div>
+          <div class="text-xs text-gray-500">四象限分析 <span class="text-gray-400">（气泡越大 = 对整体利润贡献越大）</span></div>
           <div class="flex gap-2 text-xs">
-            <span class="px-2 py-0.5 rounded bg-green-100 text-green-700">&lt;90天</span>
-            <span class="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">90-180天</span>
+            <span class="px-2 py-0.5 rounded bg-green-100 text-green-700">&lt;60天</span>
+            <span class="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">60-180天</span>
             <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">&gt;180天</span>
           </div>
         </div>
-        <div class="h-80">
+        <div class="h-[320px]">
           <canvas ref="scatterChartRef"></canvas>
         </div>
       </div>
@@ -556,7 +556,7 @@ function toggleExpand(key) {
             <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">慢周转</span>
           </div>
         </div>
-        <div class="h-80">
+        <div class="h-[320px]">
           <canvas ref="paretoChartRef"></canvas>
         </div>
       </div>
@@ -566,12 +566,12 @@ function toggleExpand(key) {
         <div class="flex justify-between items-center mb-3">
           <div class="text-xs text-gray-500">品类双轴分析</div>
           <div class="flex gap-2 text-xs">
-            <span class="px-2 py-0.5 rounded bg-green-100 text-green-700">&lt;90天</span>
-            <span class="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">90-180天</span>
+            <span class="px-2 py-0.5 rounded bg-green-100 text-green-700">&lt;60天</span>
+            <span class="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">60-180天</span>
             <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">&gt;180天</span>
           </div>
         </div>
-        <div class="h-80">
+        <div class="h-[320px]">
           <canvas ref="dualAxisChartRef"></canvas>
         </div>
       </div>
@@ -579,7 +579,7 @@ function toggleExpand(key) {
       <!-- 利润贡献饼图 -->
       <div class="apple-card p-4">
         <div class="text-xs text-gray-500 mb-3">利润贡献分布</div>
-        <div class="h-80">
+        <div class="h-[320px]">
           <canvas ref="pieChartRef"></canvas>
         </div>
       </div>
