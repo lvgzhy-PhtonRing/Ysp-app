@@ -397,14 +397,24 @@ onBeforeUnmount(() => {
       <div class="col-span-2 apple-card p-4">
         <div class="flex justify-between items-center mb-3">
           <div class="text-xs text-gray-500">库龄区间金额分布 <span class="text-gray-400">（点击柱状图过滤列表）</span></div>
-          <span class="text-xs text-gray-400">单位：元</span>
+          <div class="flex gap-2 items-center">
+            <span class="text-xs text-gray-400">单位：元</span>
+            <button v-if="filterAgingBucket" class="btn btn-outline btn-xs text-red-600 hover:bg-red-50" @click="filterAgingBucket = null">
+              取消过滤
+            </button>
+          </div>
         </div>
         <div class="h-64">
           <canvas ref="chartCanvasRef"></canvas>
         </div>
       </div>
       <div class="apple-card p-4">
-        <div class="text-xs text-gray-500 mb-3">各区间占比 <span class="text-gray-400">（点击扇形过滤列表）</span></div>
+        <div class="flex justify-between items-center mb-3">
+          <div class="text-xs text-gray-500">各区间占比 <span class="text-gray-400">（点击扇形过滤列表）</span></div>
+          <button v-if="filterAgingBucket" class="btn btn-outline btn-xs text-red-600 hover:bg-red-50" @click="filterAgingBucket = null">
+            取消过滤
+          </button>
+        </div>
         <div class="h-64">
           <canvas ref="pieChartCanvasRef"></canvas>
         </div>
