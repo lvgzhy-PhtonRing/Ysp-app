@@ -14,6 +14,7 @@ const filterCategory = ref('全部')
 const filterBatch = ref('全部')
 const filterBrand = ref('全部')
 const filterKeyword = ref('')
+const filterAgingBucket = ref(null)  // 当前选中的库龄区间
 
 // 根据视图模式过滤数据
 const baseRows = computed(() => {
@@ -34,6 +35,14 @@ const brandOptions = computed(() => ['全部', ...Array.from(new Set(rows.value.
 
 const filteredRows = computed(() =>
   rows.value.filter((r) => {
+    // 库龄区间过滤
+    if (filterAgingBucket.value) {
+      const months = Number(r.monthsInStock || 0)
+      const bucket = filterAgingBucket.value
+      const inRange = months >= bucket.min && (bucket.max === Infinity ? true : months < bucket.max)
+      if (!inRange) return false
+    }
+    
     if (filterCategory.value !== '全部' && r.category !== filterCategory.value) return false
     if (filterBatch.value !== '全部' && r.batch !== filterBatch.value) return false
     if (filterBrand.value !== '全部' && (r.brand || '其它') !== filterBrand.value) return false
@@ -202,7 +211,11 @@ function initChart() {
       datasets: [{
         label: '库存金额',
         data: buckets.map(b => b.value),
-        backgroundColor: 'rgba(59, 130, 246, 0.6)',
+        backgroundColor: buckets.map(b => 
+          filterAgingBucket.value && filterAgingBucket.value.label === b.label 
+            ? 'rgba(59, 130, 246, 1)' 
+            : 'rgba(59, 130, 246, 0.6)'
+        ),
         borderColor: 'rgba(59, 130, 246, 1)',
         borderWidth: 1,
       }]
@@ -210,6 +223,19 @@ function initChart() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      onClick: (event, elements) => {
+        if (elements.length > 0) {
+          const index = elements[0].index
+          const bucket = buckets[index]
+          // 获取对应的区间配置
+          const bucketConfig = getAgingBuckets(viewMode.value)[index]
+          filterAgingBucket.value = filterAgingBucket.value?.label === bucket.label ? null : { 
+            min: bucketConfig[0], 
+            max: bucketConfig[1], 
+            label: bucket.label 
+          }
+        }
+      },
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -249,13 +275,29 @@ function initPieChart() {
       labels: buckets.map(b => b.label),
       datasets: [{
         data: buckets.map(b => b.percentage),
-        backgroundColor: PIE_COLORS.slice(0, buckets.length),
+        backgroundColor: buckets.map((b, i) => 
+          filterAgingBucket.value && filterAgingBucket.value.label === b.label 
+            ? PIE_COLORS[i].replace('0.7', '1') 
+            : PIE_COLORS[i]
+        ),
         borderWidth: 1,
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      onClick: (event, elements) => {
+        if (elements.length > 0) {
+          const index = elements[0].index
+          const bucket = buckets[index]
+          const bucketConfig = getAgingBuckets(viewMode.value)[index]
+          filterAgingBucket.value = filterAgingBucket.value?.label === bucket.label ? null : { 
+            min: bucketConfig[0], 
+            max: bucketConfig[1], 
+            label: bucket.label 
+          }
+        }
+      },
       plugins: {
         legend: {
           position: 'bottom',
@@ -354,7 +396,7 @@ onBeforeUnmount(() => {
     <div class="grid grid-cols-3 gap-4">
       <div class="col-span-2 apple-card p-4">
         <div class="flex justify-between items-center mb-3">
-          <div class="text-xs text-gray-500">库龄区间金额分布</div>
+          <div class="text-xs text-gray-500">库龄区间金额分布 <span class="text-gray-400">（点击柱状图过滤列表）</span></div>
           <span class="text-xs text-gray-400">单位：元</span>
         </div>
         <div class="h-64">
@@ -362,11 +404,21 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <div class="apple-card p-4">
-        <div class="text-xs text-gray-500 mb-3">各区间占比</div>
+        <div class="text-xs text-gray-500 mb-3">各区间占比 <span class="text-gray-400">（点击扇形过滤列表）</span></div>
         <div class="h-64">
           <canvas ref="pieChartCanvasRef"></canvas>
         </div>
       </div>
+    </div>
+
+    <!-- 选中区间提示 -->
+    <div v-if="filterAgingBucket" class="rounded-xl border border-blue-200 bg-blue-50 p-3 flex justify-between items-center">
+      <div class="text-sm text-blue-700">
+        <span class="font-medium">已选中区间：</span>{{ filterAgingBucket.label }}
+      </div>
+      <button class="btn btn-outline btn-xs text-blue-600 hover:bg-blue-100" @click="filterAgingBucket = null">
+        清除筛选
+      </button>
     </div>
 
     <div class="rounded-xl border border-sky-100 bg-white/90 p-4">
