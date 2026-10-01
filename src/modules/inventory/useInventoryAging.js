@@ -47,8 +47,10 @@ export function buildInventoryAgingRows(items = [], transfers = [], now = new Da
   const nowTs = now.getTime()
 
   return (items || [])
-    .filter((item) => item?.status === 'inventory')
-    .map((item) => {
+    // 带源数组索引：数据存在重复 id，不能用 id 当唯一键
+    .map((item, sourceIndex) => ({ item, sourceIndex }))
+    .filter(({ item }) => item?.status === 'inventory')
+    .map(({ item, sourceIndex }) => {
       const category = String(item?.category || '未分类')
       const batch = String(item?.batch || '未分批')
       const pd = item?.purchaseDetails || {}
@@ -81,6 +83,9 @@ export function buildInventoryAgingRows(items = [], transfers = [], now = new Da
       const monthsInStock = calcMonthsFromInStockDate(inStockDate, nowTs)
 
       return {
+        // 唯一行键：源数组索引。数据里存在重复 id（同一 id 多条记录），
+        // 用 id 当 Vue key 会让 diff 错乱——切换 短线/长线 视图时行残留显示
+        rowKey: sourceIndex,
         id: item?.id,
         sid: item?.sid,
         name: item?.name,

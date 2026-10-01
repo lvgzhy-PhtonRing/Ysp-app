@@ -472,7 +472,7 @@ onBeforeUnmount(() => {
             </tr>
           </thead>
           <tbody class="text-slate-700">
-            <tr v-for="r in sortedRows" :key="r.id" class="border-t border-sky-100">
+            <tr v-for="r in sortedRows" :key="r.rowKey" class="border-t border-sky-100">
               <td class="text-xs text-slate-400 font-mono px-3 py-2">{{ r.sid }}</td>
               <td class="font-medium px-3 py-2">{{ r.name }}</td>
               <td class="px-3 py-2">{{ r.brand }}</td>
