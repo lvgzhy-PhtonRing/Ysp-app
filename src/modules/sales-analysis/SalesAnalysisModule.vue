@@ -9,6 +9,7 @@ import {
   calcQuadrantStats,
   getQuadrantLabels,
   getTurnoverColor,
+  getQuadrantColor,
   calcCategoryDualAxisData,
   calcProfitContributionData,
 } from './useSalesAnalysis'
@@ -358,7 +359,7 @@ function initDualAxisChart() {
           type: 'bar',
           label: '利润率',
           data: data.map(d => nonlinearProfitScale(d.profitRate)), // 非线性变换
-          backgroundColor: data.map(d => getTurnoverColor(d.avgDays)),
+        backgroundColor: data.map(d => getQuadrantColor(d.profitRate, d.avgDays)),
           borderColor: data.map(d => getTurnoverColor(d.avgDays).replace('0.7', '1')),
           borderWidth: 1,
           yAxisID: 'y',
@@ -592,9 +593,10 @@ function toggleExpand(key) {
         <div class="flex justify-between items-center mb-3">
           <div class="text-xs text-gray-500">四象限分析 <span class="text-gray-400">（气泡越大 = 对整体利润贡献越大）</span></div>
           <div class="flex gap-2 text-xs">
-            <span class="px-2 py-0.5 rounded bg-green-100 text-green-700">&lt;60天</span>
-            <span class="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">60-180天</span>
-            <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">&gt;180天</span>
+            <span class="px-2 py-0.5 rounded bg-green-100 text-green-700">高利快周</span>
+            <span class="px-2 py-0.5 rounded bg-orange-100 text-orange-700">高利慢周</span>
+            <span class="px-2 py-0.5 rounded bg-blue-100 text-blue-700">低利快周</span>
+            <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">低利慢周</span>
           </div>
         </div>
         <div class="h-[280px]">

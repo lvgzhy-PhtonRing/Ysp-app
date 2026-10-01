@@ -136,19 +136,41 @@ export function calcParetoData(skus = []) {
 }
 
 /**
- * 获取周转速度颜色
+ * 获取周转速度颜色（用于帕累托图、品类双轴图的柱子颜色）
  * @param {number} avgDays 平均售出天数
  * @returns {string} 颜色字符串
  */
 export function getTurnoverColor(avgDays) {
   const days = Number(avgDays) || 0
-  if (days < 90) {
-    return 'rgba(34, 197, 94, 0.7)'   // 绿色：周转好
+  if (days < 60) {
+    return 'rgba(34, 197, 94, 0.7)'   // 绿色：<60天
   }
   if (days < 180) {
-    return 'rgba(234, 179, 8, 0.7)'   // 黄色：周转预警
+    return 'rgba(234, 179, 8, 0.7)'   // 黄色：60-180天
   }
-  return 'rgba(239, 68, 68, 0.7)'      // 红色：周转很慢
+  return 'rgba(239, 68, 68, 0.7)'      // 红色：>180天
+}
+
+/**
+ * 获取四象限颜色（用于四象限气泡图）
+ * @param {number} profitRate 利润率
+ * @param {number} avgDays 平均售出天数
+ * @returns {string} 颜色字符串
+ */
+export function getQuadrantColor(profitRate, avgDays) {
+  const isHighProfit = profitRate >= 0.2
+  const isFastTurnover = avgDays < 60
+  
+  if (isHighProfit && isFastTurnover) {
+    return 'rgba(34, 197, 94, 0.7)'   // 绿色：高利润·快周转
+  }
+  if (isHighProfit && !isFastTurnover) {
+    return 'rgba(249, 115, 22, 0.7)'  // 橙色：高利润·慢周转
+  }
+  if (!isHighProfit && isFastTurnover) {
+    return 'rgba(59, 130, 246, 0.7)'  // 蓝色：低利润·快周转
+  }
+  return 'rgba(239, 68, 68, 0.7)'      // 红色：低利润·慢周转
 }
 
 /**
@@ -165,8 +187,8 @@ export function calcQuadrantStats(skus = []) {
   }
   
   skus.forEach(sku => {
-    const isHighProfit = sku.profitRate >= 0.25
-    const isFastTurnover = sku.avgDays < 90
+    const isHighProfit = sku.profitRate >= 0.2
+    const isFastTurnover = sku.avgDays < 60
     
     if (isHighProfit && isFastTurnover) {
       stats.ideal.count++
