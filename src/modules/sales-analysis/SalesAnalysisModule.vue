@@ -330,6 +330,7 @@ function initParetoChart() {
             font: { size: 11 }
           },
           ticks: {
+            stepSize: 20, // 更稀疏的刻度：0%, 20%, 40%, 60%, 80%, 100%
             callback: (value) => `${value}%`
           },
           grid: { drawOnChartArea: false }
@@ -599,7 +600,7 @@ function toggleExpand(key) {
             <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">低利慢周</span>
           </div>
         </div>
-        <div class="h-[240px]">
+        <div class="h-[360px]">
           <canvas ref="scatterChartRef"></canvas>
         </div>
         <!-- 象限分布统计 -->
@@ -634,7 +635,7 @@ function toggleExpand(key) {
             <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">慢周转</span>
           </div>
         </div>
-        <div class="h-[200px]">
+        <div class="h-[300px]">
           <canvas ref="paretoChartRef"></canvas>
         </div>
       </div>
