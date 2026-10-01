@@ -603,31 +603,30 @@ function toggleExpand(key) {
           <canvas ref="scatterChartRef"></canvas>
         </div>
         <!-- 象限分布统计 -->
-        <div class="mt-3 pt-3 border-t border-gray-100">
-          <div class="text-xs text-gray-500 mb-2">象限分布</div>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <div v-for="q in quadrantLabels" :key="q.label" class="p-2 rounded-lg border" :class="{
+        <div class="mt-2 pt-2 border-t border-gray-100">
+          <div class="grid grid-cols-4 gap-1.5">
+            <div v-for="q in quadrantLabels" :key="q.label" class="p-1.5 rounded-lg border text-center" :class="{
               'border-green-200 bg-green-50': q.color === 'green',
               'border-orange-200 bg-orange-50': q.color === 'orange',
               'border-blue-200 bg-blue-50': q.color === 'blue',
               'border-red-200 bg-red-50': q.color === 'red',
             }">
-              <div class="text-[10px] text-gray-500 mb-0.5">{{ q.label }}</div>
-              <div class="text-lg font-bold" :class="{
+              <div class="text-[10px] text-gray-500 leading-tight">{{ q.label }}</div>
+              <div class="text-base font-bold leading-tight" :class="{
                 'text-green-700': q.color === 'green',
                 'text-orange-700': q.color === 'orange',
                 'text-blue-700': q.color === 'blue',
                 'text-red-700': q.color === 'red',
               }">{{ q.count }}</div>
-              <div class="text-[10px] text-gray-500 mt-0.5">¥{{ fmtMoney(q.profit) }}</div>
+              <div class="text-[9px] text-gray-500 mt-0.5">¥{{ fmtMoney(q.profit) }}</div>
             </div>
           </div>
         </div>
       </div>
 
       <!-- 帕累托图 -->
-      <div class="apple-card p-4">
-        <div class="flex justify-between items-center mb-3">
+      <div class="apple-card p-3">
+        <div class="flex justify-between items-center mb-2">
           <div class="text-xs text-gray-500">帕累托分析</div>
           <div class="flex gap-2 text-xs">
             <span class="px-2 py-0.5 rounded bg-green-100 text-green-700">快周转</span>
@@ -635,7 +634,7 @@ function toggleExpand(key) {
             <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">慢周转</span>
           </div>
         </div>
-        <div class="h-[320px]">
+        <div class="h-[280px]">
           <canvas ref="paretoChartRef"></canvas>
         </div>
       </div>
