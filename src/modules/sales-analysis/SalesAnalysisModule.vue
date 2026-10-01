@@ -112,7 +112,7 @@ function initScatterChart() {
           profit: d.totalProfit,
           originalProfitRate: d.profitRate, // 保存原始值用于 tooltip
         })),
-        backgroundColor: data.map(d => getTurnoverColor(d.avgDays)),
+        backgroundColor: data.map(d => getQuadrantColor(d.profitRate, d.avgDays)),
         borderColor: 'rgba(0, 0, 0, 0.3)',
         borderWidth: 1,
       }]
