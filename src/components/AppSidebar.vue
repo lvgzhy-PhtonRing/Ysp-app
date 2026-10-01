@@ -22,11 +22,10 @@ const emit = defineEmits(['select', 'import', 'export', 'cloud', 'logs'])
 
 // 分组配置
 const tabGroups = [
-  { name: '数据', tabs: ['home'] },
+  { name: '数据', tabs: ['home', 'finance'] },
   { name: '库存', tabs: ['inventory', 'aging', 'market-price'] },
   { name: '销售', tabs: ['sales', 'sales-analysis'] },
   { name: '采购', tabs: ['purchase', 'rushcar'] },
-  { name: '公共收支', tabs: ['finance'] },
 ]
 
 const iconMap = {
