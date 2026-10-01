@@ -589,8 +589,8 @@ function toggleExpand(key) {
     <!-- 图表区域 -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <!-- 四象限气泡散点图 -->
-      <div class="apple-card p-4">
-        <div class="flex justify-between items-center mb-3">
+      <div class="apple-card p-3">
+        <div class="flex justify-between items-center mb-2">
           <div class="text-xs text-gray-500">四象限分析 <span class="text-gray-400">（气泡越大 = 对整体利润贡献越大）</span></div>
           <div class="flex gap-2 text-xs">
             <span class="px-2 py-0.5 rounded bg-green-100 text-green-700">高利快周</span>
@@ -599,7 +599,7 @@ function toggleExpand(key) {
             <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">低利慢周</span>
           </div>
         </div>
-        <div class="h-[280px]">
+        <div class="h-[240px]">
           <canvas ref="scatterChartRef"></canvas>
         </div>
         <!-- 象限分布统计 -->
@@ -634,14 +634,14 @@ function toggleExpand(key) {
             <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">慢周转</span>
           </div>
         </div>
-        <div class="h-[280px]">
+        <div class="h-[240px]">
           <canvas ref="paretoChartRef"></canvas>
         </div>
       </div>
 
       <!-- 品类双轴柱状图 -->
-      <div class="apple-card p-4">
-        <div class="flex justify-between items-center mb-3">
+      <div class="apple-card p-3">
+        <div class="flex justify-between items-center mb-2">
           <div class="text-xs text-gray-500">品类双轴分析</div>
           <div class="flex gap-2 text-xs">
             <span class="px-2 py-0.5 rounded bg-green-100 text-green-700">&lt;60天</span>
@@ -649,15 +649,15 @@ function toggleExpand(key) {
             <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">&gt;180天</span>
           </div>
         </div>
-        <div class="h-[320px]">
+        <div class="h-[240px]">
           <canvas ref="dualAxisChartRef"></canvas>
         </div>
       </div>
 
       <!-- 利润贡献饼图 -->
-      <div class="apple-card p-4">
-        <div class="text-xs text-gray-500 mb-3">利润贡献分布</div>
-        <div class="h-[320px]">
+      <div class="apple-card p-3">
+        <div class="text-xs text-gray-500 mb-2">利润贡献分布</div>
+        <div class="h-[240px]">
           <canvas ref="pieChartRef"></canvas>
         </div>
       </div>
