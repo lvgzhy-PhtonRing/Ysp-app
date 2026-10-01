@@ -20,16 +20,25 @@ const props = defineProps({
 
 const emit = defineEmits(['select', 'import', 'export', 'cloud', 'logs'])
 
+// 分组配置
+const tabGroups = [
+  { name: '数据', tabs: ['home'] },
+  { name: '库存', tabs: ['inventory', 'aging', 'market-price'] },
+  { name: '销售', tabs: ['sales', 'sales-analysis'] },
+  { name: '采购', tabs: ['purchase', 'rushcar'] },
+  { name: '公共收支', tabs: ['finance'] },
+]
+
 const iconMap = {
   home: 'fa-solid fa-chart-pie',
   inventory: 'fa-solid fa-boxes-stacked',
   aging: 'fa-solid fa-hourglass-half',
+  'market-price': 'fa-solid fa-chart-line',
   sales: 'fa-solid fa-cash-register',
   'sales-analysis': 'fa-solid fa-chart-column',
   purchase: 'fa-solid fa-truck',
-  finance: 'fa-solid fa-wallet',
   rushcar: 'fa-solid fa-car-side',
-  'market-price': 'fa-solid fa-chart-line',
+  finance: 'fa-solid fa-wallet',
 }
 
 function isTabDisabled(tab) {
@@ -48,6 +57,10 @@ function handleSelect(tab) {
   if (isTabDisabled(tab)) return
   emit('select', tab.id)
 }
+
+function getGroupTabs(group) {
+  return props.tabs.filter(t => group.tabs.includes(t.id))
+}
 </script>
 
 <template>
@@ -58,18 +71,27 @@ function handleSelect(tab) {
         <div class="mt-1 text-xs text-gray-400">v{{ version }}</div>
       </div>
 
-      <nav class="space-y-2 p-4">
-        <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          class="w-full text-left px-4 py-3 rounded-xl transition-all text-base font-bold flex items-center gap-3"
-          :style="getTabStyle(tab, currentTab)"
-          :disabled="isTabDisabled(tab)"
-          @click="handleSelect(tab)"
-        >
-          <i :class="(iconMap[tab.id] || 'fa-solid fa-circle') + ' w-5 text-center'" />
-          {{ tab.name }}
-        </button>
+      <nav class="space-y-1 p-4">
+        <div v-for="group in tabGroups" :key="group.name" class="mb-3">
+          <div class="flex gap-3">
+            <!-- 分组色块 -->
+            <div class="w-1 self-stretch bg-gray-200 rounded-full"></div>
+            <!-- 组内 tabs -->
+            <div class="flex-1 space-y-1">
+              <button
+                v-for="tab in getGroupTabs(group)"
+                :key="tab.id"
+                class="w-full text-left px-4 py-3 rounded-xl transition-all text-base font-bold flex items-center gap-3"
+                :style="getTabStyle(tab, currentTab)"
+                :disabled="isTabDisabled(tab)"
+                @click="handleSelect(tab)"
+              >
+                <i :class="(iconMap[tab.id] || 'fa-solid fa-circle') + ' w-5 text-center'" />
+                {{ tab.name }}
+              </button>
+            </div>
+          </div>
+        </div>
       </nav>
     </div>
 

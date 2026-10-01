@@ -81,12 +81,12 @@ const tabs = [
   { id: 'home', name: '数据透视' },
   { id: 'inventory', name: '库存管理' },
   { id: 'aging', name: '账龄分析' },
+  { id: 'market-price', name: '市场价格' },
   { id: 'sales', name: '销售记账' },
   { id: 'sales-analysis', name: '销售分析' },
   { id: 'purchase', name: '采购管理' },
-  { id: 'finance', name: '公共收支' },
   { id: 'rushcar', name: '美淘记录' },
-  { id: 'market-price', name: '市场价格' },
+  { id: 'finance', name: '公共收支' },
 ]
 
 const currentTab = ref('home')
