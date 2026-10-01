@@ -103,3 +103,48 @@ export function buildInventoryAgingRows(items = [], transfers = [], now = new Da
       }
     })
 }
+
+/**
+ * 按 sid|name 合并账龄行（与库存列表 mergeItemsBySidName 口径一致）。
+ * - qty：组内求和
+ * - cost：单价，取组内第一条
+ * - 货值：单价 × 总数量
+ * - monthsInStock：按金额加权的平均库龄（货值大的一批权重高）
+ * - inStockDate / source：取组内最早入库日期
+ * - rowKey：沿用组内首条的 rowKey（仍唯一）
+ */
+export function groupInventoryAgingRows(rows = []) {
+  const map = new Map()
+  for (const r of rows) {
+    if (!r) continue
+    const key = `${r.sid || ''}|${r.name || ''}`
+    const amount = Number(r.cost || 0) * Number(r.qty || 1)
+    if (!map.has(key)) {
+      map.set(key, {
+        ...r,
+        qty: Number(r.qty || 1),
+        totalAmount: amount,
+        weightedMonths: amount * Number(r.monthsInStock || 0),
+        earliestDate: r.inStockDate,
+      })
+      continue
+    }
+    const g = map.get(key)
+    g.qty += Number(r.qty || 1)
+    g.totalAmount += amount
+    g.weightedMonths += amount * Number(r.monthsInStock || 0)
+    if (r.inStockDate && (!g.earliestDate || String(r.inStockDate) < String(g.earliestDate))) {
+      g.earliestDate = r.inStockDate
+      g.inStockDate = r.inStockDate
+      g.source = r.source
+    }
+  }
+  return Array.from(map.values()).map((g) => ({
+    ...g,
+    monthsInStock: g.totalAmount > 0 ? g.weightedMonths / g.totalAmount : 0,
+    // 清理合并过程中的中间字段
+    totalAmount: undefined,
+    weightedMonths: undefined,
+    earliestDate: undefined,
+  }))
+}

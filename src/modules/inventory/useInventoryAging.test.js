@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildInventoryAgingRows } from './useInventoryAging'
+import { buildInventoryAgingRows, groupInventoryAgingRows } from './useInventoryAging'
 
 const NOW = new Date('2026-10-01')
 
@@ -66,5 +66,62 @@ describe('buildInventoryAgingRows', () => {
       NOW,
     )
     expect(rows[0].monthsInStock).toBeGreaterThan(11)
+  })
+})
+
+describe('groupInventoryAgingRows', () => {
+  it('按 sid|name 合并，数量求和', () => {
+    const items = [
+      makeItem({ id: 1, sid: 'CN-L9PR', name: '兰博基尼Aventator黑' }),
+      makeItem({ id: 2, sid: 'CN-L9PR', name: '兰博基尼Aventator黑' }),
+      makeItem({ id: 3, sid: 'CN-L9PR', name: '兰博基尼Aventator黑' }),
+      makeItem({ id: 4, sid: 'CN-L9R3', name: 'ARBOX 保时捷911' }),
+    ]
+    const rows = groupInventoryAgingRows(buildInventoryAgingRows(items, [], NOW))
+
+    expect(rows).toHaveLength(2)
+    const l9pr = rows.find((r) => r.sid === 'CN-L9PR')
+    expect(l9pr.qty).toBe(3)
+    expect(rows.find((r) => r.sid === 'CN-L9R3').qty).toBe(1)
+  })
+
+  it('同 sid 不同名称不合并', () => {
+    const items = [
+      makeItem({ id: 1, sid: 'CN-L9PR', name: '兰博基尼Aventator黑' }),
+      makeItem({ id: 2, sid: 'CN-L9PR', name: '兰博基尼Aventator白' }),
+    ]
+    const rows = groupInventoryAgingRows(buildInventoryAgingRows(items, [], NOW))
+    expect(rows).toHaveLength(2)
+  })
+
+  it('合并行 rowKey 唯一，货值 = 单价 × 总数量', () => {
+    const items = [
+      makeItem({ id: 1, sid: 'S-1', name: 'GT-R', cost: 100 }),
+      makeItem({ id: 2, sid: 'S-1', name: 'GT-R', cost: 100 }),
+      makeItem({ id: 3, sid: 'S-2', name: 'Supra', cost: 200 }),
+    ]
+    const rows = groupInventoryAgingRows(buildInventoryAgingRows(items, [], NOW))
+
+    expect(rows).toHaveLength(2)
+    expect(new Set(rows.map((r) => r.rowKey)).size).toBe(2)
+    const gtr = rows.find((r) => r.sid === 'S-1')
+    expect(gtr.cost).toBe(100) // 单价取第一条，不累加
+    expect(Number(gtr.cost) * Number(gtr.qty)).toBe(200) // 货值 = 100 × 2
+  })
+
+  it('库龄按金额加权平均，入库日期取最早', () => {
+    const items = [
+      makeItem({ id: 1, sid: 'S-1', cost: 100, inventoryDetails: { inStockDate: '2025-08-01' } }),
+      makeItem({ id: 2, sid: 'S-1', cost: 100, inventoryDetails: { inStockDate: '2026-08-01' } }),
+    ]
+    const rows = groupInventoryAgingRows(buildInventoryAgingRows(items, [], NOW))
+
+    expect(rows).toHaveLength(1)
+    const r = rows[0]
+    expect(r.inStockDate).toBe('2025-08-01')
+    // 两批各 ¥100，等权平均：13.99 月与 2.0 月 → 约 8 月
+    expect(r.monthsInStock).toBeGreaterThan(2)
+    expect(r.monthsInStock).toBeLessThan(14)
+    expect(r.monthsInStock).toBeCloseTo(8, 0)
   })
 })

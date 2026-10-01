@@ -2,7 +2,7 @@
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import Chart from 'chart.js/auto'
 import { state as store } from '../../data/store'
-import { buildInventoryAgingRows } from './useInventoryAging'
+import { buildInventoryAgingRows, groupInventoryAgingRows } from './useInventoryAging'
 
 const emit = defineEmits(['back'])
 
@@ -27,7 +27,8 @@ const baseRows = computed(() => {
   return allRows
 })
 
-const rows = baseRows
+// 按 sid|name 合并（与库存列表 mergeItemsBySidName 口径一致），数量求和
+const rows = computed(() => groupInventoryAgingRows(baseRows.value))
 
 const categoryOptions = computed(() => ['全部', ...Array.from(new Set(rows.value.map((r) => r.category))).sort((a, b) => String(a).localeCompare(String(b), 'zh-CN'))])
 const batchOptions = computed(() => ['全部', ...Array.from(new Set(rows.value.map((r) => r.batch))).sort((a, b) => String(a).localeCompare(String(b), 'zh-CN'))])
@@ -73,7 +74,7 @@ const sortedRows = computed(() => {
 
 // 货值计算：cost × qty
 const summary = computed(() => {
-  const total = sortedRows.value.length
+  const total = sortedRows.value.reduce((s, r) => s + Number(r.qty || 1), 0)
   const totalValue = sortedRows.value.reduce((s, r) => s + Number(r.cost || 0) * Number(r.qty || 1), 0)
   const totalMonths = sortedRows.value.reduce((s, r) => s + Number(r.monthsInStock || 0), 0)
   const avgMonths = total > 0 ? totalMonths / total : 0
