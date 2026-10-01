@@ -71,8 +71,8 @@ function getGroupTabs(group) {
         <div class="mt-1 text-xs text-gray-400">v{{ version }}</div>
       </div>
 
-      <nav class="space-y-1 p-4">
-        <div v-for="group in tabGroups" :key="group.name" class="mb-3">
+      <nav class="space-y-4 p-4">
+        <div v-for="(group, idx) in tabGroups" :key="group.name" class="mb-6">
           <div class="flex gap-3">
             <!-- 分组色块 -->
             <div class="w-1 self-stretch bg-gray-200 rounded-full"></div>
