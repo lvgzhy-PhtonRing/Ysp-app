@@ -190,19 +190,17 @@ function initScatterChart() {
           min: 0,
           max: 1.25, // 0-60% 映射到 0-75%，60%-120% 映射到 75%-125%
           ticks: {
-            stepSize: 0.05,
+            stepSize: 0.1,
             callback: (value) => {
               // 反向转换：图表值 -> 原始利润率
               const original = inverseNonlinearProfitScale(value)
-              if (original <= 0.6) {
-                if (original % 0.1 < 0.01) return `${(original * 100).toFixed(0)}%`
-                return ''
+              // 只显示 0%, 10%, 20%, 30%, 40%, 50%, 60%, 75%, 90%, 105%, 120%
+              const displayValues = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.75, 0.9, 1.05, 1.2]
+              for (const v of displayValues) {
+                if (Math.abs(original - v) < 0.02) {
+                  return `${(v * 100).toFixed(0)}%`
+                }
               }
-              // 60% 之后只显示关键刻度
-              if (Math.abs(original - 0.75) < 0.01) return '75%'
-              if (Math.abs(original - 0.9) < 0.01) return '90%'
-              if (Math.abs(original - 1.05) < 0.01) return '105%'
-              if (Math.abs(original - 1.2) < 0.01) return '120%'
               return ''
             }
           }
@@ -423,19 +421,17 @@ function initDualAxisChart() {
           min: 0,
           max: 1.25, // 0-60% 映射到 0-75%，60%-120% 映射到 75%-125%
           ticks: {
-            stepSize: 0.05,
+            stepSize: 0.1,
             callback: (value) => {
               // 反向转换：图表值 -> 原始利润率
               const original = inverseNonlinearProfitScale(value)
-              if (original <= 0.6) {
-                if (original % 0.1 < 0.01) return `${(original * 100).toFixed(0)}%`
-                return ''
+              // 只显示 0%, 10%, 20%, 30%, 40%, 50%, 60%, 75%, 90%, 105%, 120%
+              const displayValues = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.75, 0.9, 1.05, 1.2]
+              for (const v of displayValues) {
+                if (Math.abs(original - v) < 0.02) {
+                  return `${(v * 100).toFixed(0)}%`
+                }
               }
-              // 60% 之后只显示关键刻度
-              if (Math.abs(original - 0.75) < 0.01) return '75%'
-              if (Math.abs(original - 0.9) < 0.01) return '90%'
-              if (Math.abs(original - 1.05) < 0.01) return '105%'
-              if (Math.abs(original - 1.2) < 0.01) return '120%'
               return ''
             }
           }
