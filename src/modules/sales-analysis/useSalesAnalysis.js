@@ -47,8 +47,8 @@ function calcSoldDays(item) {
  * @returns {Array} 聚合后的 SKU 数组
  */
 export function aggregateSKUs(items = []) {
-  // 过滤已售商品
-  const soldItems = items.filter(i => i.status === 'sold')
+  // 过滤已售商品，排除"其它"品牌
+  const soldItems = items.filter(i => i.status === 'sold' && (i.brand || '其它') !== '其它')
   
   if (soldItems.length === 0) {
     return []
