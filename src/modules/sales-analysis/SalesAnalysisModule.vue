@@ -17,6 +17,33 @@ import {
 // 注册 annotation 插件
 Chart.register(annotationPlugin)
 
+// 自定义插件：在饼图扇形内显示百分比
+const datalabelsPlugin = {
+  id: 'datalabels',
+  afterDatasetsDraw(chart) {
+    const { ctx } = chart
+    const meta = chart.getDatasetMeta(0)
+
+    if (!meta || !meta.data) return
+
+    meta.data.forEach((element, index) => {
+      const value = chart.data.datasets[0].data[index]
+      if (typeof value !== 'number' || value < 2) return // 太小的扇形不显示
+
+      const { x, y } = element.tooltipPosition()
+      const percentage = value.toFixed(1)
+
+      ctx.save()
+      ctx.fillStyle = '#ffffff'
+      ctx.font = 'bold 11px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(`${percentage}%`, x, y)
+      ctx.restore()
+    })
+  }
+}
+
 // 非线性利润率刻度转换：0-60% 正常，60%-120% 压缩
 // 刻度位置：0%(0/8), 10%(1/8), 20%(2/8), 30%(3/8), 40%(4/8), 50%(5/8), 60%(6/8), 90%(7/8), 120%(8/8)
 function nonlinearProfitScale(value) {
@@ -41,6 +68,8 @@ function inverseNonlinearProfitScale(value) {
 
 // y 轴刻度值（8 个间隔，9 个刻度点）
 const Y_TICK_VALUES = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.9, 1.2]
+// 品类双轴 y 轴稀疏刻度值（更稀疏）
+const DUAL_AXIS_Y_TICK_VALUES = [0, 0.2, 0.4, 0.6, 0.9, 1.2]
 
 // 图表引用
 const scatterChartRef = ref(null)
@@ -360,7 +389,7 @@ function initDualAxisChart() {
           type: 'bar',
           label: '利润率',
           data: data.map(d => nonlinearProfitScale(d.profitRate)), // 非线性变换
-        backgroundColor: data.map(d => getQuadrantColor(d.profitRate, d.avgDays)),
+          backgroundColor: data.map(d => getTurnoverColor(d.avgDays)),
           borderColor: data.map(d => getTurnoverColor(d.avgDays).replace('0.7', '1')),
           borderWidth: 1,
           yAxisID: 'y',
@@ -427,13 +456,13 @@ function initDualAxisChart() {
           min: 0,
           max: 1.0, // 图表高度 0-1，数据经过非线性变换
           ticks: {
-            stepSize: 0.125, // 8 个间隔，每个 1/8
+            stepSize: 0.25, // 4 个间隔，更稀疏
             callback: (value) => {
               // 反向转换：图表值 -> 原始利润率
               const original = inverseNonlinearProfitScale(value)
-              // 只显示 9 个刻度点
-              for (const v of Y_TICK_VALUES) {
-                if (Math.abs(original - v) < 0.02) {
+              // 只显示稀疏刻度点
+              for (const v of DUAL_AXIS_Y_TICK_VALUES) {
+                if (Math.abs(original - v) < 0.05) {
                   return `${(v * 100).toFixed(0)}%`
                 }
               }
@@ -513,7 +542,8 @@ function initPieChart() {
           }
         }
       }
-    }
+    },
+    plugins: [datalabelsPlugin]
   })
 }
 
@@ -590,7 +620,7 @@ function toggleExpand(key) {
     <!-- 图表区域 -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <!-- 四象限气泡散点图 -->
-      <div class="apple-card p-3">
+      <div class="apple-card p-3 flex flex-col">
         <div class="flex justify-between items-center mb-2">
           <div class="text-xs text-gray-500">四象限分析 <span class="text-gray-400">（气泡越大 = 对整体利润贡献越大）</span></div>
           <div class="flex gap-2 text-xs">
@@ -600,7 +630,7 @@ function toggleExpand(key) {
             <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">低利慢周</span>
           </div>
         </div>
-        <div class="h-[360px]">
+        <div class="flex-1 min-h-[300px]">
           <canvas ref="scatterChartRef"></canvas>
         </div>
         <!-- 象限分布统计 -->
@@ -626,7 +656,7 @@ function toggleExpand(key) {
       </div>
 
       <!-- 帕累托图 -->
-      <div class="apple-card p-3">
+      <div class="apple-card p-3 flex flex-col">
         <div class="flex justify-between items-center mb-2">
           <div class="text-xs text-gray-500">帕累托分析</div>
           <div class="flex gap-2 text-xs">
@@ -635,13 +665,13 @@ function toggleExpand(key) {
             <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">慢周转</span>
           </div>
         </div>
-        <div class="h-[300px]">
+        <div class="flex-1 min-h-[300px]">
           <canvas ref="paretoChartRef"></canvas>
         </div>
       </div>
 
       <!-- 品类双轴柱状图 -->
-      <div class="apple-card p-3">
+      <div class="apple-card p-3 flex flex-col">
         <div class="flex justify-between items-center mb-2">
           <div class="text-xs text-gray-500">品类双轴分析</div>
           <div class="flex gap-2 text-xs">
@@ -650,15 +680,15 @@ function toggleExpand(key) {
             <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">&gt;180天</span>
           </div>
         </div>
-        <div class="h-[240px]">
+        <div class="flex-1 min-h-[312px]">
           <canvas ref="dualAxisChartRef"></canvas>
         </div>
       </div>
 
       <!-- 利润贡献饼图 -->
-      <div class="apple-card p-3">
+      <div class="apple-card p-3 flex flex-col">
         <div class="text-xs text-gray-500 mb-2">利润贡献分布</div>
-        <div class="h-[240px]">
+        <div class="flex-1 min-h-[312px]">
           <canvas ref="pieChartRef"></canvas>
         </div>
       </div>
