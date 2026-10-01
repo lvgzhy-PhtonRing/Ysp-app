@@ -166,8 +166,22 @@ function initScatterChart() {
             text: '销售利润率',
             font: { size: 11 }
           },
+          min: 0,
+          max: 1.2,
           ticks: {
-            callback: (value) => `${(value * 100).toFixed(0)}%`
+            stepSize: 0.1,
+            callback: (value) => {
+              // 显示关键刻度：0-60% 密集，60%-120% 稀疏
+              if (value <= 0.6) {
+                return `${(value * 100).toFixed(0)}%`
+              }
+              // 60% 之后只显示 75%, 90%, 105%, 120%
+              if (Math.abs(value - 0.75) < 0.01) return '75%'
+              if (Math.abs(value - 0.9) < 0.01) return '90%'
+              if (Math.abs(value - 1.05) < 0.01) return '105%'
+              if (Math.abs(value - 1.2) < 0.01) return '120%'
+              return ''
+            }
           }
         }
       }
@@ -379,8 +393,22 @@ function initDualAxisChart() {
             text: '利润率',
             font: { size: 11 }
           },
+          min: 0,
+          max: 1.2,
           ticks: {
-            callback: (value) => `${(value * 100).toFixed(0)}%`
+            stepSize: 0.1,
+            callback: (value) => {
+              // 显示关键刻度：0-60% 密集，60%-120% 稀疏
+              if (value <= 0.6) {
+                return `${(value * 100).toFixed(0)}%`
+              }
+              // 60% 之后只显示 75%, 90%, 105%, 120%
+              if (Math.abs(value - 0.75) < 0.01) return '75%'
+              if (Math.abs(value - 0.9) < 0.01) return '90%'
+              if (Math.abs(value - 1.05) < 0.01) return '105%'
+              if (Math.abs(value - 1.2) < 0.01) return '120%'
+              return ''
+            }
           }
         },
         y1: {
