@@ -23,7 +23,9 @@ const emit = defineEmits(['select', 'import', 'export', 'cloud', 'logs'])
 const iconMap = {
   home: 'fa-solid fa-chart-pie',
   inventory: 'fa-solid fa-boxes-stacked',
+  aging: 'fa-solid fa-hourglass-half',
   sales: 'fa-solid fa-cash-register',
+  'sales-analysis': 'fa-solid fa-chart-column',
   purchase: 'fa-solid fa-truck',
   finance: 'fa-solid fa-wallet',
   rushcar: 'fa-solid fa-car-side',

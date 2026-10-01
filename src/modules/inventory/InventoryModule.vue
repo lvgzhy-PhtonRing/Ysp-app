@@ -917,7 +917,6 @@ watch(invFilterMode, (val) => {
           <button class="px-3 py-1 text-xs rounded-full transition" :class="inventoryViewMode==='brand' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'" @click="inventoryViewMode='brand'">按品牌</button>
         </div>
         <div class="flex gap-2 shrink-0">
-          <button class="btn btn-outline btn-xs" @click="emit('open-aging')"><i class="fa-solid fa-hourglass-half mr-1"></i>库存账龄</button>
           <button class="btn btn-outline btn-xs" @click="expandAllGroups">展开全部</button>
           <button class="btn btn-outline btn-xs" @click="collapseAllGroups">折叠全部</button>
         </div>

@@ -1,7 +1,7 @@
 {
   "name": "ysp-app",
   "private": true,
-  "version": "3.12.12",
+  "version": "4.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,6 +13,7 @@
   "dependencies": {
     "@fortawesome/fontawesome-free": "^7.2.0",
     "chart.js": "^4.5.1",
+    "chartjs-plugin-annotation": "^3.1.0",
     "fuse.js": "^7.2.0",
     "vue": "^3.5.30"
   },

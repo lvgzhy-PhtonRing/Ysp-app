@@ -47,7 +47,7 @@ export function buildInventoryAgingRows(items = [], transfers = [], now = new Da
   const nowTs = now.getTime()
 
   return (items || [])
-    .filter((item) => item?.status === 'inventory' && item?.isLongTerm !== true)
+    .filter((item) => item?.status === 'inventory')
     .map((item) => {
       const category = String(item?.category || '未分类')
       const batch = String(item?.batch || '未分批')
@@ -88,6 +88,8 @@ export function buildInventoryAgingRows(items = [], transfers = [], now = new Da
         category,
         batch,
         cost: Number(item?.cost || 0),
+        qty: Number(item?.qty || 1),
+        isLongTerm: item?.isLongTerm === true,
         source,
         inStockDate,
         purchaseDate,

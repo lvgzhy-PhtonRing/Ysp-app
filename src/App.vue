@@ -7,6 +7,7 @@ import InventoryModule from './modules/inventory/InventoryModule.vue'
 import InventoryAgingModule from './modules/inventory/InventoryAgingModule.vue'
 import PurchaseModule from './modules/purchase/PurchaseModule.vue'
 import SalesModule from './modules/sales/SalesModule.vue'
+import SalesAnalysisModule from './modules/sales-analysis/SalesAnalysisModule.vue'
 import FinanceModule from './modules/finance/FinanceModule.vue'
 import RushCarPrototypeModule from './modules/rushcar/RushCarPrototypeModule.vue'
 import MarketPriceModule from './modules/market-price/MarketPriceModule.vue'
@@ -79,7 +80,9 @@ import {
 const tabs = [
   { id: 'home', name: '数据透视' },
   { id: 'inventory', name: '库存管理' },
+  { id: 'aging', name: '账龄分析' },
   { id: 'sales', name: '销售记账' },
+  { id: 'sales-analysis', name: '销售分析' },
   { id: 'purchase', name: '采购管理' },
   { id: 'finance', name: '公共收支' },
   { id: 'rushcar', name: '美淘记录' },
@@ -1029,9 +1032,11 @@ watch(
       </div>
       <div class="mx-auto max-w-7xl space-y-6 pb-8">
         <HomeModule v-if="currentTab === 'home'" />
-        <InventoryModule v-else-if="currentTab === 'inventory'" @open-aging="currentTab = 'inventory-aging'" />
+        <InventoryModule v-else-if="currentTab === 'inventory'" @open-aging="currentTab = 'aging'" />
         <InventoryAgingModule v-else-if="currentTab === 'inventory-aging'" @back="currentTab = 'inventory'" />
+        <InventoryAgingModule v-else-if="currentTab === 'aging'" />
         <SalesModule v-else-if="currentTab === 'sales'" />
+        <SalesAnalysisModule v-else-if="currentTab === 'sales-analysis'" />
         <PurchaseModule v-else-if="currentTab === 'purchase'" />
         <FinanceModule v-else-if="currentTab === 'finance'" />
         <RushCarPrototypeModule v-else-if="currentTab === 'rushcar'" :source-data="store" />
