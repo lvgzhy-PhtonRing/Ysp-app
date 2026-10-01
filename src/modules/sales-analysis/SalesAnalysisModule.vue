@@ -17,24 +17,23 @@ import {
 Chart.register(annotationPlugin)
 
 // 非线性利润率刻度转换：0-60% 正常，60%-120% 压缩为 1/3
-// 输入：原始利润率 (0-1.2)
-// 输出：变换后的值 (0-1) 用于图表绘制
+// 0-60% 占据图表高度 75%，60%-120% 占据 25%（压缩为原来的 1/3）
 function nonlinearProfitScale(value) {
   const v = Number(value) || 0
   if (v <= 0.6) {
-    return v / 0.6 // 0-60% 映射到 0-1
+    return v / 0.6 * 0.75 // 0-60% 映射到 0-75% 高度
   }
-  // 60%-120% 压缩到 1-1.5（高度压缩为 1/3）
-  return 1 + (v - 0.6) / 0.6 * 0.5
+  // 60%-120% 压缩到 75%-100% 高度（1/3 比例）
+  return 0.75 + (v - 0.6) / 0.6 * 0.25
 }
 
 // 反向转换：图表值 -> 原始利润率
 function inverseNonlinearProfitScale(value) {
   const v = Number(value) || 0
-  if (v <= 1) {
-    return v * 0.6
+  if (v <= 0.75) {
+    return v / 0.75 * 0.6
   }
-  return 0.6 + (v - 1) / 0.5 * 0.6
+  return 0.6 + (v - 0.75) / 0.25 * 0.6
 }
 
 // 图表引用
@@ -101,10 +100,11 @@ function initScatterChart() {
         label: 'SKU',
         data: data.map(d => ({
           x: d.avgDays,
-          y: d.profitRate,
+          y: nonlinearProfitScale(d.profitRate), // 非线性变换
           r: Math.sqrt(Math.abs(d.totalProfit) / maxProfit) * 30 + 5,
           sku: d.key,
           profit: d.totalProfit,
+          originalProfitRate: d.profitRate, // 保存原始值用于 tooltip
         })),
         backgroundColor: data.map(d => getTurnoverColor(d.avgDays)),
         borderColor: 'rgba(0, 0, 0, 0.3)',
@@ -116,19 +116,19 @@ function initScatterChart() {
       maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: (context) => {
-              const p = context.raw
-              return [
-                `SKU: ${p.sku}`,
-                `利润: ¥${fmtMoney(p.profit)}`,
-                `售出天数: ${fmtDays(p.x)}`,
-                `利润率: ${fmtPercent(p.y)}`,
-              ]
+          tooltip: {
+            callbacks: {
+              label: (context) => {
+                const p = context.raw
+                return [
+                  `SKU: ${p.sku}`,
+                  `利润: ¥${fmtMoney(p.profit)}`,
+                  `售出天数: ${fmtDays(p.x)}`,
+                  `利润率: ${fmtPercent(p.originalProfitRate)}`, // 显示原始值
+                ]
+              }
             }
-          }
-        },
+          },
         annotation: {
           annotations: {
             lineX: {
@@ -188,20 +188,21 @@ function initScatterChart() {
             font: { size: 11 }
           },
           min: 0,
-          max: 1.2,
+          max: 1.25, // 0-60% 映射到 0-75%，60%-120% 映射到 75%-125%
           ticks: {
             stepSize: 0.05,
             callback: (value) => {
-              // 非线性刻度：0-60% 密集显示，60%-120% 稀疏显示
-              if (value <= 0.6) {
-                if (value % 0.1 === 0) return `${(value * 100).toFixed(0)}%`
+              // 反向转换：图表值 -> 原始利润率
+              const original = inverseNonlinearProfitScale(value)
+              if (original <= 0.6) {
+                if (original % 0.1 < 0.01) return `${(original * 100).toFixed(0)}%`
                 return ''
               }
               // 60% 之后只显示关键刻度
-              if (Math.abs(value - 0.75) < 0.01) return '75%'
-              if (Math.abs(value - 0.9) < 0.01) return '90%'
-              if (Math.abs(value - 1.05) < 0.01) return '105%'
-              if (Math.abs(value - 1.2) < 0.01) return '120%'
+              if (Math.abs(original - 0.75) < 0.01) return '75%'
+              if (Math.abs(original - 0.9) < 0.01) return '90%'
+              if (Math.abs(original - 1.05) < 0.01) return '105%'
+              if (Math.abs(original - 1.2) < 0.01) return '120%'
               return ''
             }
           }
@@ -354,12 +355,14 @@ function initDualAxisChart() {
         {
           type: 'bar',
           label: '利润率',
-          data: data.map(d => d.profitRate),
+          data: data.map(d => nonlinearProfitScale(d.profitRate)), // 非线性变换
           backgroundColor: data.map(d => getTurnoverColor(d.avgDays)),
           borderColor: data.map(d => getTurnoverColor(d.avgDays).replace('0.7', '1')),
           borderWidth: 1,
           yAxisID: 'y',
           order: 2,
+          // 保存原始值用于 tooltip
+          _originalData: data.map(d => d.profitRate),
         },
         {
           type: 'line',
@@ -392,7 +395,9 @@ function initDualAxisChart() {
           callbacks: {
             label: (context) => {
               if (context.datasetIndex === 0) {
-                return `利润率: ${fmtPercent(context.raw)}`
+                // 显示原始的利润率值
+                const originalValue = dualAxisChart.config.data.datasets[0]._originalData[context.dataIndex]
+                return `利润率: ${fmtPercent(originalValue)}`
               }
               return `售出天数: ${fmtDays(context.raw)}`
             }
@@ -416,20 +421,21 @@ function initDualAxisChart() {
             font: { size: 11 }
           },
           min: 0,
-          max: 1.2,
+          max: 1.25, // 0-60% 映射到 0-75%，60%-120% 映射到 75%-125%
           ticks: {
             stepSize: 0.05,
             callback: (value) => {
-              // 非线性刻度：0-60% 密集显示，60%-120% 稀疏显示
-              if (value <= 0.6) {
-                if (value % 0.1 === 0) return `${(value * 100).toFixed(0)}%`
+              // 反向转换：图表值 -> 原始利润率
+              const original = inverseNonlinearProfitScale(value)
+              if (original <= 0.6) {
+                if (original % 0.1 < 0.01) return `${(original * 100).toFixed(0)}%`
                 return ''
               }
               // 60% 之后只显示关键刻度
-              if (Math.abs(value - 0.75) < 0.01) return '75%'
-              if (Math.abs(value - 0.9) < 0.01) return '90%'
-              if (Math.abs(value - 1.05) < 0.01) return '105%'
-              if (Math.abs(value - 1.2) < 0.01) return '120%'
+              if (Math.abs(original - 0.75) < 0.01) return '75%'
+              if (Math.abs(original - 0.9) < 0.01) return '90%'
+              if (Math.abs(original - 1.05) < 0.01) return '105%'
+              if (Math.abs(original - 1.2) < 0.01) return '120%'
               return ''
             }
           }
