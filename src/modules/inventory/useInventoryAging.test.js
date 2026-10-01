@@ -124,4 +124,23 @@ describe('groupInventoryAgingRows', () => {
     expect(r.monthsInStock).toBeLessThan(14)
     expect(r.monthsInStock).toBeCloseTo(8, 0)
   })
+
+  it('cost=0 时库龄不得归零（回归：金额权重全 0 时退化为组内最大库龄）', () => {
+    const items = [
+      makeItem({ id: 1, sid: 'H-7LU', cost: 0, inventoryDetails: {} }),
+      makeItem({ id: 2, sid: 'H-7LU', cost: 0, inventoryDetails: {} }),
+    ]
+    // 无入库日但匹配批次 fallback：2025JAPAN / 2025JAPAN → 2025-08-01
+    items.forEach((i) => {
+      i.category = '2025JAPAN'
+      i.batch = '2025JAPAN'
+      delete i.inventoryDetails
+    })
+
+    const rows = groupInventoryAgingRows(buildInventoryAgingRows(items, [], NOW))
+
+    expect(rows).toHaveLength(1)
+    // 真实库龄约 14 月，不能因为 cost=0 变成 0
+    expect(rows[0].monthsInStock).toBeGreaterThan(13)
+  })
 })

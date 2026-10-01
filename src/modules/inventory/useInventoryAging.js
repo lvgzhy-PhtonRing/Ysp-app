@@ -125,6 +125,8 @@ export function groupInventoryAgingRows(rows = []) {
         qty: Number(r.qty || 1),
         totalAmount: amount,
         weightedMonths: amount * Number(r.monthsInStock || 0),
+        // 组内最大库龄 = 最早入库那批的库龄，作为金额为 0 时的退化值
+        maxMonths: Number(r.monthsInStock || 0),
         earliestDate: r.inStockDate,
       })
       continue
@@ -133,6 +135,7 @@ export function groupInventoryAgingRows(rows = []) {
     g.qty += Number(r.qty || 1)
     g.totalAmount += amount
     g.weightedMonths += amount * Number(r.monthsInStock || 0)
+    g.maxMonths = Math.max(g.maxMonths, Number(r.monthsInStock || 0))
     if (r.inStockDate && (!g.earliestDate || String(r.inStockDate) < String(g.earliestDate))) {
       g.earliestDate = r.inStockDate
       g.inStockDate = r.inStockDate
@@ -141,10 +144,13 @@ export function groupInventoryAgingRows(rows = []) {
   }
   return Array.from(map.values()).map((g) => ({
     ...g,
-    monthsInStock: g.totalAmount > 0 ? g.weightedMonths / g.totalAmount : 0,
+    // 金额权重全为 0（cost=0）时，加权平均无定义，
+    // 退化为组内最大库龄，避免把真实库龄清零
+    monthsInStock: g.totalAmount > 0 ? g.weightedMonths / g.totalAmount : g.maxMonths,
     // 清理合并过程中的中间字段
     totalAmount: undefined,
     weightedMonths: undefined,
+    maxMonths: undefined,
     earliestDate: undefined,
   }))
 }
