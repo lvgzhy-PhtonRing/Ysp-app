@@ -262,7 +262,7 @@ function initParetoChart() {
       datasets: [
         {
           type: 'bar',
-          label: '累计利润',
+          label: '单 SKU 利润',
           data: skus.map(s => s.totalProfit),
           backgroundColor: skus.map(s => getTurnoverColor(s.avgDays)),
           borderColor: skus.map(s => getTurnoverColor(s.avgDays).replace('0.7', '1')),
@@ -309,10 +309,11 @@ function initParetoChart() {
         },
         annotation: {
           annotations: {
-            line80: {
-              type: 'line',
-              yMin: 80,
-              yMax: 80,
+line80: {
+               type: 'line',
+               yScaleID: 'y1', // 关键：指定右轴（百分比轴），否则默认用左轴（金额轴）导致 80 被当成 ¥80
+               yMin: 80,
+               yMax: 80,
               borderColor: 'rgba(239, 68, 68, 0.5)',
               borderWidth: 2,
               borderDash: [5, 5],
@@ -342,7 +343,7 @@ function initParetoChart() {
           position: 'left',
           title: {
             display: true,
-            text: '累计利润 (¥)',
+            text: '单 SKU 利润 (¥)',
             font: { size: 11 }
           },
           ticks: {
@@ -600,7 +601,7 @@ function toggleExpand(key) {
     <!-- 统计卡片 -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
       <div class="bg-gray-50 p-4 rounded-xl border-l-4 border-gray-400">
-        <div class="text-xs text-gray-500 mb-1">已售 SKU 数</div>
+        <div class="text-xs text-gray-500 mb-1">聚合SKU数量</div>
         <div class="text-2xl font-bold text-gray-800">{{ summary.totalSkuCount }}</div>
       </div>
       <div class="bg-gray-50 p-4 rounded-xl border-l-4 border-blue-500">
@@ -673,7 +674,7 @@ function toggleExpand(key) {
       <!-- 品类双轴柱状图 -->
       <div class="apple-card p-3 flex flex-col">
         <div class="flex justify-between items-center mb-2">
-          <div class="text-xs text-gray-500">品类双轴分析</div>
+          <div class="text-xs text-gray-500">聚合SKU双轴分析</div>
           <div class="flex gap-2 text-xs">
             <span class="px-2 py-0.5 rounded bg-green-100 text-green-700">&lt;60天</span>
             <span class="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">60-180天</span>
@@ -694,47 +695,10 @@ function toggleExpand(key) {
       </div>
     </div>
 
-    <!-- 利润贡献表格 -->
+    <!-- 聚合SKU销售明细表格 -->
     <div class="apple-card p-0 overflow-hidden">
       <div class="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs text-gray-500 font-medium">
-        利润贡献明细
-      </div>
-      <div class="overflow-x-auto">
-        <table class="min-w-full text-sm">
-          <thead class="bg-gray-50 text-gray-600">
-            <tr>
-              <th class="text-left px-3 py-2">品类</th>
-              <th class="text-right px-3 py-2">利润占比</th>
-              <th class="text-right px-3 py-2">利润金额</th>
-              <th class="text-right px-3 py-2">平均售出天数</th>
-              <th class="text-center px-3 py-2">周转</th>
-            </tr>
-          </thead>
-          <tbody class="text-gray-700">
-            <tr v-for="item in profitContribution.tableData" :key="item.label" class="border-t border-gray-100">
-              <td class="px-3 py-2 font-medium">{{ item.label }}</td>
-              <td class="text-right px-3 py-2">{{ item.percentage.toFixed(1) }}%</td>
-              <td class="text-right px-3 py-2">¥{{ fmtMoney(item.totalProfit) }}</td>
-              <td class="text-right px-3 py-2">{{ fmtDays(item.avgDays) }}</td>
-              <td class="text-center px-3 py-2">
-                <span 
-                  class="inline-block w-3 h-3 rounded-full" 
-                  :style="{ backgroundColor: getTurnoverColor(item.avgDays) }"
-                ></span>
-              </td>
-            </tr>
-            <tr v-if="profitContribution.tableData.length === 0">
-              <td colspan="5" class="text-center text-gray-400 py-6">暂无数据</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- SKU 明细表格 -->
-    <div class="apple-card p-0 overflow-hidden">
-      <div class="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs text-gray-500 font-medium">
-        SKU 明细
+        聚合SKU销售明细
       </div>
       <div class="overflow-x-auto">
         <table class="min-w-full text-sm">

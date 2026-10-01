@@ -251,29 +251,22 @@ export function calcCategoryDualAxisData(skus = []) {
 /**
  * 计算利润贡献饼图数据
  * @param {Array} skus 聚合后的 SKU 数组
- * @returns {Array} 饼图数据 + 表格数据
+ * @returns {Object} 饼图数据
  */
 export function calcProfitContributionData(skus = []) {
   const totalProfit = skus.reduce((s, k) => s + k.totalProfit, 0)
-  
+
   if (totalProfit === 0) {
     return {
       pieData: skus.map(s => ({ label: s.key, value: 0 })),
-      tableData: skus.map(s => ({ label: s.key, percentage: 0, avgDays: s.avgDays })),
       totalProfit: 0,
     }
   }
-  
+
   return {
     pieData: skus.map(s => ({
       label: s.key,
       value: (s.totalProfit / totalProfit) * 100,
-    })),
-    tableData: skus.map(s => ({
-      label: s.key,
-      percentage: (s.totalProfit / totalProfit) * 100,
-      avgDays: s.avgDays,
-      totalProfit: s.totalProfit,
     })),
     totalProfit,
   }
