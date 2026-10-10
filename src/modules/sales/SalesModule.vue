@@ -55,7 +55,7 @@ function batchRank(category, batch) {
   if (category === '国内') {
     if (b.includes('国内现货')) return 0
     if (b.includes('代理预定')) return 1
-    if (b.includes('苏州gtshow')) return 2
+    if (b.includes('2026苏州')) return 2
     return 99
   }
   return 99

@@ -76,6 +76,39 @@ describe('data store', () => {
   })
 })
 
+describe('批次名历史更名迁移', () => {
+  it('loadData 把旧批次名改写为新名，其余字段不变', () => {
+    loadData({ items: [{ id: 1, name: 'a', category: '国内', batch: '苏州GTSHOW', cost: 100 }] })
+    expect(exportData().items).toEqual([
+      { id: 1, name: 'a', category: '国内', batch: '2026苏州', cost: 100 },
+    ])
+  })
+
+  it('旧名匹配大小写与首尾空格不敏感，新名与无关批次名原样保留', () => {
+    loadData({
+      items: [
+        { id: 1, batch: ' 苏州GTShow ' },
+        { id: 2, batch: '2026苏州' },
+        { id: 3, batch: '2026HK香港' },
+        { id: 4 },
+      ],
+    })
+    expect(exportData().items.map((i) => i.batch)).toEqual([
+      '2026苏州',
+      '2026苏州',
+      '2026HK香港',
+      undefined,
+    ])
+  })
+
+  it('纯更名不触发冲突：本地新名与云端旧名视为内容一致', () => {
+    const local = { items: [{ id: 1, name: 'a', category: '国内', batch: '2026苏州' }] }
+    const cloud = { items: [{ id: 1, name: 'a', category: '国内', batch: '苏州GTSHOW' }] }
+    expect(isContentEqual(local, cloud)).toBe(true)
+    expect(computeConflictDiff(local, cloud).total).toBe(0)
+  })
+})
+
 describe('stableSerialize', () => {
   it('should treat objects with different key order as equal', () => {
     const a = { items: [{ name: 'x', cost: 1 }], calc: { debt: 1, wechat: 2 } }

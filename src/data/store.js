@@ -176,6 +176,20 @@ function normalizeRushCarData(input = {}) {
   }
 }
 
+// 批次名历史更名映射（键为旧名小写 → 新名）：加载时规范化，避免同一物理批次按新旧两个名字分裂
+const BATCH_NAME_RENAMES = {
+  苏州gtshow: '2026苏州',
+}
+
+function normalizeItemBatches(items = []) {
+  if (!Array.isArray(items)) return []
+  return items.map((item) => {
+    const raw = item && typeof item.batch === 'string' ? item.batch.trim() : ''
+    const next = raw ? BATCH_NAME_RENAMES[raw.toLowerCase()] : undefined
+    return next ? { ...item, batch: next } : item
+  })
+}
+
 export const state = reactive({
   // 字段名与持久化 JSON（localStorage / 云端 payload）对应映射后的 store 结构保持一致
   items: [],
@@ -526,7 +540,7 @@ function scheduleCloudSync() {
 export function loadData(jsonObject = {}) {
   const data = jsonObject && typeof jsonObject === 'object' ? jsonObject : {}
 
-  replaceArray(state.items, data.items)
+  replaceArray(state.items, normalizeItemBatches(data.items))
   // calc 字段：优先使用 JSON 中已存在值，仅在缺失时使用默认值
   const incomingCalc = data.calc && typeof data.calc === 'object' ? data.calc : {}
   const nextCalc = {
@@ -764,7 +778,7 @@ export function stableSerialize(value) {
 function normalizePayloadForCompare(data) {
   const src = data && typeof data === 'object' ? data : {}
   return {
-    items: Array.isArray(src.items) ? src.items : [],
+    items: Array.isArray(src.items) ? normalizeItemBatches(src.items) : [],
     calc: src.calc && typeof src.calc === 'object' ? src.calc : {},
     finance: {
       records: Array.isArray(src.finance?.records) ? src.finance.records : [],

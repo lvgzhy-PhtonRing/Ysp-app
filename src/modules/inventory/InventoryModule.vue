@@ -11,7 +11,7 @@ const CATEGORY_OPTIONS = ['全部', '日淘', '美淘', '国内', '2025JAPAN']
 const DEFAULT_BATCHES = {
   美淘: ['26下半年', '26上半年', 'B组下半年', 'B组上半年', 'A组下半年', 'A组上半年'],
   日淘: ['26h批', '26g批', '26f批', '26e批', '预订', 'd批', 'c批', 'b批', 'a批'],
-  国内: ['MINIGT预定', 'Hotwheels预定', '国内现货', '代理预定', '苏州GTSHOW', '2026HK香港'],
+  国内: ['MINIGT预定', 'Hotwheels预定', '国内现货', '代理预定', '2026苏州', '2026HK香港', '2026佛山'],
   '2025JAPAN': ['2025JAPAN'],
 }
 const CATEGORY_ORDER = ['日淘', '美淘', '国内', '2025JAPAN']
@@ -58,7 +58,7 @@ function batchRank(category, batch) {
   if (category === '国内') {
     if (b.includes('国内现货')) return 0
     if (b.includes('代理预定')) return 1
-    if (b.includes('苏州gtshow')) return 2
+    if (b.includes('2026苏州')) return 2
     return 99
   }
   return 99
