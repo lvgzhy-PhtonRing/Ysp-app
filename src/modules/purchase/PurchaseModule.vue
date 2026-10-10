@@ -1288,7 +1288,7 @@ function submitEditPurchaseGroup() {
                   Number(line.domesticShipping || 0),
                   Number(line.fee || 0),
                 ),
-            transferStatus: 'pending',
+            transferStatus: editGroupForm.category === '国内' ? 'completed' : 'pending',
             transferCoefficient: Number(line.transferCoefficient || 1),
             transferCost: 0,
             transferSelected: false,
