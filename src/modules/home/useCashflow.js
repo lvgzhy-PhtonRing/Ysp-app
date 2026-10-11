@@ -33,7 +33,7 @@ function prevMonth(year, month) {
  * 主函数：按月聚合净回款、库存消化、采购投入、新增负债
  * @param {object} store - reactive state from store.js
  * @param {Date}   now   - 当前日期
- * @returns {{ current, last5Months }}
+ * @returns {{ current, last12Months }}
  */
 export function getCashflowData(store, now = new Date()) {
   const items = store.items || []
@@ -109,10 +109,10 @@ export function getCashflowData(store, now = new Date()) {
   // 当月
   const current = buildMonth(curYear, curMonth, currentDebt)
 
-  // 最近 5 个月（旧→新），当月用 live 负债
-  const last5Months = getLastNMonths(now, 5).map(m =>
+  // 最近 12 个月（旧→新），当月用 live 负债
+  const last12Months = getLastNMonths(now, 12).map(m =>
     buildMonth(m.year, m.month, (m.year === curYear && m.month === curMonth) ? currentDebt : undefined)
   )
 
-  return { current, last5Months }
+  return { current, last12Months }
 }
