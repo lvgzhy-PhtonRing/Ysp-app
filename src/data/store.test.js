@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import sampleData from '../__tests__/fixtures/sampleData.json'
+import { ADOPT_STORAGE_KEY } from './adoptLog'
 import {
   addOperationLog,
   clearOperationLogs,
@@ -777,5 +778,80 @@ describe('getUnsyncedOperations 只统计真实数据改动', () => {
     state.cloudStatus.lastSyncAt = new Date(Date.now() + 60000).toISOString()
 
     expect(getUnsyncedOperations()).toHaveLength(0)
+  })
+})
+
+describe('localStorage 配额保护：主数据必须能落盘', () => {
+  function quotaStorage(limitBytes) {
+    const map = new Map()
+    return {
+      getItem: (k) => (map.has(k) ? map.get(k) : null),
+      setItem: (k, v) => {
+        const value = String(v)
+        const others = [...map.values()].reduce((s, x) => s + x.length, 0) - (map.has(k) ? map.get(k).length : 0)
+        if (others + value.length > limitBytes) throw new Error('QuotaExceededError')
+        map.set(k, value)
+      },
+      removeItem: (k) => map.delete(k),
+    }
+  }
+
+  beforeEach(() => {
+    loadData({})
+    clearOperationLogs()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    loadData({})
+    clearOperationLogs()
+  })
+
+  it('配额已满时先牺牲最老的采纳前快照再重试，主数据仍落盘且不抛异常', () => {
+    vi.stubGlobal('localStorage', quotaStorage(100 * 1024))
+    const pad = 'x'.repeat(30 * 1024)
+    localStorage.setItem(ADOPT_STORAGE_KEY, JSON.stringify({ adopts: [
+      { adoptId: 'old-3', slot: 'items', before: [{ pad }], time: '2026-01-03T00:00:00Z' },
+      { adoptId: 'old-2', slot: 'items', before: [{ pad }], time: '2026-01-02T00:00:00Z' },
+      { adoptId: 'old-1', slot: 'items', before: [{ pad }], time: '2026-01-01T00:00:00Z' },
+    ] }))
+
+    loadData({ items: [{ id: 1, name: '配额紧张', pad: 'y'.repeat(20 * 1024) }] })
+    saveToLocalStorage()
+
+    expect(JSON.parse(localStorage.getItem('ysp_data')).items[0].name).toBe('配额紧张')
+    expect(JSON.parse(localStorage.getItem(ADOPT_STORAGE_KEY)).adopts).toHaveLength(2)
+    expect(JSON.parse(localStorage.getItem(ADOPT_STORAGE_KEY)).adopts.map((e) => e.adoptId)).not.toContain('old-1')
+  })
+
+  it('无快照可牺牲时砍掉 ysp_ui 那份重复的操作日志腾出空间，主数据仍能落盘', () => {
+    vi.stubGlobal('localStorage', quotaStorage(60 * 1024))
+    localStorage.setItem(ADOPT_STORAGE_KEY, JSON.stringify({ adopts: [] }))
+    localStorage.setItem('ysp_ui', JSON.stringify({ operationLogs: [{ pad: 'x'.repeat(45 * 1024) }] }))
+
+    loadData({ items: [{ id: 1, name: '配额吃紧', pad: 'y'.repeat(20 * 1024) }] })
+    saveToLocalStorage()
+
+    expect(JSON.parse(localStorage.getItem('ysp_data')).items[0].name).toBe('配额吃紧')
+    // ysp_ui 从 45KB 砍回到小体积，腾出的空间才让主数据写进去
+    expect(localStorage.getItem('ysp_ui').length).toBeLessThan(5 * 1024)
+  })
+
+  it('saveUiStateToLocalStorage 在配额满时静默失败，不把异常抛给调用方', () => {
+    vi.stubGlobal('localStorage', {
+      getItem: () => null,
+      setItem: () => { throw new Error('QuotaExceededError') },
+      removeItem: () => {},
+    })
+    expect(() => saveUiStateToLocalStorage()).not.toThrow()
+  })
+
+  it('配额满到无法腾挪时不落异常：内存数据保留，下次保存仍会重试', () => {
+    vi.stubGlobal('localStorage', {
+      getItem: () => null,
+      setItem: () => { throw new Error('QuotaExceededError') },
+      removeItem: () => {},
+    })
+    expect(() => saveToLocalStorage()).not.toThrow()
   })
 })

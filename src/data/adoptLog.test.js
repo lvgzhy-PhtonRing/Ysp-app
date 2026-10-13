@@ -1,7 +1,22 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   appendAdoptBefore, getAdoptBeforeById, listAdoptBefore, pruneAdoptBefore, latestFullImportSnapshot, ADOPT_STORAGE_KEY,
+  shrinkToFit, writeAllRetry, evictOldestAdoptBefore, trimAdoptBeforeToBudget, MAX_TOTAL_BYTES, MAX_ENTRIES,
 } from './adoptLog'
+
+function quotaStorage(limitBytes) {
+  const map = new Map()
+  return {
+    getItem: (k) => (map.has(k) ? map.get(k) : null),
+    setItem: (k, v) => {
+      const value = String(v)
+      const others = [...map.values()].reduce((s, x) => s + x.length, 0) - (map.has(k) ? map.get(k).length : 0)
+      if (others + value.length > limitBytes) throw new Error('QuotaExceededError')
+      map.set(k, value)
+    },
+    removeItem: (k) => map.delete(k),
+  }
+}
 
 describe('adoptLog（C 方案）', () => {
   beforeEach(() => {
@@ -92,5 +107,105 @@ describe('adoptLog（C 方案）', () => {
     appendAdoptBefore({ slot: '__full_import__', before: { items: [{ id: 'old' }], calc: {} }, time: '2026-01-02T00:00:00Z' })
     appendAdoptBefore({ slot: '__full_import__', before: { items: [{ id: 'newer' }], calc: {} }, time: '2026-01-03T00:00:00Z' })
     expect(latestFullImportSnapshot()).toEqual({ items: [{ id: 'newer' }], calc: {} })
+  })
+})
+
+describe('adoptLog 容量闸（配额是整站共享的，只按天数挡不住体积）', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('shrinkToFit 双闸：超条数保留最新 MAX_ENTRIES 份，超容量逐条淘汰但保住最新一份', () => {
+    expect(MAX_TOTAL_BYTES).toBe(1024 * 1024)
+    expect(MAX_ENTRIES).toBe(20)
+
+    const many = Array.from({ length: 30 }, (_, i) => ({
+      slot: 'items', before: [], time: new Date(Date.now() - i * 1000).toISOString(),
+    }))
+    expect(shrinkToFit(many)).toHaveLength(MAX_ENTRIES)
+
+    const big = 'y'.repeat(2000)
+    const pool = [
+      { slot: 'items', before: [{ pad: big }], time: '2026-03-01T00:00:00Z' },
+      { slot: 'items', before: [{ pad: big }], time: '2026-02-01T00:00:00Z' },
+      { slot: 'items', before: [{ pad: big }], time: '2026-01-01T00:00:00Z' },
+    ]
+    const shrank = shrinkToFit(pool, { maxBytes: 5000, maxEntries: 20 })
+    expect(JSON.stringify({ adopts: shrank }).length).toBeLessThanOrEqual(5000)
+    expect(shrank[0].time).toBe('2026-03-01T00:00:00Z')
+  })
+
+  it('shrinkToFit 超容量时优先淘汰整份导入前快照（体积最大、回溯价值最低）', () => {
+    const big = 'z'.repeat(2000)
+    const pool = [
+      { slot: 'items', before: [{ pad: big }], time: '2026-03-01T00:00:00Z' },
+      { slot: '__full_import__', before: { pad: big }, time: '2026-02-01T00:00:00Z' },
+      { slot: 'items', before: [{ pad: big }], time: '2026-01-01T00:00:00Z' },
+    ]
+    const shrank = shrinkToFit(pool, { maxBytes: 5000, maxEntries: 20 })
+    expect(shrank.every((e) => e.slot !== '__full_import__')).toBe(true)
+    expect(shrank.length).toBe(2)
+  })
+
+  it('配额不足时 writeAllRetry 牺牲最老快照保住最新一份，且落盘成功', () => {
+    const pad = 'x'.repeat(20 * 1024)
+    vi.stubGlobal('localStorage', quotaStorage(60 * 1024))
+    appendAdoptBefore({ slot: 'items', before: [{ pad }], time: '2026-01-01T00:00:00Z' })
+    appendAdoptBefore({ slot: 'calc', before: { pad }, time: '2026-01-02T00:00:00Z' })
+    const newest = appendAdoptBefore({ slot: 'items', before: [{ pad }], time: '2026-01-03T00:00:00Z' })
+
+    expect(newest.persisted).toBe(true)
+    expect(listAdoptBefore()).toHaveLength(2)
+    expect(getAdoptBeforeById(newest.adoptId)).not.toBeNull()
+    expect(listAdoptBefore().every((e) => e.time !== '2026-01-01T00:00:00Z')).toBe(true)
+  })
+
+  it('setItem 恒抛时 writeAllRetry 返回 false，不写空集冒充成功', () => {
+    vi.stubGlobal('localStorage', {
+      getItem: () => JSON.stringify({ adopts: [{ slot: 'items', before: [] }] }),
+      setItem: () => { throw new Error('QuotaExceededError') },
+      removeItem: () => {},
+    })
+    expect(writeAllRetry([{ slot: 'items', before: [] }])).toBe(false)
+  })
+
+  it('evictOldestAdoptBefore 优先删整份导入前快照而非最老的槽位快照；删空后返回 false', () => {
+    const pad = 'x'.repeat(20 * 1024)
+    const at = (i) => new Date(Date.UTC(2026, 0, i)).toISOString()
+    vi.stubGlobal('localStorage', quotaStorage(80 * 1024))
+    appendAdoptBefore({ slot: 'items', before: [{ pad }], time: at(1) })
+    appendAdoptBefore({ slot: 'items', before: [{ pad }], time: at(2) })
+    appendAdoptBefore({ slot: '__full_import__', before: { pad }, time: at(3) })
+    expect(listAdoptBefore()).toHaveLength(3)
+
+    expect(evictOldestAdoptBefore()).toBe(true)
+    const afterFirst = listAdoptBefore()
+    expect(afterFirst).toHaveLength(2)
+    expect(afterFirst.every((e) => e.slot === 'items')).toBe(true)
+    expect(afterFirst.some((e) => e.time === at(1))).toBe(true)
+
+    expect(evictOldestAdoptBefore()).toBe(true)
+    expect(listAdoptBefore()).toHaveLength(1)
+    expect(evictOldestAdoptBefore()).toBe(true)
+    expect(evictOldestAdoptBefore()).toBe(false)
+  })
+
+  it('trimAdoptBeforeToBudget 按更紧的预算强制裁剪', () => {
+    const pad = 'x'.repeat(20 * 1024)
+    vi.stubGlobal('localStorage', quotaStorage(60 * 1024))
+    appendAdoptBefore({ slot: 'items', before: [{ pad }], time: '2026-01-01T00:00:00Z' })
+    appendAdoptBefore({ slot: 'items', before: [{ pad }], time: '2026-01-02T00:00:00Z' })
+    appendAdoptBefore({ slot: 'items', before: [{ pad }], time: '2026-01-03T00:00:00Z' })
+
+    expect(trimAdoptBeforeToBudget({ maxBytes: 25 * 1024 })).toBe(true)
+    expect(listAdoptBefore()).toHaveLength(1)
   })
 })

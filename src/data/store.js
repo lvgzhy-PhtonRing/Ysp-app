@@ -4,6 +4,8 @@ import { reactive } from 'vue'
 
 import { SLOT_KEYS, slotValue, normalizeRev, computeSlotPlan, buildMerged, revOf, hasUsableSlotValue } from './cloudSlotPlan'
 
+import { evictOldestAdoptBefore } from './adoptLog'
+
 import {
   downloadJsonBackup,
   isBackupDue,
@@ -721,6 +723,54 @@ function maybeAutoBackup() {
   addOperationLog('app_auto_backup', `已生成每日备份 饮食派数据_${today}.json`, { date: today })
 }
 
+// === localStorage 配额保护 ===
+// 配额是整个 origin 共享的，写满之后 setItem 会抛 QuotaExceededError。
+// ysp_data（主数据）和 ysp_ui（含 500 条操作日志）必须能落盘，否则用户操作
+// 会因未捕获异常中断、内存里的改动在下次刷新时丢失。策略：先写，失败再腾空间，
+// 腾完重试——优先牺牲采纳前快照（体积最大的冗余来源），最后砍 ysp_ui 那份重复日志。
+const UI_LOGS_TRIM_KEEP = 100
+const MAX_EVICT_ATTEMPTS = 64
+
+function setItemQuiet(key, value) {
+  try {
+    localStorage.setItem(key, value)
+    return true
+  } catch (_) {
+    return false
+  }
+}
+
+function buildUiPayload(maxLogs = state.operationLogs.length) {
+  return {
+    cloudSettings: { ...state.cloudSettings },
+    cloudSession: {
+      ...state.cloudSession,
+      user: { ...state.cloudSession.user },
+    },
+    cloudStatus: { ...state.cloudStatus },
+    operationLogs: [...state.operationLogs].slice(0, maxLogs),
+    autoBackup: { ...state.autoBackup },
+  }
+}
+
+function persistData(serialized) {
+  if (setItemQuiet('ysp_data', serialized)) return true
+
+  let evicted = true
+  for (let i = 0; i < MAX_EVICT_ATTEMPTS && evicted; i++) {
+    if (setItemQuiet('ysp_data', serialized)) return true
+    evicted = evictOldestAdoptBefore()
+  }
+
+  if (!setItemQuiet('ysp_data', serialized)) {
+    setItemQuiet(UI_STORAGE_KEY, JSON.stringify(buildUiPayload(UI_LOGS_TRIM_KEEP)))
+  }
+  if (setItemQuiet('ysp_data', serialized)) return true
+
+  console.error('[store] localStorage 配额已满，主数据未能落盘；内存数据保留，下次保存会重试', serialized.length)
+  return false
+}
+
 export function saveToLocalStorage(options = {}) {
   const bumpTimestamp = options.bumpTimestamp !== false
   takeDailySnapshot()
@@ -744,8 +794,10 @@ export function saveToLocalStorage(options = {}) {
     clearPendingHistoryMeta()
   }
 
-  localStorage.setItem('ysp_data', serialized)
-  setPersistedSnapshot(currentData)
+  if (persistData(serialized)) {
+    setPersistedSnapshot(currentData)
+  }
+  // 落盘失败时不更新基线：hasDataChange 保持 true，下一次保存会重试而不是静默丢弃
   // 仅在有真实内容变更时调度云同步；纯时间戳对齐/无变化时不再触发，避免同步死循环
   if (hasDataChange) scheduleCloudSync()
   maybeAutoBackup()
@@ -1272,17 +1324,7 @@ export function getSnapshotByDate(targetDate) {
 }
 
 export function saveUiStateToLocalStorage() {
-  const payload = {
-    cloudSettings: { ...state.cloudSettings },
-    cloudSession: {
-      ...state.cloudSession,
-      user: { ...state.cloudSession.user },
-    },
-    cloudStatus: { ...state.cloudStatus },
-    operationLogs: [...state.operationLogs],
-    autoBackup: { ...state.autoBackup },
-  }
-  localStorage.setItem(UI_STORAGE_KEY, JSON.stringify(payload))
+  setItemQuiet(UI_STORAGE_KEY, JSON.stringify(buildUiPayload()))
 }
 
 export function loadUiStateFromLocalStorage() {
