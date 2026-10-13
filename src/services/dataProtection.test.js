@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildSyncRationale, isBackupDue, shouldWarnBeforeOverwrite } from './dataProtection'
+import { buildSyncRationale, isBackupDue, shouldWarnBeforeOverwrite, shouldWarnBeforeUploadLocal } from './dataProtection'
 
 function payload(items, saleDates = {}) {
   // saleDates: { sid: 'YYYY-MM-DD' }
@@ -96,6 +96,90 @@ describe('shouldWarnBeforeOverwrite', () => {
   it('items 缺失时不警告', () => {
     expect(shouldWarnBeforeOverwrite({}, {}).shouldWarn).toBe(false)
     expect(shouldWarnBeforeOverwrite({ items: 'not-array' }, { items: ['a'] }).shouldWarn).toBe(false)
+  })
+})
+
+describe('shouldWarnBeforeUploadLocal', () => {
+  it('内容一致时不警告', () => {
+    const local = payload(['a', 'b', 'c'])
+    const cloud = payload(['a', 'b', 'c'])
+    const r = shouldWarnBeforeUploadLocal(local, cloud)
+    expect(r.shouldWarn).toBe(false)
+    expect(r.countDiff).toBe(0)
+  })
+
+  it('本地比云端多时不警告', () => {
+    const local = payload(['a', 'b', 'c', 'd', 'e'])
+    const cloud = payload(['a', 'b', 'c'])
+    expect(shouldWarnBeforeUploadLocal(local, cloud).shouldWarn).toBe(false)
+    expect(shouldWarnBeforeUploadLocal(local, cloud).countDiff).toBe(2)
+  })
+
+  it('本地少 10 条触发警告（云端 100 → 本地 90）', () => {
+    const cloud = payload(Array.from({ length: 100 }, (_, i) => `c${i}`))
+    const local = payload(Array.from({ length: 90 }, (_, i) => `c${i}`))
+    const r = shouldWarnBeforeUploadLocal(local, cloud)
+    expect(r.shouldWarn).toBe(true)
+    expect(r.countDiff).toBe(-10)
+    expect(r.reasons.join()).toContain('本地商品数比云端少 10 条')
+  })
+
+  it('本地少 5 条且不足 10% 不警告（云端 100 → 本地 95）', () => {
+    const cloud = payload(Array.from({ length: 100 }, (_, i) => `c${i}`))
+    const local = payload(Array.from({ length: 95 }, (_, i) => `c${i}`))
+    expect(shouldWarnBeforeUploadLocal(local, cloud).shouldWarn).toBe(false)
+  })
+
+  it('小数据集本地少 5 条触发警告（云端 20 → 本地 15）', () => {
+    const cloud = payload(Array.from({ length: 20 }, (_, i) => `c${i}`))
+    const local = payload(Array.from({ length: 15 }, (_, i) => `c${i}`))
+    expect(shouldWarnBeforeUploadLocal(local, cloud).shouldWarn).toBe(true)
+  })
+
+  it('小数据集本地少 4 条不警告（云端 20 → 本地 16）', () => {
+    const cloud = payload(Array.from({ length: 20 }, (_, i) => `c${i}`))
+    const local = payload(Array.from({ length: 16 }, (_, i) => `c${i}`))
+    expect(shouldWarnBeforeUploadLocal(local, cloud).shouldWarn).toBe(false)
+  })
+
+  it('本地空商品但云端有条目触发警告', () => {
+    const local = payload([])
+    const cloud = payload(Array.from({ length: 20 }, (_, i) => `c${i}`))
+    expect(shouldWarnBeforeUploadLocal(local, cloud).shouldWarn).toBe(true)
+  })
+
+  it('云端空商品不警告（本地首台写入）', () => {
+    const local = payload(Array.from({ length: 20 }, (_, i) => `l${i}`))
+    const cloud = payload([])
+    expect(shouldWarnBeforeUploadLocal(local, cloud).shouldWarn).toBe(false)
+  })
+
+  it('时间倒流触发警告（本地最后销售早于云端）', () => {
+    const local = payload(['a', 'b'], { b: '2026-08-25' })
+    const cloud = payload(['a', 'b'], { b: '2026-08-26' })
+    const r = shouldWarnBeforeUploadLocal(local, cloud)
+    expect(r.shouldWarn).toBe(true)
+    expect(r.reasons.join()).toContain('本地最后销售日期早于云端')
+    expect(r.lastSaleLocal).toBe('2026-08-25')
+    expect(r.lastSaleCloud).toBe('2026-08-26')
+  })
+
+  it('任一侧无销售记录不触发时间倒流', () => {
+    const local = payload(['a'])
+    const cloud = payload(['a'], { a: '2026-08-26' })
+    expect(shouldWarnBeforeUploadLocal(local, cloud).shouldWarn).toBe(false)
+  })
+
+  it('items 缺失时不警告', () => {
+    expect(shouldWarnBeforeUploadLocal({}, {}).shouldWarn).toBe(false)
+    expect(shouldWarnBeforeUploadLocal({ items: 'not-array' }, { items: ['a'] }).shouldWarn).toBe(false)
+  })
+
+  it('与 shouldWarnBeforeOverwrite 互不干扰（同一组数据方向相反）', () => {
+    const local = payload(Array.from({ length: 90 }, (_, i) => `c${i}`))
+    const cloud = payload(Array.from({ length: 100 }, (_, i) => `c${i}`))
+    expect(shouldWarnBeforeUploadLocal(local, cloud).shouldWarn).toBe(true)
+    expect(shouldWarnBeforeOverwrite(local, cloud).shouldWarn).toBe(false)
   })
 })
 

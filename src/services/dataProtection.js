@@ -22,14 +22,48 @@ function arrayCount(arr) {
   return Array.isArray(arr) ? arr.length : null
 }
 
-function checkReduction(label, localArr, cloudArr, reasons) {
-  const lc = arrayCount(localArr)
-  const cc = arrayCount(cloudArr)
-  if (lc === null || cc === null) return
-  const minReduction = Math.max(OVERWRITE_THRESHOLD_MIN, Math.floor(lc * OVERWRITE_THRESHOLD_RATIO))
-  const reduction = lc - cc
+function checkReduction(label, fromName, toName, fromArr, toArr, reasons) {
+  const fc = arrayCount(fromArr)
+  const tc = arrayCount(toArr)
+  if (fc === null || tc === null) return
+  const minReduction = Math.max(OVERWRITE_THRESHOLD_MIN, Math.floor(fc * OVERWRITE_THRESHOLD_RATIO))
+  const reduction = fc - tc
   if (reduction >= minReduction) {
-    reasons.push(`云端${label}比本地少 ${reduction} 条（本地 ${lc} → 云端 ${cc}）`)
+    reasons.push(`${toName}${label}比${fromName}少 ${reduction} 条（${fromName} ${fc} → ${toName} ${tc}）`)
+  }
+}
+
+/**
+ * 比对两侧内容，返回「toLabel 相对 fromLabel 更贫瘠/更旧」的原因清单。
+ * fromLabel 为参照侧（内容更全的一方为参照），toLabel 为被怀疑覆盖上去的一方。
+ */
+function detectDeficit(fromLabel, fromPayload, toLabel, toPayload) {
+  const reasons = []
+
+  checkReduction('商品数', fromLabel, toLabel, fromPayload?.items, toPayload?.items, reasons)
+  checkReduction('收支记录', fromLabel, toLabel, fromPayload?.finance?.records, toPayload?.finance?.records, reasons)
+  checkReduction('借贷记录', fromLabel, toLabel, fromPayload?.finance?.loans, toPayload?.finance?.loans, reasons)
+  checkReduction('转运记录', fromLabel, toLabel, fromPayload?.transfers, toPayload?.transfers, reasons)
+  checkReduction('美淘记录', fromLabel, toLabel, fromPayload?.rushcar?.entries, toPayload?.rushcar?.entries, reasons)
+
+  const fromSale = lastSaleDate(fromPayload)
+  const toSale = lastSaleDate(toPayload)
+  if (fromSale && toSale && toSale < fromSale) {
+    reasons.push(`${toLabel}最后销售日期早于${fromLabel}（${fromLabel} ${fromSale} → ${toLabel} ${toSale}）`)
+  }
+
+  return reasons
+}
+
+function buildDeficitResult(localPayload, cloudPayload, reasons) {
+  const localCount = itemCount(localPayload)
+  const cloudCount = itemCount(cloudPayload)
+  return {
+    shouldWarn: reasons.length > 0,
+    reasons,
+    countDiff: localCount !== null && cloudCount !== null ? localCount - cloudCount : 0,
+    lastSaleLocal: lastSaleDate(localPayload),
+    lastSaleCloud: lastSaleDate(cloudPayload),
   }
 }
 
@@ -39,29 +73,18 @@ function checkReduction(label, localArr, cloudArr, reasons) {
  * @returns {{ shouldWarn: boolean, reasons: string[], countDiff: number, lastSaleLocal: string, lastSaleCloud: string }}
  */
 export function shouldWarnBeforeOverwrite(localPayload, cloudPayload) {
-  const reasons = []
-  const localCount = itemCount(localPayload)
-  const cloudCount = itemCount(cloudPayload)
-  const lastSaleLocal = lastSaleDate(localPayload)
-  const lastSaleCloud = lastSaleDate(cloudPayload)
+  return buildDeficitResult(localPayload, cloudPayload, detectDeficit('本地', localPayload, '云端', cloudPayload))
+}
 
-  checkReduction('商品数', localPayload?.items, cloudPayload?.items, reasons)
-  checkReduction('收支记录', localPayload?.finance?.records, cloudPayload?.finance?.records, reasons)
-  checkReduction('借贷记录', localPayload?.finance?.loans, cloudPayload?.finance?.loans, reasons)
-  checkReduction('转运记录', localPayload?.transfers, cloudPayload?.transfers, reasons)
-  checkReduction('美淘记录', localPayload?.rushcar?.entries, cloudPayload?.rushcar?.entries, reasons)
-
-  if (lastSaleLocal && lastSaleCloud && lastSaleCloud < lastSaleLocal) {
-    reasons.push(`云端最后销售日期早于本地（本地 ${lastSaleLocal} → 云端 ${lastSaleCloud}）`)
-  }
-
-  return {
-    shouldWarn: reasons.length > 0,
-    reasons,
-    countDiff: localCount !== null && cloudCount !== null ? localCount - cloudCount : 0,
-    lastSaleLocal,
-    lastSaleCloud,
-  }
+/**
+ * 检测"本地覆盖云端"前是否应警告（shouldWarnBeforeOverwrite 的对称方向）。
+ * 触发条件：本地各集合记录数比云端少 ≥ max(5, 云端×10%)，或本地最后销售日期早于云端。
+ * 用途：本地时间戳较新不代表本地内容更新（时间戳可能被派生数据污染），
+ * 若本地实际比云端更少/更旧，默认选本地会把陈旧数据写回云端。
+ * @returns {{ shouldWarn: boolean, reasons: string[], countDiff: number, lastSaleLocal: string, lastSaleCloud: string }}
+ */
+export function shouldWarnBeforeUploadLocal(localPayload, cloudPayload) {
+  return buildDeficitResult(localPayload, cloudPayload, detectDeficit('云端', cloudPayload, '本地', localPayload))
 }
 
 /** 是否该触发今日自动备份（今日未备份过则触发） */

@@ -67,7 +67,7 @@ import {
   signInWithPassword,
   signOutCloudSession,
 } from './services/cloudStore'
-import { shouldWarnBeforeOverwrite, downloadJsonBackup } from './services/dataProtection'
+import { shouldWarnBeforeOverwrite, shouldWarnBeforeUploadLocal, downloadJsonBackup } from './services/dataProtection'
 import {
   TAB_DISMISS_COOLDOWN_MS,
   TAB_HEARTBEAT_MS,
@@ -211,13 +211,13 @@ const cloudBusy = ref(false)
 
 // 逐槽位冲突弹窗（Slot 版本化，本地与云端同槽都改过时按槽位选择）
 const slotConflict = ref(false)
-const slotConflictInfo = ref({ rows: [], plan: {}, localPayload: {}, cloudPayload: {}, localAt: '', cloudAt: '' })
+const slotConflictInfo = ref({ rows: [], plan: {}, localPayload: {}, cloudPayload: {}, localAt: '', cloudAt: '', uploadRisk: { shouldWarn: false, reasons: [] } })
 const slotChoice = ref({})
 let slotConflictResolver = null
 
 // 云端覆盖本地前的重大异常强提示（B 方向）
 const overwriteWarn = ref(false)
-const overwriteWarnInfo = ref({ reasons: [], countLocal: 0, countCloud: 0, lastSaleLocal: '', lastSaleCloud: '' })
+const overwriteWarnInfo = ref({ reasons: [], countLocal: 0, countCloud: 0, lastSaleLocal: '', lastSaleCloud: '', direction: 'cloud' })
 let overwriteWarnResolver = null
 
 function askOverwriteWarn(info) {
@@ -395,11 +395,18 @@ async function askSlotConflict(data) {
     ? decisionSlots
     : Object.keys(plan).filter((s) => plan[s] === 'adopt-cloud' || plan[s] === 'conflict')
   const diff = computeConflictDiff(localPayload, cloudPayload)
+  // 内容风险：本地时间戳较新不代表本地内容更新（时间戳可被派生数据污染）。
+  // 若本地实际比云端更少/更旧，默认方向不该偏本地。
+  const uploadRisk = shouldWarnBeforeUploadLocal(localPayload, cloudPayload)
   const rows = slots.map((slot) => {
     const entries = diff.entries.filter((e) => e.collectionLabel === SLOT_LABELS[slot])
-    return { slot, label: SLOT_LABELS[slot] || slot, action: plan[slot], entries, defaultLocal: primaryConflictAction('manual-sync', localModifiedAt, cloudUpdatedAt) === 'upload' }
+    return { slot, label: SLOT_LABELS[slot] || slot, action: plan[slot], entries, defaultLocal: primaryConflictAction('manual-sync', localModifiedAt, cloudUpdatedAt, uploadRisk.shouldWarn) === 'upload' }
   })
-  slotConflictInfo.value = { rows, plan, localPayload, cloudPayload, localAt: localModifiedAt, cloudAt: cloudUpdatedAt }
+  slotConflictInfo.value = { rows, plan, localPayload, cloudPayload, localAt: localModifiedAt, cloudAt: cloudUpdatedAt, uploadRisk }
+  // 重置上一轮残留的 UI 状态；quickChoice 不预填，必须用户主动选边（避免误触一键确认覆盖）
+  quickChoice.value = null
+  fineSelectMode.value = false
+  expandedSlots.value = {}
   slotConflict.value = true
   const choice = await new Promise((resolve) => { slotConflictResolver = resolve })
   slotConflict.value = false
@@ -420,6 +427,29 @@ async function askSlotConflict(data) {
         for (const slot of Object.keys(decisions)) {
           if (decisions[slot] === 'cloud') {
             decisions[slot] = 'local'
+            const i = copies.indexOf(slot)
+            if (i >= 0) copies.splice(i, 1)
+          }
+        }
+      }
+    }
+  }
+  // 对称保护：默认已偏云端，但用户显式选本地时，若本地明显更贫瘠/更旧，再拦一次
+  if (Object.values(decisions).includes('local')) {
+    const warn = shouldWarnBeforeUploadLocal(slotConflictInfo.value.localPayload, slotConflictInfo.value.cloudPayload)
+    if (warn.shouldWarn) {
+      const second = await askOverwriteWarn({
+        reasons: warn.reasons,
+        countLocal: warn.countDiff ?? 0,
+        countCloud: 0,
+        lastSaleLocal: warn.lastSaleLocal ?? '',
+        lastSaleCloud: warn.lastSaleCloud ?? '',
+        direction: 'local',
+      })
+      if (second === 'keep') {
+        for (const slot of Object.keys(decisions)) {
+          if (decisions[slot] === 'local') {
+            decisions[slot] = 'cloud'
             const i = copies.indexOf(slot)
             if (i >= 0) copies.splice(i, 1)
           }
@@ -484,6 +514,13 @@ function applyQuickChoice(choice) {
   }
   resolveSlotConflict()
 }
+
+const recommendedChoice = computed(() => {
+  const rows = slotConflictInfo.value.rows || []
+  if (!rows.length) return null
+  const first = rows[0].defaultLocal
+  return rows.every((r) => r.defaultLocal === first) ? (first ? 'local' : 'cloud') : null
+})
 
 const cloudUnhealthy = computed(() => isCloudSyncUnhealthy())
 const showUnsyncedList = ref(false)
@@ -1116,6 +1153,17 @@ watch(
         </button>
       </div>
 
+      <!-- 内容风险提示：本地时间戳较新但内容更少/更旧 → 默认方向已改偏云端 -->
+      <div v-if="slotConflictInfo.uploadRisk && slotConflictInfo.uploadRisk.shouldWarn" class="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+        <div class="flex items-center gap-2 text-sm font-semibold text-amber-800">
+          <i class="fa-solid fa-shield-halved"></i>
+          <span>本地时间戳较新，但内容比云端更少/更旧，已默认改用云端</span>
+        </div>
+        <ul class="mt-1.5 space-y-1 pl-6 text-xs text-amber-700">
+          <li v-for="r in slotConflictInfo.uploadRisk.reasons" :key="r" class="list-disc">{{ r }}</li>
+        </ul>
+      </div>
+
       <!-- 槽位差异预览（快速模式） -->
       <div v-if="!fineSelectMode" class="space-y-2 mb-4">
         <div v-for="row in slotConflictInfo.rows" :key="row.slot" class="border border-gray-200 rounded-lg overflow-hidden">
@@ -1159,23 +1207,26 @@ watch(
 
       <!-- 选边卡片 -->
       <div class="grid grid-cols-2 gap-3 mb-4">
-        <div tabindex="0" class="pick-card rounded-xl p-4 flex flex-col items-center text-center cursor-pointer transition-all"
-             :class="hoverChoice === 'cloud' ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100'"
-             @mouseenter="hoverChoice = 'cloud'" @mouseleave="hoverChoice = null"
-             @click="quickChoice = 'cloud'" @keydown.enter="quickChoice = 'cloud'">
+        <div tabindex="0" class="pick-card relative rounded-xl p-4 flex flex-col items-center text-center cursor-pointer transition-all"
+              :class="quickChoice === 'cloud' ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-100' : (hoverChoice === 'cloud' ? 'border-blue-400 bg-blue-50/50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100')"
+              @mouseenter="hoverChoice = 'cloud'" @mouseleave="hoverChoice = null"
+              @click="quickChoice = 'cloud'" @keydown.enter="quickChoice = 'cloud'">
+          <span v-if="recommendedChoice === 'cloud'" class="absolute -top-2 right-2 rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white">推荐</span>
           <i class="fa-solid fa-cloud text-blue-500 text-2xl mb-2"></i>
           <span class="text-lg font-bold text-gray-800">用云端</span>
           <span class="text-xs text-gray-400 mt-1">{{ relativeLabel(slotConflictInfo.cloudAt) }}</span>
         </div>
-        <div tabindex="0" class="pick-card local rounded-xl p-4 flex flex-col items-center text-center cursor-pointer transition-all"
-             :class="hoverChoice === 'local' ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100'"
-             @mouseenter="hoverChoice = 'local'" @mouseleave="hoverChoice = null"
-             @click="quickChoice = 'local'" @keydown.enter="quickChoice = 'local'">
+        <div tabindex="0" class="pick-card local relative rounded-xl p-4 flex flex-col items-center text-center cursor-pointer transition-all"
+              :class="quickChoice === 'local' ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-100' : (hoverChoice === 'local' ? 'border-blue-400 bg-blue-50/50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100')"
+              @mouseenter="hoverChoice = 'local'" @mouseleave="hoverChoice = null"
+              @click="quickChoice = 'local'" @keydown.enter="quickChoice = 'local'">
+          <span v-if="recommendedChoice === 'local'" class="absolute -top-2 right-2 rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white">推荐</span>
           <i class="fa-solid fa-laptop text-blue-500 text-2xl mb-2"></i>
           <span class="text-lg font-bold text-gray-800">用本地</span>
           <span class="text-xs text-gray-400 mt-1">{{ relativeLabel(slotConflictInfo.localAt) }}</span>
         </div>
       </div>
+
 
       <!-- 快速底部按钮 -->
       <div v-if="!fineSelectMode" class="space-y-2 mb-4">
@@ -1219,14 +1270,22 @@ watch(
     </GlassModal>
 
     <GlassModal v-model="overwriteWarn" panel-class="w-full max-w-md p-6 relative" :close-on-overlay="false">
-      <h3 class="mb-2 text-lg font-semibold text-red-600">⚠️ 云端数据疑似异常</h3>
-      <p class="mb-3 text-sm text-gray-600">检测到云端数据比本地少或更旧，用云端覆盖本地可能丢失本地改动：</p>
+      <h3 class="mb-2 text-lg font-semibold text-red-600">⚠️ {{ overwriteWarnInfo.direction === 'local' ? '本地数据疑似陈旧' : '云端数据疑似异常' }}</h3>
+      <p class="mb-3 text-sm text-gray-600">
+        {{ overwriteWarnInfo.direction === 'local'
+          ? '检测到本地数据比云端更少或更旧，用本地覆盖云端可能丢失云端改动：'
+          : '检测到云端数据比本地少或更旧，用云端覆盖本地可能丢失本地改动：' }}
+      </p>
       <ul class="mb-4 space-y-1.5 text-sm text-gray-700">
         <li v-for="(r, i) in overwriteWarnInfo.reasons" :key="i" class="rounded bg-red-50 px-2 py-1">• {{ r }}</li>
       </ul>
       <div class="grid gap-2">
-        <button class="btn btn-outline w-full" @click="resolveOverwriteWarn('overwrite')">仍用云端覆盖本地</button>
-        <button class="btn btn-primary w-full" @click="resolveOverwriteWarn('keep')">保留本地数据（推荐）</button>
+        <button class="btn btn-outline w-full" @click="resolveOverwriteWarn('overwrite')">
+          {{ overwriteWarnInfo.direction === 'local' ? '仍用本地覆盖云端' : '仍用云端覆盖本地' }}
+        </button>
+        <button class="btn btn-primary w-full" @click="resolveOverwriteWarn('keep')">
+          {{ overwriteWarnInfo.direction === 'local' ? '保留云端数据（推荐）' : '保留本地数据（推荐）' }}
+        </button>
       </div>
     </GlassModal>
 

@@ -35,4 +35,28 @@ describe('primaryConflictAction', () => {
     expect(primaryConflictAction('other', LATER, LOCAL)).toBe('upload')
     expect(primaryConflictAction('other', '', '')).toBe('upload')
   })
+
+  it('localPoorerThanCloud 为 true 时，本地时间较新也不推荐上传本地', () => {
+    expect(primaryConflictAction('manual-sync', LOCAL, CLOUD, true)).toBe('use-cloud')
+  })
+
+  it('localPoorerThanCloud 为 true 且时间缺失/相等时同样回退云端', () => {
+    expect(primaryConflictAction('manual-sync', '', CLOUD, true)).toBe('use-cloud')
+    expect(primaryConflictAction('manual-sync', LOCAL, LOCAL, true)).toBe('use-cloud')
+  })
+
+  it('localPoorerThanCloud 为 true 但云端时间较新时结论不变', () => {
+    expect(primaryConflictAction('manual-sync', CLOUD, LATER, true)).toBe('use-cloud')
+  })
+
+  it('localPoorerThanCloud 为 true 不覆盖 recovery / upload-local 的固定方向', () => {
+    expect(primaryConflictAction('recovery', LOCAL, CLOUD, true)).toBe('use-cloud')
+    expect(primaryConflictAction('upload-local', LOCAL, CLOUD, true)).toBe('upload')
+  })
+
+  it('不传 localPoorerThanCloud 时保持既有时间戳语义', () => {
+    expect(primaryConflictAction('manual-sync', LOCAL, CLOUD)).toBe('upload')
+    expect(primaryConflictAction('manual-sync', LOCAL, LATER)).toBe('use-cloud')
+    expect(primaryConflictAction('manual-sync', LOCAL, CLOUD, false)).toBe('upload')
+  })
 })
