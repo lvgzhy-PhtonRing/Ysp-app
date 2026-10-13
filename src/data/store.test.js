@@ -552,6 +552,7 @@ describe('blind sync 薄壳（B 方案）', () => {
     rushcar: { entries: [], forwarderInfos: [], mattelSiteInfos: [], paymentCards: [] },
   }
   const CLOUD_UPDATED_AT = '2026-09-02T10:00:00.000Z'
+  const FULL_CALC = { debt: 0, wechat: 0, publicExp: 0, unconfirmed: 0, fund: 0, forwarderBalance: 0, watchBalance: 0 }
 
   function makeSyncHandler(env) {
     return async (payload, options = {}) => {
@@ -607,6 +608,82 @@ describe('blind sync 薄壳（B 方案）', () => {
     // silent + conflict → 整轮跳过：无 sync 上传、不弹窗
     expect(env.calls.filter((c) => c.reason === 'sync')).toHaveLength(0)
     expect(conflictCalled).toBe(false)
+  })
+
+  it('仅批次更名差异不弹冲突窗：云端旧批次名与本地新名同口径视为内容一致', async () => {
+    // 云端仍是旧批次名；本地 loadData 已规范化为新名。旧逻辑直接比对原始 payload，
+    // 会把该槽判为"rev 未越基线但内容不同 → 保守 conflict"，弹窗于是显示"商品 0 处差异"。
+    loadData({
+      items: [{ id: 1, sid: 'JP-1', name: 'a', batch: '苏州GTSHOW' }],
+      calc: FULL_CALC,
+      _rev: { items: { rev: 3, at: '' } },
+    })
+    expect(state.items[0].batch).toBe('2026苏州')
+
+    const env = setupCloudEnv()
+    env.cloudPayload = {
+      ...CLOUD_PAYLOAD,
+      calc: FULL_CALC,
+      items: [{ id: 1, sid: 'JP-1', name: 'a', batch: '苏州GTSHOW' }],
+      _rev: { items: { rev: 3, at: '' } },
+    }
+    state.cloudStatus.cloudRev = { items: 3 }
+    let conflictCalled = false
+    registerCloudConflictHandler(async () => {
+      conflictCalled = true
+      return { decisions: {}, copies: [] }
+    })
+
+    await runCloudSyncCheck()
+
+    expect(conflictCalled).toBe(false)
+    expect(env.calls.map((c) => c.reason)).toEqual(['pre-check'])
+    expect(state.items[0].batch).toBe('2026苏州')
+  })
+
+  it('rev 相同但内容不同的冲突槽选本地后必须上传，且下一轮收敛不再弹窗', async () => {
+    // 双方 _rev 都是 3（等于基线）但内容不同 → plan 判 conflict。用户选本地后
+    // merged._rev === cloud._rev，旧逻辑 hasRevEqual 为 true 且无 upload 槽 → 从不上传
+    // → 云端永远保留旧内容 → 每次同步都重复弹窗（反复选本地也不生效）。
+    const env = setupCloudEnv()
+    env.cloudPayload = {
+      ...CLOUD_PAYLOAD,
+      calc: FULL_CALC,
+      items: [{ id: 1, name: 'cloud' }],
+      _rev: { items: { rev: 3, at: '' }, calc: { rev: 1, at: '' } },
+    }
+    registerCloudSyncHandler(async (payload, opts = {}) => {
+      const reason = opts.reason || ''
+      env.calls.push({ reason, payload: payload ? JSON.parse(JSON.stringify(payload)) : payload })
+      if (reason !== 'pre-check') {
+        env.cloudPayload = JSON.parse(JSON.stringify(payload))
+      }
+      return { updatedAt: CLOUD_UPDATED_AT, row: { id: 'main' }, payload: env.cloudPayload }
+    })
+    loadData({
+      items: [{ id: 1, name: 'local' }],
+      calc: FULL_CALC,
+      _rev: { items: { rev: 3, at: '' }, calc: { rev: 1, at: '' } },
+    })
+    state.cloudStatus.cloudRev = { items: 3, calc: 1 }
+
+    let conflicts = 0
+    registerCloudConflictHandler(async (_type, data) => {
+      conflicts++
+      expect(data.plan.items).toBe('conflict')
+      expect(data.plan.calc).toBe('align')
+      return { decisions: { items: 'local' }, copies: [] }
+    })
+
+    await runCloudSyncCheck()
+    const upload = env.calls.find((c) => c.reason === 'sync')
+    expect(upload).toBeDefined()
+    expect(upload.payload.items[0].name).toBe('local')
+
+    await runCloudSyncCheck()
+    expect(conflicts).toBe(1)
+    expect(env.calls.map((c) => c.reason)).toEqual(['pre-check', 'sync', 'pre-check'])
+    expect(state.items[0].name).toBe('local')
   })
 })
 

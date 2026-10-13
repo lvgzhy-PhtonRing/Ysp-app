@@ -373,7 +373,20 @@ function hasCloudSyncConfig() {
   )
 }
 
-export async function performSyncDecision({ reason = 'auto', force = false, silent = false, pull = false, keepalive = false } = {}) {
+// computeSlotPlan 的判定口径必须与 computeConflictDiff / isContentEqual 一致：
+// 批次更名等派生规范化之后的内容才算"相同"。若直接比对原始 payload，云端遗留的
+// 旧批次名（苏州GTSHOW）与本地已规范化的新名（2026苏州）会被判为内容不同，
+// 于是既进不了 align、又因 rev 未越基线落入"保守 conflict"，弹窗里就会出现
+// 一个"0 处差异"的幽灵冲突槽位。_rev 不参与规范化，需原样带回供 revOf 使用。
+function canonicalForPlan(payload) {
+  const src = payload && typeof payload === 'object' ? payload : {}
+  return {
+    ...normalizePayloadForCompare(src),
+    _rev: src._rev && typeof src._rev === 'object' ? src._rev : {},
+  }
+}
+
+async function performSyncDecision({ reason = 'auto', force = false, silent = false, pull = false, keepalive = false } = {}) {
   if (suppressCloudSync) return null
   if (!state.cloudSettings.enabled && !force) return null
   if (!hasCloudSyncConfig()) return null
@@ -409,7 +422,12 @@ export async function performSyncDecision({ reason = 'auto', force = false, sile
     }
 
     const localPayload = exportData()
-    const plan = computeSlotPlan(localPayload, cloudPayload, state.cloudStatus.cloudRev, stableSerialize)
+    const plan = computeSlotPlan(
+      canonicalForPlan(localPayload),
+      canonicalForPlan(cloudPayload),
+      state.cloudStatus.cloudRev,
+      stableSerialize
+    )
 
     const adoptSlots = SLOT_KEYS.filter((s) => plan[s] === 'adopt-cloud')
     const conflictSlots = SLOT_KEYS.filter((s) => plan[s] === 'conflict')
@@ -494,9 +512,14 @@ export async function performSyncDecision({ reason = 'auto', force = false, sile
     }
 
     // 9. 需上传（有本地获胜槽位，或云端缺 _rev 需印章一次性自愈；pull 已采纳云端的槽不重复上传）
+    // 只要 merged 与云端内容或版本不一致就必须上传：若只看 uploadSlots 与 rev 是否相等，
+    // "rev 相同但内容不同"的 conflict 槽被判为本地获胜后永远不会落到云端，
+    // 下一轮会以同样的冲突再次弹窗（用户反复选本地也不生效，死循环）。
     let result = null
     const localWinUploadSlots = pull ? uploadSlots.filter((s) => decisions[s] !== 'cloud') : uploadSlots
-    const mustUpload = localWinUploadSlots.length > 0 || !hasRevEqual(merged, cloudPayload)
+    const mustUpload = localWinUploadSlots.length > 0
+      || !hasRevEqual(merged, cloudPayload)
+      || !isContentEqual(merged, cloudPayload)
     if (mustUpload) {
       result = await cloudSyncHandler(merged, { reason: 'sync', keepalive })
       setLocalModifiedAt(result?.updatedAt || cloudUpdatedAt)
