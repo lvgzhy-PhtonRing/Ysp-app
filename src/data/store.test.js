@@ -7,6 +7,7 @@ import {
   clearOperationLogs,
   computeConflictDiff,
   exportData,
+  getUnsyncedOperations,
   hiddenSync,
   isContentEqual,
   loadData,
@@ -544,6 +545,34 @@ describe('手动同步(force) 智能比对', () => {
     expect(state.cloudStatus.connected).toBe(false)
     expect(state.cloudStatus.lastSyncError).toContain('拒绝')
   })
+
+  it('全对齐且时间戳已一致：真·空操作不落日志、不上传（定期检测不再刷"内容一致"）', async () => {
+    loadData({ ...CLOUD_PAYLOAD, calc: FULL_CALC, updatedAt: CLOUD_UPDATED_AT })
+    const env = setupCloudEnv({ cloudPayload: exportData() })
+    clearOperationLogs()
+
+    await runCloudSyncCheck()
+    await runCloudSyncCheck()
+
+    expect(env.calls.filter((c) => c.reason === 'pre-check')).toHaveLength(2)
+    expect(env.calls.filter((c) => c.reason === 'sync')).toHaveLength(0)
+    expect(state.operationLogs.filter((l) => l.type === 'cloud_sync')).toHaveLength(0)
+  })
+
+  it('时间戳真不一致时才落一条"已对齐时间戳"，后续空操作不累加计数', async () => {
+    // 本地时间戳比云端旧：第一次真正执行了对齐（应落一条日志），第二次已是空操作（不应累加）
+    loadData({ ...CLOUD_PAYLOAD, calc: FULL_CALC, updatedAt: '2026-08-01T00:00:00.000Z' })
+    const env = setupCloudEnv({ cloudPayload: exportData() })
+    clearOperationLogs()
+
+    await runCloudSyncCheck()
+    await runCloudSyncCheck()
+
+    const alignLogs = state.operationLogs.filter((l) => /已对齐时间戳/.test(l.message))
+    expect(alignLogs).toHaveLength(1)
+    expect(alignLogs[0].message).not.toMatch(/ x\d+$/)
+    expect(env.calls.filter((c) => c.reason === 'sync')).toHaveLength(0)
+  })
 })
 
 describe('blind sync 薄壳（B 方案）', () => {
@@ -705,5 +734,48 @@ describe('回溯恢复落日志（E 方案）', () => {
   it('恢复时写入 app_history_restore 日志', () => {
     addOperationLog('app_history_restore', '恢复数据到 2026-09-10 状态', { targetTime: '2026-09-10T00:00:00Z' })
     expect(state.operationLogs[0].type).toBe('app_history_restore')
+  })
+})
+
+describe('getUnsyncedOperations 只统计真实数据改动', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} })
+    loadData({})
+    clearOperationLogs()
+    state.cloudStatus.lastSyncAt = ''
+    state.cloudStatus.lastCloudLoadAt = ''
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    state.cloudStatus.lastSyncAt = ''
+    state.cloudStatus.lastCloudLoadAt = ''
+    loadData({})
+  })
+
+  it('同步/备份/导出/登录/配置等记账日志不计入未同步操作', () => {
+    addOperationLog('cloud_sync', '同步完成', { reason: 'debounced' })
+    addOperationLog('cloud_sync', '内容一致，已对齐时间戳', { cloudUpdatedAt: 'x' })
+    addOperationLog('cloud_adopt_before', '采纳云端前已备份槽位「商品」', { slot: 'items' })
+    addOperationLog('app_auto_backup', '已生成每日备份 饮食派数据_2026-10-13.json', { date: '2026-10-13' })
+    addOperationLog('app_export', '导出备份', { fileName: 'a.json' })
+    addOperationLog('cloud_settings', '更新云端同步配置', {})
+
+    expect(state.operationLogs).toHaveLength(6)
+    expect(getUnsyncedOperations()).toHaveLength(0)
+  })
+
+  it('真实数据改动计入未同步操作，而同步日志不再把定期检测拖入自我触发循环', () => {
+    addOperationLog('calc_update', '更新参数: 总负债 ¥0→¥100', { field: 'debt', before: 0, after: 100 })
+    addOperationLog('cloud_sync', '同步完成', { reason: 'debounced' })
+
+    expect(getUnsyncedOperations().map((l) => l.type)).toEqual(['calc_update'])
+  })
+
+  it('早于最近一次同步/拉取时间的改动不计入', () => {
+    addOperationLog('calc_update', '更新参数: 总负债 ¥0→¥100', { field: 'debt', before: 0, after: 100 })
+    state.cloudStatus.lastSyncAt = new Date(Date.now() + 60000).toISOString()
+
+    expect(getUnsyncedOperations()).toHaveLength(0)
   })
 })

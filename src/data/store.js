@@ -441,12 +441,17 @@ async function performSyncDecision({ reason = 'auto', force = false, silent = fa
     }
 
     // 5. 全对齐 → 仅对齐时间戳
+    // 时间戳本就一致 = 真·空操作（无用户操作、数据无变化），不落日志，
+    // 否则定期检测每轮都刷一条"内容一致"，且该日志又会反过来触发下一轮同步。
+    const alreadyAligned = !cloudUpdatedAt || getLocalModifiedAt() === cloudUpdatedAt
     if (adoptSlots.length === 0 && conflictSlots.length === 0 && uploadSlots.length === 0) {
       setLocalModifiedAt(cloudUpdatedAt)
-      saveToLocalStorage({ bumpTimestamp: false })
+      if (!alreadyAligned) {
+        saveToLocalStorage({ bumpTimestamp: false })
+        addOperationLog('cloud_sync', force ? '手动同步：云端与本地一致，已对齐时间戳' : '内容一致，已对齐时间戳', { localModifiedAt: getLocalModifiedAt(), cloudUpdatedAt })
+      }
       setCloudStatusPatch({ syncing: false, connected: true, lastSyncAt: cloudUpdatedAt || new Date().toISOString(), lastAutoSyncAt: Date.now(), lastSyncError: '' })
       saveUiStateToLocalStorage()
-      addOperationLog('cloud_sync', force ? '手动同步：云端与本地一致，已对齐时间戳' : '内容一致，已对齐时间戳', { localModifiedAt: getLocalModifiedAt(), cloudUpdatedAt })
       return { updatedAt: cloudUpdatedAt, row: cloudPayload }
     }
 
@@ -1182,12 +1187,29 @@ export function clearOperationLogs() {
 /**
  * 获取尚未同步到云端的操作清单（操作时间晚于最近一次成功同步/云端拉取的较晚者）。
  * 用于在"云端未连接"时向用户展示本地未同步的具体改动。
+ *
+ * 只统计真实改动数据的操作。纯记账日志（同步结果、备份、导出、登录、云端配置）
+ * 本身不代表数据变化，若计入"未同步操作"，同步自身写下的日志就会被判为未同步
+ * → 定期检测每 30 秒再触发一次同步、再写一条日志 → 用户无操作、数据无变化时
+ * 操作日志仍持续刷出同步消息（自触发循环）。
  */
+const NON_MUTATING_LOG_TYPES = {
+  cloud_sync: true,
+  cloud_pull: true,
+  cloud_adopt_before: true,
+  cloud_settings: true,
+  cloud_signin: true,
+  cloud_signout: true,
+  app_auto_backup: true,
+  app_export: true,
+}
+
 export function getUnsyncedOperations() {
   const syncTs = state.cloudStatus.lastSyncAt ? new Date(state.cloudStatus.lastSyncAt).getTime() : 0
   const loadTs = state.cloudStatus.lastCloudLoadAt ? new Date(state.cloudStatus.lastCloudLoadAt).getTime() : 0
   const threshold = Math.max(syncTs, loadTs) || 0
   return state.operationLogs.filter((log) => {
+    if (NON_MUTATING_LOG_TYPES[log.type]) return false
     const t = new Date(log.time).getTime()
     return Number.isFinite(t) && t > threshold
   })
