@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AppSidebar from './components/AppSidebar.vue'
 import GlassModal from './components/GlassModal.vue'
+import DataHelpModal from './components/DataHelpModal.vue'
 import HomeModule from './modules/home/HomeModule.vue'
 import InventoryModule from './modules/inventory/InventoryModule.vue'
 import InventoryAgingModule from './modules/inventory/InventoryAgingModule.vue'
@@ -92,6 +93,7 @@ const tabs = [
 const currentTab = ref('home')
 const fileInputRef = ref(null)
 const showLogsModal = ref(false)
+const showDataHelp = ref(false)
 var expandedLogId = ref(null)
 var rawExpanded = ref(null)
 function toggleExpand(log) {
@@ -1037,6 +1039,7 @@ watch(
       @export="handleExport"
       @cloud="openCloudSettings"
       @logs="showLogsModal = true"
+      @help="showDataHelp = true"
     />
 
     <main :class="['flex-1 overflow-y-auto p-8', currentTab === 'inventory-aging' ? 'bg-sky-50/60' : '']">
@@ -1424,6 +1427,7 @@ watch(
         </div>
       </div>
     </GlassModal>
+    <DataHelpModal v-model="showDataHelp" />
     <Transition name="fade">
       <div
         v-if="otherTabEditing"

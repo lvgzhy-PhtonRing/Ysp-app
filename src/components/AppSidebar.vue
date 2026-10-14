@@ -1,4 +1,6 @@
 <script setup>
+import { ref } from 'vue'
+
 const props = defineProps({
   tabs: {
     type: Array,
@@ -18,7 +20,13 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['select', 'import', 'export', 'cloud', 'logs'])
+const emit = defineEmits(['select', 'import', 'export', 'cloud', 'logs', 'help'])
+
+const dataOpsOpen = ref(false)
+
+function toggleDataOps() {
+  dataOpsOpen.value = !dataOpsOpen.value
+}
 
 // 分组配置
 const tabGroups = [
@@ -96,22 +104,38 @@ function getGroupTabs(group) {
 
     <div class="border-t border-gray-100 p-4 space-y-2">
       <button
-        class="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg"
-        @click="emit('export')"
+        class="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer flex items-center gap-2"
+        @click="toggleDataOps"
       >
-        <i class="fa-solid fa-download mr-2" />导出备份
+        <i class="fa-solid fa-database mr-1" />
+        <span class="flex-1">数据操作</span>
+        <i :class="dataOpsOpen ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'" class="text-xs text-gray-400" />
       </button>
-      <button
-        class="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer"
-        @click="emit('import')"
-      >
-        <i class="fa-solid fa-upload mr-2" />导入数据
-      </button>
+      <div v-if="dataOpsOpen" class="space-y-1 ml-3 pl-3 border-l border-gray-200">
+        <button
+          class="w-full text-left px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer"
+          @click="dataOpsOpen = false; emit('import')"
+        >
+          <i class="fa-solid fa-upload mr-2" />导入数据
+        </button>
+        <button
+          class="w-full text-left px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer"
+          @click="dataOpsOpen = false; emit('export')"
+        >
+          <i class="fa-solid fa-download mr-2" />导出备份
+        </button>
+        <button
+          class="w-full text-left px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer"
+          @click="emit('help')"
+        >
+          <i class="fa-solid fa-circle-question mr-2" />数据说明
+        </button>
+      </div>
       <button
         class="w-full text-left px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg flex items-center gap-2"
         @click="emit('cloud')"
       >
-        <i class="fa-solid fa-database" />
+        <i class="fa-solid fa-cloud mr-1" />
         <span class="flex-1">云端同步</span>
         <i v-if="cloudUnhealthy" class="fa-solid fa-circle text-amber-400 text-[8px] animate-pulse" title="云端未连接" />
       </button>
