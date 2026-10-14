@@ -725,6 +725,11 @@ async function pullFromCloud() {
   cloudBusy.value = true
   try {
     const result = await runPullSync() // pull 模式：upload 槽也并入决策、默认偏云端采纳
+    if (!result) {
+      addOperationLog('cloud_pull', '从云端拉取未执行：已有同步任务正在进行', {})
+      alert('从云端拉取未执行：当前有同步任务正在进行，请稍后再试')
+      return
+    }
     setCloudLoadSuccess(result?.updatedAt || '')
     addOperationLog('cloud_pull', '从云端加载数据成功', { updatedAt: result?.updatedAt })
     alert('已从云端同步')
@@ -743,6 +748,11 @@ async function syncCloudNowFromUi() {
   cloudBusy.value = true
   try {
     const result = await syncToCloudNow()
+    if (!result) {
+      addOperationLog('cloud_sync', '手动同步未执行：已有同步任务正在进行', {})
+      alert('云端同步未执行：当前有同步任务正在进行，请稍后再试')
+      return
+    }
     addOperationLog('cloud_sync', '手动同步云端成功', {
       updatedAt: result?.updatedAt,
     })

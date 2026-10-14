@@ -907,3 +907,77 @@ describe('snapshots 合并（负债历史只增不减）', () => {
     expect(exportData().snapshots).toHaveLength(1)
   })
 })
+
+describe('syncing 重入锁卡死防护', () => {
+  function setupCloudEnv() {
+    const env = { calls: [] }
+    Object.assign(state.cloudSettings, {
+      supabaseUrl: 'https://x.supabase.co',
+      supabaseAnonKey: 'anon-key',
+      stateId: 'main',
+      enabled: true,
+      publicRead: true,
+    })
+    return env
+  }
+
+  afterEach(() => {
+    registerCloudSyncHandler(null)
+    registerCloudConflictHandler(null)
+    registerCloudApplyHandler(null)
+    Object.assign(state.cloudSettings, {
+      supabaseUrl: '',
+      supabaseAnonKey: '',
+      stateId: 'main',
+      enabled: false,
+      publicRead: true,
+    })
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+    loadData({})
+  })
+
+  it('启动加载时强制释放上次会话遗留的 syncing=true（跨会话卡死锁）', () => {
+    const storeMap = new Map()
+    storeMap.set('ysp_ui', JSON.stringify({
+      cloudSettings: { supabaseUrl: 'https://x.supabase.co', supabaseAnonKey: 'k', stateId: 'main', enabled: true, publicRead: true },
+      cloudSession: { accessToken: '', refreshToken: '', expiresAt: 0, tokenType: 'bearer', user: { id: '', email: '' } },
+      cloudStatus: { syncing: true, connected: true, lastSyncAt: '2026-10-07T09:51:36.366+00:00', cloudRev: { items: 111 } },
+      operationLogs: [],
+      autoBackup: { lastDate: '', lastNotice: '' },
+    }))
+    vi.stubGlobal('localStorage', {
+      getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
+      setItem: (k, v) => storeMap.set(k, String(v)),
+      removeItem: (k) => storeMap.delete(k),
+    })
+    loadUiStateFromLocalStorage()
+    expect(state.cloudStatus.syncing).toBe(false)
+    expect(state.cloudStatus.cloudRev).toEqual({ items: 111 })
+    expect(state.cloudStatus.lastSyncAt).toBe('2026-10-07T09:51:36.366+00:00')
+  })
+
+  it('syncing 锁持有时长超过阈值时强制释放，后续同步不再被永久拦截', async () => {
+    vi.useFakeTimers()
+    loadData({ items: [{ id: 1, name: '本地商品', cost: 5 }] })
+    const env = setupCloudEnv()
+    // pre-check 永久挂起 → 第一次同步卡死，syncing 保持 true
+    registerCloudSyncHandler(async (payload, options = {}) => {
+      env.calls.push(options.reason || '')
+      if ((options.reason || '') === 'pre-check') return new Promise(() => {})
+      return { updatedAt: '2026-09-02T10:00:00.000Z', row: { id: 'main' }, payload }
+    })
+
+    syncToCloudNow()
+    expect(state.cloudStatus.syncing).toBe(true)
+
+    // 推进超过锁超时阈值（120s）
+    await vi.advanceTimersByTimeAsync(130000)
+
+    // 再次同步：锁应被强制释放，第二次调用真正进入执行流程（重新置 syncing 并再次发起 pre-check）
+    syncToCloudNow()
+    expect(state.cloudStatus.syncing).toBe(true)
+    const preChecks = env.calls.filter((r) => r === 'pre-check').length
+    expect(preChecks).toBeGreaterThanOrEqual(2)
+  })
+})

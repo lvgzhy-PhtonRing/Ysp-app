@@ -1,3 +1,24 @@
+// 网络请求统一超时：防止 fetch 永久挂起导致 syncing 重入锁卡死（同步瘫痪 + 假成功）
+const FETCH_TIMEOUT_MS = 30000
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
+  const controller = new AbortController()
+  const timer = timeoutMs ? setTimeout(() => controller.abort(), timeoutMs) : null
+  try {
+    const signal = options.signal && typeof AbortSignal.any === 'function'
+      ? AbortSignal.any([options.signal, controller.signal])
+      : controller.signal
+    return await fetch(url, { ...options, signal })
+  } catch (err) {
+    if (controller.signal.aborted && !options.signal?.aborted) {
+      throw new Error('云端请求超时，请检查网络后重试')
+    }
+    throw err
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 function trimString(value) {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -89,7 +110,7 @@ export async function signOutCloudSession(rawConfig = {}, session = null) {
   }
 
   try {
-    await fetch(`${config.supabaseUrl}/auth/v1/logout`, {
+    await fetchWithTimeout(`${config.supabaseUrl}/auth/v1/logout`, {
       method: 'POST',
       headers: buildJsonHeaders(config, token),
     })
@@ -111,7 +132,7 @@ export async function signInWithPassword(rawConfig = {}, email = '', password = 
   }
 
   const target = `${config.supabaseUrl}/auth/v1/token?grant_type=password`
-  const resp = await fetch(target, {
+  const resp = await fetchWithTimeout(target, {
     method: 'POST',
     headers: buildJsonHeaders(config),
     body: JSON.stringify({
@@ -138,7 +159,7 @@ export async function refreshCloudSession(rawConfig = {}, session = null) {
   }
 
   const target = `${config.supabaseUrl}/auth/v1/token?grant_type=refresh_token`
-  const resp = await fetch(target, {
+  const resp = await fetchWithTimeout(target, {
     method: 'POST',
     headers: buildJsonHeaders(config),
     body: JSON.stringify({
@@ -195,7 +216,7 @@ export async function fetchCloudState(rawConfig = {}, options = {}) {
     publicOnly: Boolean(publicOnly) && !nextSession?.accessToken,
   })
 
-  const resp = await fetch(target, {
+  const resp = await fetchWithTimeout(target, {
     method: 'GET',
     headers: buildJsonHeaders(config, nextSession?.accessToken),
     cache: 'no-store',
@@ -245,7 +266,7 @@ export async function saveCloudState(rawConfig = {}, payload = {}, options = {})
   const patchParams = new URLSearchParams()
   patchParams.set('id', `eq.${config.stateId}`)
 
-  const patchResp = await fetch(`${config.supabaseUrl}/rest/v1/ysp_state?${patchParams.toString()}`, {
+  const patchResp = await fetchWithTimeout(`${config.supabaseUrl}/rest/v1/ysp_state?${patchParams.toString()}`, {
     method: 'PATCH',
     headers,
     body: JSON.stringify({
@@ -254,7 +275,7 @@ export async function saveCloudState(rawConfig = {}, payload = {}, options = {})
       updated_at: new Date().toISOString(),
     }),
     keepalive,
-  })
+  }, keepalive ? null : FETCH_TIMEOUT_MS)
 
   const patchData = await readJsonResponse(patchResp)
   if (!patchResp.ok) {
@@ -280,12 +301,12 @@ export async function saveCloudState(rawConfig = {}, payload = {}, options = {})
     insertRow.owner_id = nextSession.user.id
   }
 
-  const insertResp = await fetch(`${config.supabaseUrl}/rest/v1/ysp_state`, {
+  const insertResp = await fetchWithTimeout(`${config.supabaseUrl}/rest/v1/ysp_state`, {
     method: 'POST',
     headers,
     body: JSON.stringify([insertRow]),
     keepalive,
-  })
+  }, keepalive ? null : FETCH_TIMEOUT_MS)
 
   const insertData = await readJsonResponse(insertResp)
   if (!insertResp.ok) {
@@ -315,7 +336,7 @@ export async function fetchCarFundBalance() {
   params.set('limit', '1')
 
   try {
-    const resp = await fetch(`${SUPABASE_URL}/rest/v1/ysp_state?${params}`, {
+    const resp = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/ysp_state?${params}`, {
       method: 'GET',
       headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` },
       cache: 'no-store',
@@ -338,7 +359,7 @@ export async function readCloudConfigFromPublic(basePath = '/') {
   const path = safeBasePath.endsWith('/') ? safeBasePath : `${safeBasePath}/`
   const target = `${path}cloud-config.json?t=${Date.now()}`
 
-  const resp = await fetch(target, {
+  const resp = await fetchWithTimeout(target, {
     method: 'GET',
     cache: 'no-store',
   })

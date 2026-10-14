@@ -241,6 +241,9 @@ let lastPersistedSlot = {} // { slot: 上次持久化的槽位序列化串 }（�
 // 本地数据最后修改时间（ISO 字符串），用于启动时与云端 updated_at 比较
 let localLastModifiedAt = ''
 let _cloudUnhealthyWarned = false
+// syncing 重入锁开始时间：若锁持有时长超过阈值，视为请求挂起，强制释放避免同步永久瘫痪
+const SYNC_LOCK_TIMEOUT_MS = 120000
+let _syncingStartedAt = 0
 
 export function isCloudSyncUnhealthy() {
   const s = state.cloudSettings
@@ -286,6 +289,8 @@ function normalizeCloudSession(session = {}) {
 }
 
 function setCloudStatusPatch(patch = {}) {
+  if (patch.syncing === true) _syncingStartedAt = Date.now()
+  if (patch.syncing === false) _syncingStartedAt = 0
   Object.assign(state.cloudStatus, patch)
 }
 
@@ -393,7 +398,15 @@ async function performSyncDecision({ reason = 'auto', force = false, silent = fa
   if (!state.cloudSettings.enabled && !force) return null
   if (!hasCloudSyncConfig()) return null
   if (typeof cloudSyncHandler !== 'function') return null
-  if (state.cloudStatus.syncing) return null // 重入锁
+  if (state.cloudStatus.syncing) {
+    // 重入锁：正常情况直接跳过。但若锁已持有超过阈值（请求疑似永久挂起），
+    // 强制释放后继续，避免同步系统从此瘫痪（手动同步会因此假成功、云端永不更新）。
+    if (_syncingStartedAt && Date.now() - _syncingStartedAt > SYNC_LOCK_TIMEOUT_MS) {
+      setCloudStatusPatch({ syncing: false })
+    } else {
+      return null
+    }
+  }
 
   setCloudStatusPatch({ syncing: true, lastSyncError: '' })
   try {
@@ -1341,6 +1354,7 @@ export function loadUiStateFromLocalStorage() {
     Object.assign(state.cloudStatus, {
       ...DEFAULT_CLOUD_STATUS,
       ...parsed.cloudStatus,
+      syncing: false, // 启动阶段不存在进行中的同步；上次会话遗留的卡死锁在此直接释放
     })
   }
 
