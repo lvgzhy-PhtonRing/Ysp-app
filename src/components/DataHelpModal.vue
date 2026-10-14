@@ -53,7 +53,7 @@ function close() {
           <div class="rounded-lg bg-amber-50/60 border border-amber-100 p-4">
             <div class="font-bold text-gray-900 mb-1">③ 本机 Downloads 文件夹（每日 JSON 文件）</div>
             <p class="text-gray-600">
-              若每日备份启用，每天会存一份完整数据文件：<code class="bg-white/70 px-1 rounded">饮食派数据_YYYY-MM-DD.json</code>。
+              若每日备份启用，每天会存一份完整数据文件：<code class="bg-white/70 px-1 rounded">PhtonRing数据_YYYY-MM-DD.json</code>。
               不受 5MB 限制，可以一直累积。<b>这是唯一存在浏览器之外的数据。</b>
             </p>
           </div>
@@ -151,7 +151,7 @@ function close() {
       <section>
         <h4 class="text-lg font-bold text-gray-900 mb-3">怎么操作</h4>
         <ul class="space-y-2 list-disc pl-5">
-          <li><b>导出备份</b>：侧边栏 → 数据操作 → 导出备份，会下载一个「饮食派数据_今天日期.json」文件。</li>
+          <li><b>导出备份</b>：侧边栏 → 数据操作 → 导出备份，会下载一个「PhtonRing数据Manual_今天日期.json」文件。每日自动备份则是「PhtonRing数据_日期.json」。</li>
           <li><b>导入恢复</b>：侧边栏 → 数据操作 → 导入数据，选择要恢复的那个文件。</li>
           <li><b>撤销采纳 / 导入</b>：侧边栏 → 操作日志 → 数据回溯，或「恢复到最近一次导入前」。</li>
           <li><b>云端登录 / 同步</b>：侧边栏 → 云端同步。</li>

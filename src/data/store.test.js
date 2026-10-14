@@ -758,7 +758,7 @@ describe('getUnsyncedOperations 只统计真实数据改动', () => {
     addOperationLog('cloud_sync', '同步完成', { reason: 'debounced' })
     addOperationLog('cloud_sync', '内容一致，已对齐时间戳', { cloudUpdatedAt: 'x' })
     addOperationLog('cloud_adopt_before', '采纳云端前已备份槽位「商品」', { slot: 'items' })
-    addOperationLog('app_auto_backup', '已生成每日备份 饮食派数据_2026-10-13.json', { date: '2026-10-13' })
+    addOperationLog('app_auto_backup', '已生成每日备份 PhtonRing数据_2026-10-13.json', { date: '2026-10-13' })
     addOperationLog('app_export', '导出备份', { fileName: 'a.json' })
     addOperationLog('cloud_settings', '更新云端同步配置', {})
 

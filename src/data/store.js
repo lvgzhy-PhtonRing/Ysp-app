@@ -711,12 +711,12 @@ function maybeAutoBackup() {
   if (!isBackupDue(today, state.autoBackup.lastDate)) return
 
   const payload = { ...exportData(), operationLogs: [...state.operationLogs] }
-  downloadJsonBackup(payload, `饮食派数据_${today}.json`)
+  downloadJsonBackup(payload, `PhtonRing数据_${today}.json`)
 
   state.autoBackup.lastDate = today
   state.autoBackup.lastNotice = today
   saveUiStateToLocalStorage()
-  addOperationLog('app_auto_backup', `已生成每日备份 饮食派数据_${today}.json`, { date: today })
+  addOperationLog('app_auto_backup', `已生成每日备份 PhtonRing数据_${today}.json`, { date: today })
 }
 
 // === localStorage 配额保护 ===
