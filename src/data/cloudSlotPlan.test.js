@@ -101,6 +101,27 @@ describe('buildMerged', () => {
     expect(merged.transfers).toEqual([])
     expect(merged._rev.transfers.rev).toBe(1)
   })
+
+  it('snapshots 非槽位：合并时与云端按 date 并集，同日保留 createdAt 较新', () => {
+    const L = p([], {}, {})
+    L.snapshots = [
+      { date: '2026-07-01', createdAt: '2026-07-01T10:00:00Z', calc: { debt: 100 } },
+    ]
+    const C = p([], {}, {})
+    C.snapshots = [
+      { date: '2026-07-01', createdAt: '2026-07-01T12:00:00Z', calc: { debt: 999 } },
+      { date: '2026-07-02', createdAt: '2026-07-02T10:00:00Z', calc: { debt: 200 } },
+    ]
+    const merged = buildMerged(L, C, {})
+    expect(merged.snapshots.map((s) => s.date)).toEqual(['2026-07-01', '2026-07-02'])
+    expect(merged.snapshots.find((s) => s.date === '2026-07-01').calc.debt).toBe(999)
+  })
+
+  it('snapshots 缺失/非数组时合并结果为空数组而非 undefined', () => {
+    const merged = buildMerged(p(), p(), {})
+    expect(Array.isArray(merged.snapshots)).toBe(true)
+    expect(merged.snapshots).toEqual([])
+  })
 })
 
 describe('hasUsableSlotValue', () => {

@@ -855,3 +855,55 @@ describe('localStorage 配额保护：主数据必须能落盘', () => {
     expect(() => saveToLocalStorage()).not.toThrow()
   })
 })
+
+describe('snapshots 合并（负债历史只增不减）', () => {
+  beforeEach(() => {
+    loadData({})
+    state.snapshots = []
+  })
+
+  afterEach(() => {
+    state.snapshots = []
+  })
+
+  it('loadData 与现有快照按 date 并集，不丢本地独有的更早记录', () => {
+    state.snapshots = [
+      { date: '2026-07-01', createdAt: '2026-07-01T10:00:00Z', calc: { debt: 100 } },
+    ]
+    loadData({
+      snapshots: [
+        { date: '2026-07-02', createdAt: '2026-07-02T10:00:00Z', calc: { debt: 200 } },
+      ],
+    })
+    expect(exportData().snapshots.map((s) => s.date)).toEqual(['2026-07-01', '2026-07-02'])
+  })
+
+  it('同日快照保留 createdAt 较新的一条', () => {
+    state.snapshots = [
+      { date: '2026-07-01', createdAt: '2026-07-01T10:00:00Z', calc: { debt: 100 } },
+    ]
+    loadData({
+      snapshots: [
+        { date: '2026-07-01', createdAt: '2026-07-01T12:00:00Z', calc: { debt: 999 } },
+      ],
+    })
+    expect(exportData().snapshots).toHaveLength(1)
+    expect(exportData().snapshots[0].calc.debt).toBe(999)
+  })
+
+  it('导入的空快照数组不清空现有历史（防止旧备份导入截断）', () => {
+    state.snapshots = [
+      { date: '2026-07-01', createdAt: '2026-07-01T10:00:00Z', calc: { debt: 100 } },
+    ]
+    loadData({ snapshots: [] })
+    expect(exportData().snapshots).toHaveLength(1)
+  })
+
+  it('loadData 不含 snapshots 时保留现有快照（不截断）', () => {
+    state.snapshots = [
+      { date: '2026-07-01', createdAt: '2026-07-01T10:00:00Z', calc: { debt: 100 } },
+    ]
+    loadData({ items: [{ id: 1 }] })
+    expect(exportData().snapshots).toHaveLength(1)
+  })
+})

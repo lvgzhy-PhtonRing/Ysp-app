@@ -71,6 +71,29 @@ export function normalizeRev(raw) {
   return out
 }
 
+/**
+ * snapshots 是单调历史记录（每日负债/库存等聚合指标），不属于任何分槽：
+ * 合并时按 date 取并集（只增不减），同日保留 createdAt 较新的一条，非数组/无 date 条目跳过。
+ */
+export function mergeSnapshots(localSnaps, cloudSnaps) {
+  const byDate = new Map()
+  for (const list of [localSnaps, cloudSnaps]) {
+    if (!Array.isArray(list)) continue
+    for (const snap of list) {
+      if (!snap || typeof snap !== 'object' || !snap.date) continue
+      const existing = byDate.get(snap.date)
+      if (!existing) {
+        byDate.set(snap.date, snap)
+        continue
+      }
+      const cur = new Date(snap.createdAt || 0).getTime()
+      const prev = new Date(existing.createdAt || 0).getTime()
+      if (cur > prev) byDate.set(snap.date, snap)
+    }
+  }
+  return [...byDate.values()].sort((a, b) => String(a.date).localeCompare(String(b.date)))
+}
+
 export function computeSlotPlan(localPayload, cloudPayload, baselineRev = {}, serialize) {
   const plan = {}
   for (const slot of SLOT_KEYS) {
@@ -113,5 +136,6 @@ export function buildMerged(localPayload, cloudPayload, plan, decisions = {}) {
   }
   merged._rev = rev
   merged.updatedAt = localPayload?.updatedAt || ''
+  merged.snapshots = mergeSnapshots(localPayload?.snapshots, cloudPayload?.snapshots)
   return merged
 }

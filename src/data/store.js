@@ -2,7 +2,7 @@
 
 import { reactive } from 'vue'
 
-import { SLOT_KEYS, slotValue, normalizeRev, computeSlotPlan, buildMerged, revOf, hasUsableSlotValue } from './cloudSlotPlan'
+import { SLOT_KEYS, slotValue, normalizeRev, computeSlotPlan, buildMerged, revOf, hasUsableSlotValue, mergeSnapshots } from './cloudSlotPlan'
 
 import { evictOldestAdoptBefore } from './adoptLog'
 
@@ -615,12 +615,8 @@ export function loadData(jsonObject = {}) {
   // 侧边栏版本固定显示程序版本，不受导入 JSON 中 version 字段影响
   state.version = APP_VERSION
 
-  // 恢复快照
-  if (Array.isArray(data.snapshots)) {
-    state.snapshots = data.snapshots
-  } else if (!state.snapshots) {
-    state.snapshots = []
-  }
+  // 恢复快照：snapshots 是单调历史记录，与现有记录按 date 合并（只增不减，不整份替换）
+  state.snapshots = mergeSnapshots(state.snapshots, data.snapshots)
 
   // 恢复本地最后修改时间
   if (typeof data.updatedAt === 'string') {
