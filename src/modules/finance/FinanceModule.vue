@@ -38,19 +38,21 @@ const loanForm = reactive({
   note: '',
 })
 
-const stats = computed(() => getFinanceStats(store.financeRecords, store.loanRecords))
+const papaRecords = computed(() => store.financeRecords.filter((record) => !record.owner || record.owner === 'papa'))
+const papaLoans = computed(() => store.loanRecords.filter((record) => !record.owner || record.owner === 'papa'))
+const stats = computed(() => getFinanceStats(papaRecords.value, papaLoans.value))
 
 const sortedFinanceRecords = computed(() =>
-  [...store.financeRecords].sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))),
+  [...papaRecords.value].sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))),
 )
 
 const sortedLoanRecords = computed(() =>
-  [...store.loanRecords].sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))),
+  [...papaLoans.value].sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))),
 )
 
 const loanSummary = computed(() => {
   const map = new Map()
-  store.loanRecords.forEach((r) => {
+  papaLoans.value.forEach((r) => {
     const cp = r.counterparty || '未知'
     if (!map.has(cp)) {
       map.set(cp, {
@@ -220,11 +222,11 @@ function getLoanRepayStatus(loan) {
   if (loan.type !== 'borrow') return { label: '-', className: 'bg-gray-100 text-gray-600', repaid: 0, remaining: loan.amount, percent: 0 }
   
   const cp = loan.counterparty || '未知'
-  const borrows = store.loanRecords
+  const borrows = papaLoans.value
     .filter((r) => r.type === 'borrow' && r.counterparty === cp)
     .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
   
-  const repays = store.loanRecords
+  const repays = papaLoans.value
     .filter((r) => r.type === 'lend' && r.counterparty === cp)
     .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
   

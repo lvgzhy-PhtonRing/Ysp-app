@@ -5,6 +5,7 @@ import { reactive } from 'vue'
 import { SLOT_KEYS, slotValue, normalizeRev, computeSlotPlan, buildMerged, revOf, hasUsableSlotValue, mergeSnapshots } from './cloudSlotPlan'
 
 import { evictOldestAdoptBefore } from './adoptLog'
+import { migratePayload } from './migrations'
 
 import {
   downloadJsonBackup,
@@ -195,6 +196,8 @@ function normalizeItemBatches(items = []) {
 export const state = reactive({
   // 字段名与持久化 JSON（localStorage / 云端 payload）对应映射后的 store 结构保持一致
   items: [],
+  ownerRegistry: {},
+  currentOwner: 'papa',
   calc: { ...DEFAULT_CALC },
   financeRecords: [],
   loanRecords: [],
@@ -581,9 +584,10 @@ function scheduleCloudSync() {
 }
 
 export function loadData(jsonObject = {}) {
-  const data = jsonObject && typeof jsonObject === 'object' ? jsonObject : {}
+  const data = migratePayload(jsonObject)
 
   replaceArray(state.items, normalizeItemBatches(data.items))
+  replaceObject(state.ownerRegistry, data.ownerRegistry)
   // calc 字段：优先使用 JSON 中已存在值，仅在缺失时使用默认值
   const incomingCalc = data.calc && typeof data.calc === 'object' ? data.calc : {}
   const nextCalc = {
@@ -642,6 +646,7 @@ export function loadData(jsonObject = {}) {
 export function exportData() {
   return {
     items: clone(state.items),
+    ownerRegistry: clone(state.ownerRegistry),
     calc: clone(state.calc),
     finance: {
       records: clone(state.financeRecords),
@@ -670,25 +675,32 @@ function todayDateStr() {
  */
 function takeDailySnapshot() {
   const today = todayDateStr()
-  if (state.snapshots?.some(s => s.date === today)) return
-
-  const loanBalance = state.loanRecords.reduce((s, l) => {
+  const papaItems = state.items.filter((item) => !item?.owner || item.owner === 'papa')
+  const paytonItems = state.items.filter((item) => item?.owner === 'payton')
+  const papaLoans = state.loanRecords.filter((loan) => !loan?.owner || loan.owner === 'papa')
+  const loanBalance = papaLoans.reduce((s, l) => {
     if (l?.isRepaid || l?.repaid) return s
     return s + (l?.type === 'borrow' ? Number(l.amount || 0) : -Number(l.amount || 0))
   }, 0)
 
   // 公共支出净额：支出 - 收入（与首页/财务页「公共支出」口径一致）
-  const financeExpense = state.financeRecords
+  const papaRecords = state.financeRecords.filter((record) => !record?.owner || record.owner === 'papa')
+  const financeExpense = papaRecords
     .filter(r => r?.type === 'expense')
     .reduce((s, r) => s + Number(r?.amount || 0), 0)
-  const financeIncome = state.financeRecords
+  const financeIncome = papaRecords
     .filter(r => r?.type === 'income')
     .reduce((s, r) => s + Number(r?.amount || 0), 0)
   const publicExpense = financeExpense - financeIncome
 
-  const soldItems = state.items.filter(i => i?.status === 'sold')
-  const inventoryItems = state.items.filter(i => i?.status === 'inventory')
-  const purchaseItems = state.items.filter(i => i?.status === 'purchase')
+  const soldItems = papaItems.filter(i => i?.status === 'sold')
+  const inventoryItems = papaItems.filter(i => i?.status === 'inventory')
+  const purchaseItems = papaItems.filter(i => i?.status === 'purchase')
+  const paytonLoans = state.ownerRegistry.payton?.loans || []
+  const loanRemaining = paytonLoans.reduce((sum, loan) => sum + (loan?.status === 'active' ? Number(loan.remaining || 0) : 0), 0)
+  const carItems = paytonItems.filter((item) => item?.status === 'inventory')
+  const carValue = carItems.reduce((sum, item) => sum + Number(item?.cost || 0), 0)
+  const paytonFund = Number(state.ownerRegistry.payton?.pocketBalance || 0) + Number(state.ownerRegistry.payton?.investBalance || 0) - loanRemaining
 
   const snapshot = {
     date: today,
@@ -707,9 +719,42 @@ function takeDailySnapshot() {
       totalCost: purchaseItems.reduce((s, i) => s + Number(i?.cost || 0), 0),
       count: purchaseItems.length,
     },
+    payton: {
+      carValue,
+      carCount: carItems.length,
+      pocketBalance: Number(state.ownerRegistry.payton?.pocketBalance || 0),
+      investBalance: Number(state.ownerRegistry.payton?.investBalance || 0),
+      loanRemaining,
+      fund: paytonFund,
+      soldProfit: paytonItems.filter((item) => item?.status === 'sold').reduce((sum, item) => sum + Number(item?.saleDetails?.profit || 0), 0),
+    },
+    merged: {
+      inventoryValue: inventoryItems.reduce((sum, item) => sum + Number(item?.cost || 0), 0),
+      carValue,
+      alipayBalance: Number(state.calc.debt || 0) + loanBalance + soldItems.reduce((sum, item) => sum + Number(item?.saleDetails?.profit || 0), 0) - publicExpense - inventoryItems.reduce((sum, item) => sum + Number(item?.cost || 0), 0) - Number(state.calc.unconfirmed || 0) + paytonFund - purchaseItems.reduce((sum, item) => sum + Number(item?.cost || 0), 0),
+    },
   }
 
-  state.snapshots.push(snapshot)
+  const todayIndex = state.snapshots.findIndex((entry) => entry?.date === today)
+  if (todayIndex >= 0) {
+    const existing = state.snapshots[todayIndex]
+    const previous = { ...existing }; delete previous.createdAt
+    const next = { ...snapshot }; delete next.createdAt
+    if (stableSerialize(previous) !== stableSerialize(next)) {
+      snapshot.createdAt = existing.createdAt || snapshot.createdAt
+      state.snapshots.splice(todayIndex, 1, snapshot)
+    }
+  } else state.snapshots.push(snapshot)
+
+  const reconcile = state.ownerRegistry.payton?.snapshotReconcile
+  if (reconcile?.date && reconcile.pendingSaleSid && paytonItems.some((item) => item.sid === reconcile.pendingSaleSid && item.status === 'sold')) {
+    const target = state.snapshots.find((entry) => entry?.date === reconcile.date)
+    if (target) {
+      target.payton = clone(snapshot.payton)
+      target.merged = clone(snapshot.merged)
+      state.ownerRegistry.payton.snapshotReconcile = null
+    }
+  }
 }
 
 /**
@@ -759,6 +804,7 @@ function buildUiPayload(maxLogs = state.operationLogs.length) {
     cloudStatus: { ...state.cloudStatus },
     operationLogs: [...state.operationLogs].slice(0, maxLogs),
     autoBackup: { ...state.autoBackup },
+    currentOwner: state.currentOwner,
   }
 }
 
@@ -865,7 +911,7 @@ export function stableSerialize(value) {
  * 有意排除 version / snapshots / updatedAt：快照与版本号为自动派生数据，不应触发冲突。
  */
 function normalizePayloadForCompare(data) {
-  const src = data && typeof data === 'object' ? data : {}
+  const src = migratePayload(data)
   return {
     items: Array.isArray(src.items) ? normalizeItemBatches(src.items) : [],
     calc: src.calc && typeof src.calc === 'object' ? src.calc : {},
@@ -875,6 +921,7 @@ function normalizePayloadForCompare(data) {
     },
     transfers: Array.isArray(src.transfers) ? src.transfers : [],
     rushcar: normalizeRushCarData(src.rushcar),
+    ownerRegistry: src.ownerRegistry && typeof src.ownerRegistry === 'object' ? src.ownerRegistry : {},
   }
 }
 
@@ -1165,6 +1212,9 @@ export function markCloudConnected() {
 
 export function addOperationLog(type, message, detail) {
   if (detail === undefined) detail = {}
+  if (/^(inventory|purchase|sales|finance|market_price)_/.test(type) && !detail.owner) {
+    detail = { ...detail, owner: state.currentOwner || 'papa' }
+  }
 
   // 删除聚合：同一SID在 500ms 内连续删除 → 合并为 1 条日志
   if (DELETE_LOG_TYPES[type] && state.operationLogs.length > 0) {
@@ -1341,6 +1391,8 @@ export function loadUiStateFromLocalStorage() {
   if (!raw) return
 
   const parsed = JSON.parse(raw)
+
+  if (parsed?.currentOwner === 'papa' || parsed?.currentOwner === 'payton') state.currentOwner = parsed.currentOwner
 
   if (parsed?.cloudSettings && typeof parsed.cloudSettings === 'object') {
     Object.assign(state.cloudSettings, normalizeCloudSettings(parsed.cloudSettings))

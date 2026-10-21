@@ -1020,7 +1020,13 @@ function moveSingle(itemId) {
     const ok = confirmMoveBySid([item])
     if (!ok) return
   }
-  moveToInventory(itemId)
+  const transferId = item?.purchaseDetails?.transferId
+  const movingItems = transferId
+    ? store.items.filter((entry) => entry?.status === 'purchase' && entry?.purchaseDetails?.transferId === transferId)
+    : [item]
+  const assignments = promptOwnerAssignments(movingItems)
+  if (!assignments) return
+  moveToInventory(itemId, assignments)
   selectedItemIds.value = selectedItemIds.value.filter((x) => x !== itemId)
 }
 
@@ -1032,7 +1038,9 @@ function moveBatch() {
     const ok = confirmMoveBySid(selectedItems)
     if (!ok) return
   }
-  batchMoveToInventory(selectedItemIds.value)
+  const assignments = promptOwnerAssignments(selectedItems)
+  if (!assignments) return
+  batchMoveToInventory(selectedItemIds.value, assignments)
   selectedItemIds.value = []
 }
 
@@ -1051,7 +1059,33 @@ function batchMovePurchaseGroup(group) {
     if (!ok) return
   }
 
-  batchMoveToInventory(ids)
+  const assignments = promptOwnerAssignments(items)
+  if (!assignments) return
+  batchMoveToInventory(ids, assignments)
+}
+
+function promptOwnerAssignments(items = []) {
+  const assignments = {}
+  for (const item of items) {
+    const owner = prompt(`商品：${item.name}\n输入归属：papa / payton`, 'papa')
+    if (owner === null) return null
+    if (!['papa', 'payton'].includes(owner.trim().toLowerCase())) {
+      alert('归属只能是 papa 或 payton。')
+      return null
+    }
+    const assignment = { owner: owner.trim().toLowerCase() }
+    if (assignment.owner === 'payton') {
+      const account = prompt('Payton 用途：输入 invest（投资）或 keep（自留）', 'invest')
+      if (account === null) return null
+      if (!['invest', 'keep'].includes(account.trim().toLowerCase())) {
+        alert('用途只能是 invest 或 keep。')
+        return null
+      }
+      assignment.isLongTerm = account.trim().toLowerCase() === 'keep'
+    }
+    assignments[item.id] = assignment
+  }
+  return assignments
 }
 
 function confirmMoveBySid(items = []) {
@@ -1532,7 +1566,9 @@ function batchMoveToInventoryByRecord(record) {
   )
   if (!ok) return
 
-  batchMoveToInventory(ids)
+  const assignments = promptOwnerAssignments(items)
+  if (!assignments) return
+  batchMoveToInventory(ids, assignments)
   record.isInventory = true
 }
 

@@ -4,10 +4,11 @@ import { deleteItem, editItem, filterInventory, getInventoryStats, submitManualA
 import { submitSell } from '../sales/useSales'
 import { calcProfit } from '../../utils/calc'
 import { addOperationLog, saveToLocalStorage, state as store } from '../../data/store'
+import { adjustPaytonBalance } from '../payton-finance/usePaytonFinance'
 
 const emit = defineEmits(['open-aging'])
 
-const CATEGORY_OPTIONS = ['全部', '日淘', '美淘', '国内', '2025JAPAN']
+const CATEGORY_OPTIONS = ['全部', '日淘', '美淘', '国内', '2025JAPAN', 'payton库存']
 const DEFAULT_BATCHES = {
   美淘: ['26下半年', '26上半年', 'B组下半年', 'B组上半年', 'A组下半年', 'A组上半年'],
   日淘: ['26h批', '26g批', '26f批', '26e批', '预订', 'd批', 'c批', 'b批', 'a批'],
@@ -67,6 +68,7 @@ function batchRank(category, batch) {
 const collapsedGroups = reactive({})
 const inventoryViewMode = ref('batch')
 const longTermFilter = ref('all')
+const ownerScope = ref('current')
 const inventoryCollapseStorageKey = 'ysp_ui_inventory_collapse'
 const inventoryViewModeStorageKey = 'ysp_ui_inventory_view_mode'
 const inventoryLongTermFilterStorageKey = 'ysp_ui_inventory_long_term_filter'
@@ -115,6 +117,7 @@ const editForm = reactive({
   isLongTerm: false,
   cost: 0,
   isManual: false,
+  owner: 'papa',
 })
 
 const invFilterMode = ref('all')
@@ -129,7 +132,7 @@ const longTermForm = reactive({
 const allBrands = computed(() => {
   const set = new Set(['Hotwheels', 'MINIGT', 'TLV', 'Kyosho', 'Tomica', 'Matchbox', 'AR BOX', 'KingModel', 'Mortal', '其它'])
   store.items.forEach((item) => {
-    if (item?.brand) set.add(item.brand)
+    if (item?.brand && (ownerScope.value === 'all' || (item?.owner || 'papa') === store.currentOwner)) set.add(item.brand)
   })
   return ['全部', ...Array.from(set)]
 })
@@ -140,7 +143,7 @@ const addNameSuggestions = computed(() => {
   return Array.from(
     new Set(
       store.items
-        .filter((item) => normalizeBrand(item?.brand) === brand)
+        .filter((item) => normalizeBrand(item?.brand) === brand && (item?.owner || 'papa') === store.currentOwner)
         .map((item) => String(item?.name || '').trim())
         .filter(Boolean),
     ),
@@ -153,7 +156,7 @@ const editNameSuggestions = computed(() => {
   return Array.from(
     new Set(
       store.items
-        .filter((item) => normalizeBrand(item?.brand) === brand)
+        .filter((item) => normalizeBrand(item?.brand) === brand && (item?.owner || 'papa') === store.currentOwner)
         .map((item) => String(item?.name || '').trim())
         .filter(Boolean),
     ),
@@ -209,7 +212,7 @@ const longTermBrandOptions = computed(() => {
   return Array.from(
     new Set(
       store.items
-        .filter((i) => i.status === 'inventory' && i.category === longTermForm.category)
+    .filter((i) => i.status === 'inventory' && i.category === longTermForm.category && (i?.owner || 'papa') === store.currentOwner)
         .map((i) => i.brand)
         .filter(Boolean),
     ),
@@ -218,7 +221,7 @@ const longTermBrandOptions = computed(() => {
 
 const longTermBatchOptions = computed(() => {
   if (!longTermForm.category) return []
-  const inCat = store.items.filter((i) => i.status === 'inventory' && i.category === longTermForm.category)
+  const inCat = store.items.filter((i) => i.status === 'inventory' && i.category === longTermForm.category && (i?.owner || 'papa') === store.currentOwner)
   const inScope = longTermForm.brand ? inCat.filter((i) => i.brand === longTermForm.brand) : inCat
   return Array.from(new Set(inScope.map((i) => i.batch).filter(Boolean)))
 })
@@ -228,7 +231,7 @@ const longTermSidItems = computed(() => {
   const grouped = new Map()
   store.items
     .filter((i) => {
-      if (i.status !== 'inventory' || i.category !== longTermForm.category) return false
+      if (i.status !== 'inventory' || i.category !== longTermForm.category || (i?.owner || 'papa') !== store.currentOwner) return false
       if (longTermForm.brand && i.brand !== longTermForm.brand) return false
       if (longTermForm.batch && i.batch !== longTermForm.batch) return false
       return true
@@ -293,6 +296,7 @@ watch(
 const inventoryItems = computed(() => {
   const result = filterInventory(store.items, {
     status: 'inventory',
+    owner: ownerScope.value === 'all' ? 'all' : store.currentOwner,
     category: filters.category !== '全部' ? filters.category : undefined,
     batch: filters.batch !== '全部' ? filters.batch : undefined,
     brand: filters.brand !== '全部' ? filters.brand : undefined,
@@ -311,7 +315,7 @@ const groupedInventory = computed(() => {
   const mergeItemsBySidName = (list = []) => {
     const merged = new Map()
     list.forEach((item) => {
-      const key = `${item?.sid || ''}|${item?.name || ''}`
+      const key = `${item?.owner || 'papa'}|${item?.sid || ''}|${item?.name || ''}`
       if (!merged.has(key)) {
         merged.set(key, {
           ...item,
@@ -413,7 +417,7 @@ const groupedInventory = computed(() => {
 })
 
 
-const stats = computed(() => getInventoryStats(store.items))
+const stats = computed(() => getInventoryStats(ownerScope.value === 'all' ? store.items : store.items.filter((item) => (item?.owner || 'papa') === store.currentOwner)))
 
 function getSellableItemIds(item) {
   if (!item) return []
@@ -552,8 +556,13 @@ function submitAdd() {
     isDefect: addForm.isDefect,
     isLongTerm: false,
     qty: Number(addForm.qty || 1),
+    owner: store.currentOwner,
   })
   showAddModal.value = false
+}
+
+function copySid(sid) {
+  if (sid && navigator.clipboard?.writeText) navigator.clipboard.writeText(sid)
 }
 
 function openEdit(item) {
@@ -566,6 +575,7 @@ function openEdit(item) {
   editForm.isLongTerm = !!item.isLongTerm
   editForm.cost = Number(item.cost || 0)
   editForm.isManual = !!item.isManual
+  editForm.owner = item.owner || 'papa'
   showEditModal.value = true
 }
 
@@ -578,6 +588,7 @@ function submitEdit() {
     isDefect: editForm.isDefect,
     isLongTerm: editForm.isLongTerm,
     cost: editForm.cost,
+    owner: editForm.owner,
   })
   showEditModal.value = false
 }
@@ -692,6 +703,11 @@ function submitUnlist() {
   const beforeList = targetItems.map((x) => ({ itemId: x.id, status: x.status, isLongTerm: !!x.isLongTerm }))
 
   targetItems.forEach((x) => {
+    if (x.owner === 'payton') {
+      const account = x.isLongTerm ? 'pocket' : 'invest'
+      adjustPaytonBalance(account, Number(x.cost || 0))
+      x.owner = 'papa'
+    }
     x.status = 'purchase'
     x.isLongTerm = false
     if (!x.purchaseDetails) x.purchaseDetails = {}
@@ -719,7 +735,11 @@ function submitUnlist() {
 }
 
 function remove(item) {
-  deleteItem(item.id)
+  const reason = item.owner === 'payton'
+    ? prompt('删除 Payton 商品：输入“误录”或“重复”返还成本；输入“遗失”或“报废”不返还。', '遗失')
+    : 'loss'
+  if (reason === null) return
+  deleteItem(item.id, { reason: ['误录', '重复'].includes(reason) ? (reason === '误录' ? 'mistake' : 'duplicate') : 'loss' })
 }
 
 function openSellModal(item) {
@@ -851,7 +871,7 @@ watch(invFilterMode, (val) => {
           <i class="fa-solid fa-bolt" /> 手动快速入库
         </button>
         <button class="btn btn-purple btn-sm" @click="openLongTermModal">
-          <i class="fa-solid fa-inbox" /> 标记长线库存
+          <i class="fa-solid fa-inbox" /> {{ store.currentOwner === 'payton' ? '标记自留库存' : '标记长线库存' }}
         </button>
       </div>
     </div>
@@ -867,7 +887,7 @@ watch(invFilterMode, (val) => {
         <div class="text-2xl font-bold text-gray-800">{{ stats.totalInventoryValue.toFixed(2) }}</div>
       </div>
       <div class="bg-gray-50 p-4 rounded-xl border-l-4 border-purple-500">
-        <div class="text-xs text-gray-500 mb-1">长线库存</div>
+        <div class="text-xs text-gray-500 mb-1">{{ store.currentOwner === 'payton' ? '自留库存' : '长线库存' }}</div>
         <div class="text-2xl font-bold text-purple-700">{{ stats.longTermCount }} <span class="text-sm font-normal text-gray-500">件</span></div>
         <div class="text-xs text-gray-500 mt-1">总货值 {{ fmtMoney(stats.longTermValue) }}</div>
       </div>
@@ -879,10 +899,14 @@ watch(invFilterMode, (val) => {
 
     <!-- 筛选/视图控制 -->
     <div class="apple-card overflow-visible p-4 flex flex-col gap-4">
-      <div class="flex gap-4 items-center">
+      <div class="flex flex-wrap gap-4 items-center">
+        <div class="inline-flex rounded-lg bg-gray-100 p-1">
+          <button class="px-3 py-1.5 text-xs rounded-md" :class="ownerScope === 'current' ? 'bg-white shadow' : 'text-gray-500'" @click="ownerScope='current'">当前 Owner</button>
+          <button class="px-3 py-1.5 text-xs rounded-md" :class="ownerScope === 'all' ? 'bg-white shadow' : 'text-gray-500'" @click="ownerScope='all'">全部 Owner</button>
+        </div>
         <select v-model="filters.category" class="apple-select py-1.5 w-32">
           <option value="全部">所有大类</option>
-          <option v-for="c in CATEGORY_OPTIONS.filter(x => x !== '全部')" :key="c" :value="c">{{ c }}</option>
+          <option v-for="c in CATEGORY_OPTIONS.filter(x => x !== '全部' && (x !== 'payton库存' || ownerScope === 'all' || store.currentOwner === 'payton'))" :key="c" :value="c">{{ c }}</option>
         </select>
         <select v-model="filters.batch" class="apple-select py-1.5 w-32">
           <option value="全部">所有批次</option>
@@ -897,19 +921,19 @@ watch(invFilterMode, (val) => {
             :class="invFilterMode==='all' ? '' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
             :style="invFilterMode==='all' ? { backgroundColor: '#f3e8ff', color: '#7e22ce' } : {}"
             @click="invFilterMode='all'; longTermFilter='all'"
-          >长短线</button>
+          >{{ store.currentOwner === 'payton' ? '投资/自留' : '长短线' }}</button>
           <button
             class="px-3 py-1 text-xs rounded-full transition"
             :class="invFilterMode==='longterm' ? '' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
             :style="invFilterMode==='longterm' ? { backgroundColor: '#f3e8ff', color: '#7e22ce' } : {}"
             @click="invFilterMode='longterm'; longTermFilter='long'"
-          >仅长线</button>
+          >{{ store.currentOwner === 'payton' ? '仅自留' : '仅长线' }}</button>
           <button
             class="px-3 py-1 text-xs rounded-full transition"
             :class="invFilterMode==='shortterm' ? '' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
             :style="invFilterMode==='shortterm' ? { backgroundColor: '#f3e8ff', color: '#7e22ce' } : {}"
             @click="invFilterMode='shortterm'; longTermFilter='short'"
-          >仅短线</button>
+          >{{ store.currentOwner === 'payton' ? '仅投资' : '仅短线' }}</button>
           <span class="border-l border-gray-300 mx-1"></span>
           <button class="px-3 py-1 text-xs rounded-full transition" :class="inventoryViewMode==='all' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'" @click="inventoryViewMode='all'">全列表</button>
           <button class="px-3 py-1 text-xs rounded-full transition" :class="inventoryViewMode==='category' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'" @click="inventoryViewMode='category'">按大类</button>
@@ -971,7 +995,7 @@ watch(invFilterMode, (val) => {
             <tbody>
               <tr v-for="item in group.items" :key="item.id" :style="item.isLongTerm ? {backgroundColor: '#f3e8ff'} : {}">
                 <td><span v-if="item.isDefect" class="text-xs bg-danger text-white px-2 py-0.5 rounded">残次品</span><span v-else class="text-xs bg-success text-white px-2 py-0.5 rounded">正常</span></td>
-                <td class="text-xs text-gray-400 font-mono">{{ item.sid }}</td>
+                <td class="text-xs text-gray-400 font-mono" :title="item.sid"><button class="hover:text-blue-600" @click.stop="copySid(item.sid)">{{ item.sid?.length > 20 ? `${item.sid.slice(0, 8)}…${item.sid.slice(-4)}` : item.sid }}</button><span v-if="ownerScope === 'all'" class="block text-[10px] text-gray-400">{{ item.owner === 'payton' ? 'Payton' : 'Papa' }}</span></td>
                 <td class="font-medium">{{ item.name }}<span v-if="item.isLongTerm" class="ml-1 text-xs bg-purple-500 text-white px-1 rounded">长线</span></td>
                 <td>{{ item.brand }}</td>
                 <td><span class="bg-gray-100 px-2 py-1 rounded text-xs">{{ item.category }}</span> {{ item.batch }}</td>
@@ -1083,6 +1107,14 @@ watch(invFilterMode, (val) => {
             <div>
               <label class="block text-sm mb-1 text-gray-600">成本(RMB)</label>
               <input type="number" step="0.01" v-model.number="editForm.cost" class="apple-input" />
+            </div>
+            <div>
+              <label class="block text-sm mb-1 text-gray-600">Owner</label>
+              <select v-model="editForm.owner" class="apple-select"><option value="papa">Papa</option><option value="payton">Payton</option></select>
+            </div>
+            <div v-if="editForm.owner === 'payton'">
+              <label class="block text-sm mb-1 text-gray-600">用途</label>
+              <select v-model="editForm.isLongTerm" class="apple-select"><option :value="false">投资</option><option :value="true">自留</option></select>
             </div>
           </div>
           <div class="flex items-center gap-2">

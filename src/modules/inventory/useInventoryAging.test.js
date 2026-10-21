@@ -70,6 +70,15 @@ describe('buildInventoryAgingRows', () => {
 })
 
 describe('groupInventoryAgingRows', () => {
+  it('keeps identical SID and name from different owners in separate groups', () => {
+    const items = [
+      makeItem({ id: 'p', sid: 'SAME', name: 'car', owner: 'papa' }),
+      makeItem({ id: 'y', sid: 'SAME', name: 'car', owner: 'payton' }),
+    ]
+    const rows = groupInventoryAgingRows(buildInventoryAgingRows(items, [], NOW))
+    expect(rows).toHaveLength(2)
+    expect(rows.map((row) => row.owner).sort()).toEqual(['papa', 'payton'])
+  })
   it('按 sid|name 合并，数量求和', () => {
     const items = [
       makeItem({ id: 1, sid: 'CN-L9PR', name: '兰博基尼Aventator黑' }),

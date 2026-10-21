@@ -18,6 +18,7 @@ import {
   registerCloudApplyHandler,
   registerCloudConflictHandler,
   registerCloudSyncHandler,
+  redoLastChange,
   runCloudSyncCheck,
   runPullSync,
   saveToLocalStorage,
@@ -25,6 +26,7 @@ import {
   stableSerialize,
   state,
   syncToCloudNow,
+  undoLastChange,
   unloadSync,
 } from './store'
 
@@ -78,11 +80,94 @@ describe('data store', () => {
   })
 })
 
+describe('Owner snapshots and local UI preference', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-22T10:00:00.000Z'))
+    loadData({})
+    state.snapshots.splice(0)
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} })
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('writes Papa, Payton and merged metrics into the daily snapshot', () => {
+    loadData({
+      items: [
+        { id: 'p1', owner: 'papa', status: 'inventory', cost: 100 },
+        { id: 'y1', owner: 'payton', status: 'inventory', cost: 10 },
+        { id: 'y2', owner: 'payton', status: 'sold', cost: 5, saleDetails: { profit: 2 } },
+      ],
+      calc: { debt: 20, unconfirmed: 0 }, finance: { records: [], loans: [] },
+      ownerRegistry: { papa: {}, payton: { pocketBalance: 30, investBalance: 40, loans: [{ status: 'active', remaining: 10 }] } },
+    })
+    saveToLocalStorage()
+    const snapshot = state.snapshots.find((entry) => entry.date === '2026-10-22')
+    expect(snapshot).toMatchObject({
+      inventory: { value: 100, count: 1 },
+      payton: { carValue: 10, carCount: 1, pocketBalance: 30, investBalance: 40, loanRemaining: 10, fund: 60, soldProfit: 2 },
+      merged: { inventoryValue: 100, carValue: 10 },
+    })
+  })
+
+  it('reconciles the pending BMW sale into its existing snapshot row without duplication', () => {
+    loadData({
+      items: [{ id: 'bmw', sid: '55aeffc4-b720-483f-b85e-1d85067f0189', owner: 'payton', status: 'sold', cost: 10, saleDetails: { date: '2026-10-19', price: 15, profit: 5 } }],
+      snapshots: [{ date: '2026-10-21', createdAt: '2026-10-21T10:00:00Z', calc: { debt: 20 }, inventory: { value: 100, count: 1 } }],
+      ownerRegistry: { papa: {}, payton: { pocketBalance: -290.96, investBalance: 366.54, loans: [{ status: 'active', remaining: 4000 }], snapshotReconcile: { date: '2026-10-21', pendingSaleSid: '55aeffc4-b720-483f-b85e-1d85067f0189' } } },
+    })
+    saveToLocalStorage()
+    expect(state.snapshots.filter((entry) => entry.date === '2026-10-21')).toHaveLength(1)
+    expect(state.snapshots.find((entry) => entry.date === '2026-10-21').payton.carValue).toBe(0)
+    expect(state.ownerRegistry.payton.snapshotReconcile).toBeNull()
+  })
+
+  it('persists currentOwner only in ysp_ui', () => {
+    const values = new Map()
+    vi.stubGlobal('localStorage', { getItem: (key) => values.get(key) || null, setItem: (key, value) => values.set(key, value), removeItem: (key) => values.delete(key) })
+    state.currentOwner = 'payton'
+    saveUiStateToLocalStorage()
+    expect(JSON.parse(values.get('ysp_ui')).currentOwner).toBe('payton')
+    expect(exportData().currentOwner).toBeUndefined()
+    state.currentOwner = 'papa'
+    loadUiStateFromLocalStorage()
+    expect(state.currentOwner).toBe('payton')
+  })
+
+  it('adds the active Owner to new business operation-log detail', () => {
+    state.currentOwner = 'payton'
+    addOperationLog('inventory_edit', '编辑 Payton 商品', { sid: 'S-1' })
+    expect(state.operationLogs[0].detail).toMatchObject({ owner: 'payton', sid: 'S-1' })
+  })
+
+  it('undo and redo restore Payton account, loan and item ownership as one payload', () => {
+    loadData({
+      items: [{ id: 'car', owner: 'payton', status: 'inventory', cost: 10 }],
+      ownerRegistry: { papa: {}, payton: { pocketBalance: 1, investBalance: 20, loans: [{ id: 'loan', status: 'active', remaining: 5 }], accountTransfers: [] } },
+    })
+    saveToLocalStorage()
+    state.ownerRegistry.payton.investBalance += 15
+    state.ownerRegistry.payton.loans[0].remaining += 15
+    state.items[0].status = 'sold'
+    state.items[0].saleDetails = { date: '2026-10-19', price: 25 }
+    saveToLocalStorage()
+    expect(state.ownerRegistry.payton.investBalance).toBe(35)
+    expect(undoLastChange()).toBeTruthy()
+    expect(state.ownerRegistry.payton).toMatchObject({ investBalance: 20, loans: [{ remaining: 5 }] })
+    expect(state.items[0].status).toBe('inventory')
+    expect(redoLastChange()).toBeTruthy()
+    expect(state.ownerRegistry.payton.investBalance).toBe(35)
+    expect(state.items[0].status).toBe('sold')
+  })
+})
+
 describe('批次名历史更名迁移', () => {
   it('loadData 把旧批次名改写为新名，其余字段不变', () => {
     loadData({ items: [{ id: 1, name: 'a', category: '国内', batch: '苏州GTSHOW', cost: 100 }] })
     expect(exportData().items).toEqual([
-      { id: 1, name: 'a', category: '国内', batch: '2026苏州', cost: 100 },
+      { id: 1, name: 'a', category: '国内', batch: '2026苏州', cost: 100, owner: 'papa' },
     ])
   })
 
@@ -367,7 +452,7 @@ describe('手动同步(force) 智能比对', () => {
     await syncToCloudNow()
 
     expect(env.calls.map((c) => c.reason)).toEqual(['pre-check', 'sync'])
-    expect(state.items).toEqual(CLOUD_PAYLOAD.items)
+    expect(state.items).toEqual(CLOUD_PAYLOAD.items.map((item) => ({ ...item, owner: 'papa' })))
   })
 
   it('内容一致对齐时间戳后不触发新的同步调度（防死循环）', async () => {

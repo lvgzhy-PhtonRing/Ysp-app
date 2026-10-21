@@ -2,6 +2,7 @@
 
 import { calcItemCost, calcTransferCost } from '../../utils/calc'
 import { addOperationLog, clone, saveToLocalStorage, state as store } from '../../data/store'
+import { adjustPaytonBalance, getPaytonAccountForItem } from '../payton-finance/usePaytonFinance'
 import {
   generateSid,
   generatePaymentBatch,
@@ -146,6 +147,7 @@ export function addPurchaseItem(itemData = {}, options = {}) {
 
   const item = {
     ...itemData,
+    owner: itemData.owner || 'papa',
     id: generateItemId(),
     sid:
       typeof itemData.sid === 'string' && itemData.sid.trim()
@@ -237,7 +239,7 @@ export function submitTransfer(transferData = {}, selectedItemIds = []) {
   return transferRecord
 }
 
-export function moveToInventory(itemId) {
+export function moveToInventory(itemId, assignmentOptions = {}) {
   const item = store.items.find((x) => x.id === itemId)
   if (!item) return false
   const inStockDate = todayDate()
@@ -247,6 +249,10 @@ export function moveToInventory(itemId) {
     let movedCount = 0
     store.items.forEach((x) => {
       if (x?.purchaseDetails?.transferId === transferId && x.status === 'purchase') {
+        const assignment = assignmentOptions[x.id] || (x.id === itemId ? assignmentOptions : {})
+        x.owner = assignment?.owner || 'papa'
+        if (typeof assignment?.isLongTerm === 'boolean') x.isLongTerm = assignment.isLongTerm
+        if (x.owner === 'payton') adjustPaytonBalance(getPaytonAccountForItem(x), -toNumber(x.cost))
         x.status = 'inventory'
         markInStockDate(x, inStockDate)
         movedCount += 1
@@ -267,6 +273,10 @@ export function moveToInventory(itemId) {
   }
 
   markInStockDate(item, inStockDate)
+  const assignment = assignmentOptions[item.id] || assignmentOptions
+  item.owner = assignment.owner || 'papa'
+  if (typeof assignment.isLongTerm === 'boolean') item.isLongTerm = assignment.isLongTerm
+  if (item.owner === 'payton') adjustPaytonBalance(getPaytonAccountForItem(item), -toNumber(item.cost))
   item.status = 'inventory'
   saveToLocalStorage()
   addOperationLog('purchase_to_inventory', `移入库存: ${item.name}`, {
@@ -280,7 +290,7 @@ export function moveToInventory(itemId) {
   return true
 }
 
-export function batchMoveToInventory(itemIds = []) {
+export function batchMoveToInventory(itemIds = [], ownerAssignments = {}) {
   const idSet = new Set(itemIds)
   const inStockDate = todayDate()
   let movedCount = 0
@@ -289,8 +299,12 @@ export function batchMoveToInventory(itemIds = []) {
 
   store.items.forEach((item) => {
     if (idSet.has(item.id) && item?.status === 'purchase') {
+      const assignment = ownerAssignments[item.id] || {}
       movedNames.push(item.name)
       movedItemIds.push(item.id)
+      item.owner = assignment.owner || 'papa'
+      if (typeof assignment.isLongTerm === 'boolean') item.isLongTerm = assignment.isLongTerm
+      if (item.owner === 'payton') adjustPaytonBalance(getPaytonAccountForItem(item), -toNumber(item.cost))
       item.status = 'inventory'
       markInStockDate(item, inStockDate)
       movedCount += 1

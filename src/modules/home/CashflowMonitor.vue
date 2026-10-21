@@ -17,6 +17,7 @@ function fmtMoney(v) {
 
 /** 短格式: 12345 → "1.23w", 8901 → "8.9k" */
 function fmtShort(v) {
+  if (v == null) return '--'
   const n = Math.abs(Number(v || 0))
   if (n >= 10000) return (Number(v) / 10000).toFixed(2) + 'w'
   if (n >= 1000) return (Number(v) / 1000).toFixed(1) + 'k'
@@ -38,12 +39,12 @@ const miniBarConfigs = [
 
 function miniBarData(config) {
   const months = cashflow.value.last12Months
-  const values = months.map(m => Number(m?.[config.key] || 0))
-  const maxV = Math.max(...values, 0.01)
+  const values = months.map(m => m?.[config.key] == null ? null : Number(m[config.key]))
+  const maxV = Math.max(...values.filter(v => v != null), 0.01)
   return months.map((m, i) => ({
     label: `${m.month}月`,
     value: values[i],
-    width: (values[i] / maxV) * 100,
+    width: values[i] == null ? 0 : (values[i] / maxV) * 100,
     isCurrent: i === months.length - 1,
   }))
 }
@@ -93,7 +94,9 @@ function buildChartConfig(fiveMonthData) {
   const labels = fiveMonthData.map(m => `${m.month}月`)
   const netData = fiveMonthData.map(m => m.netCollection)
   const procData = fiveMonthData.map(m => m.procurement)
-  const diffData = fiveMonthData.map(m => m.netCollection - m.procurement)
+  const diffData = fiveMonthData.map(m => (
+    m.netCollection == null || m.procurement == null ? null : m.netCollection - m.procurement
+  ))
   const debtData = fiveMonthData.map(m => (m.totalDebt != null ? m.totalDebt : NaN))
 
   return {

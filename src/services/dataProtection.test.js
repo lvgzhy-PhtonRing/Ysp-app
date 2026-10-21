@@ -13,6 +13,19 @@ function payload(items, saleDates = {}) {
 }
 
 describe('shouldWarnBeforeOverwrite', () => {
+  it('separately detects Payton item and loan shrinkage despite unchanged Papa totals', () => {
+    const local = {
+      items: [...Array.from({ length: 20 }, (_, i) => ({ id: `p${i}`, owner: 'papa' })), ...Array.from({ length: 20 }, (_, i) => ({ id: `y${i}`, owner: 'payton' }))],
+      finance: { records: [], loans: [] }, ownerRegistry: { payton: { loans: [{ id: 1, status: 'active', remaining: 100 }] } },
+    }
+    const cloud = {
+      items: [...local.items.filter((item) => item.owner === 'papa'), ...local.items.filter((item) => item.owner === 'payton').slice(0, 15)],
+      finance: { records: [], loans: [] }, ownerRegistry: { payton: { loans: [] } },
+    }
+    const result = shouldWarnBeforeOverwrite(local, cloud)
+    expect(result.reasons.join(' ')).toContain('Payton 商品数')
+    expect(result.reasons.join(' ')).toContain('Payton 贷款剩余')
+  })
   it('数量相等时不警告', () => {
     const local = payload(['a', 'b', 'c'])
     const cloud = payload(['a', 'b', 'c'])
@@ -121,7 +134,7 @@ describe('shouldWarnBeforeUploadLocal', () => {
     const r = shouldWarnBeforeUploadLocal(local, cloud)
     expect(r.shouldWarn).toBe(true)
     expect(r.countDiff).toBe(-10)
-    expect(r.reasons.join()).toContain('本地商品数比云端少 10 条')
+    expect(r.reasons.join()).toContain('本地Papa 商品数比云端少 10 条')
   })
 
   it('本地少 5 条且不足 10% 不警告（云端 100 → 本地 95）', () => {
@@ -159,7 +172,7 @@ describe('shouldWarnBeforeUploadLocal', () => {
     const cloud = payload(['a', 'b'], { b: '2026-08-26' })
     const r = shouldWarnBeforeUploadLocal(local, cloud)
     expect(r.shouldWarn).toBe(true)
-    expect(r.reasons.join()).toContain('本地最后销售日期早于云端')
+    expect(r.reasons.join()).toContain('本地Papa最后销售日期早于云端')
     expect(r.lastSaleLocal).toBe('2026-08-25')
     expect(r.lastSaleCloud).toBe('2026-08-26')
   })

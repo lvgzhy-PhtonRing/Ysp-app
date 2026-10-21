@@ -1,6 +1,7 @@
 // 库存模块逻辑层（无 UI）
 
 import { addOperationLog, clone, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
+import { adjustPaytonBalance, getPaytonAccountForItem } from '../payton-finance/usePaytonFinance'
 
 function toNumber(value, fallback = 0) {
   const n = Number(value)
@@ -66,6 +67,7 @@ export function filterInventory(items = [], filters = {}) {
 
   return items.filter((item) => {
     if (status && item?.status !== status) return false
+    if (filters.owner && filters.owner !== 'all' && item?.owner !== filters.owner) return false
     if (category && item?.category !== category) return false
     if (batch && item?.batch !== batch) return false
     if (brand && item?.brand !== brand) return false
@@ -95,12 +97,18 @@ export function editItem(itemId, updateData = {}) {
 
   const relatedItems =
     item.status === 'inventory'
-      ? store.items.filter((x) => x.id !== item.id && x.status === 'inventory' && x.sid && x.sid === item.sid)
+      ? store.items.filter((x) => x.id !== item.id && x.status === 'inventory' && x.owner === item.owner && x.sid && x.sid === item.sid)
       : []
 
   const targets = [item, ...relatedItems]
 
   targets.forEach((target) => {
+    const oldAccount = getPaytonAccountForItem(target)
+    const oldCost = toNumber(target.cost)
+    const nextItem = { ...target, ...updateData }
+    const newAccount = getPaytonAccountForItem(nextItem)
+    if (oldAccount) adjustPaytonBalance(oldAccount, oldCost)
+    if (newAccount) adjustPaytonBalance(newAccount, -toNumber(nextItem.cost))
     Object.keys(updateData).forEach((key) => {
       target[key] = updateData[key]
     })
@@ -127,11 +135,14 @@ export function editItem(itemId, updateData = {}) {
   return item
 }
 
-export function deleteItem(itemId) {
+export function deleteItem(itemId, options = {}) {
   const idx = store.items.findIndex((x) => x.id === itemId)
   if (idx < 0) return false
 
   const target = store.items[idx]
+  const reason = typeof options === 'string' ? options : options.reason
+  const account = getPaytonAccountForItem(target)
+  if (account && ['mistake', 'duplicate'].includes(reason)) adjustPaytonBalance(account, toNumber(target.cost))
   store.items.splice(idx, 1)
   saveToLocalStorage()
   addOperationLog('inventory_delete', '删除商品: ' + (target ? target.name : itemId), {
@@ -147,15 +158,18 @@ export function deleteItem(itemId) {
 export function submitManualAdd(itemData = {}) {
   const item = {
     ...itemData,
+    owner: itemData.owner || store.currentOwner || 'papa',
     id: generateItemId(),
     sid: generateManualSid(),
     status: 'inventory',
     isManual: true,
   }
 
+  const account = getPaytonAccountForItem(item)
+  if (account) adjustPaytonBalance(account, -toNumber(item.cost))
   store.items.push(item)
   saveToLocalStorage()
-  addOperationLog('inventory_manual_add', `手动添加商品: ${item.name}`, { name: item.name, sid: item.sid, itemId: item.id, cost: item.cost })
+  addOperationLog('inventory_manual_add', `手动添加商品: ${item.name}`, { owner: item.owner, name: item.name, sid: item.sid, itemId: item.id, cost: item.cost })
   return item
 }
 

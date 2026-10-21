@@ -10,6 +10,7 @@ import PurchaseModule from './modules/purchase/PurchaseModule.vue'
 import SalesModule from './modules/sales/SalesModule.vue'
 import SalesAnalysisModule from './modules/sales-analysis/SalesAnalysisModule.vue'
 import FinanceModule from './modules/finance/FinanceModule.vue'
+import PaytonFinanceModule from './modules/payton-finance/PaytonFinanceModule.vue'
 import RushCarPrototypeModule from './modules/rushcar/RushCarPrototypeModule.vue'
 import MarketPriceModule from './modules/market-price/MarketPriceModule.vue'
 import { primaryConflictAction } from './utils/cloudConflict'
@@ -37,6 +38,7 @@ import {
   runPullSync,
   runStartupSync,
   saveToLocalStorage,
+  saveUiStateToLocalStorage,
   setCloudLoadError,
   setCloudLoadSuccess,
   setCloudSession,
@@ -88,6 +90,7 @@ const tabs = [
   { id: 'purchase', name: '采购管理' },
   { id: 'rushcar', name: '美淘记录' },
   { id: 'finance', name: '公共收支' },
+  { id: 'payton-finance', name: 'Payton 资金管理' },
 ]
 
 const currentTab = ref('home')
@@ -106,6 +109,14 @@ function toggleExpand(log) {
 
 function toggleRaw(log) {
   rawExpanded.value = rawExpanded.value === log.id ? null : log.id
+}
+
+function switchOwner(owner) {
+  store.currentOwner = owner
+  saveUiStateToLocalStorage()
+  if (currentTab.value === 'finance' || currentTab.value === 'payton-finance') {
+    currentTab.value = owner === 'payton' ? 'payton-finance' : 'finance'
+  }
 }
 
 // ── 数据回溯（操作日志模态框内） ─────────────────────────────────
@@ -160,6 +171,7 @@ function computeHistoryDiff(targetTime) {
     return
   }
   const priorPayload = replayStateToPayload(prior)
+  priorPayload.ownerRegistry = exportData().ownerRegistry
   // 回溯引擎无法重建 rushcar 槽位，保留当前数据：既避免误清空美淘数据，
   // 也避免 applyCloudDataToStore 因 rushcar 缺失（非数组）拒绝应用
   priorPayload.rushcar = exportData().rushcar
@@ -1042,6 +1054,7 @@ watch(
     <AppSidebar
       :tabs="tabs"
       :current-tab="currentTab"
+      :current-owner="store.currentOwner"
       :version="store.version"
       :cloud-unhealthy="cloudUnhealthy"
       @select="currentTab = $event"
@@ -1053,6 +1066,12 @@ watch(
     />
 
     <main :class="['flex-1 overflow-y-auto p-8', currentTab === 'inventory-aging' ? 'bg-sky-50/60' : '']">
+      <div class="mx-auto max-w-7xl mb-6 flex items-center justify-between">
+        <div class="text-sm text-gray-500">当前数据归属</div>
+        <div class="inline-flex rounded-xl bg-gray-100 p-1">
+          <button v-for="owner in ['papa', 'payton']" :key="owner" class="rounded-lg px-4 py-2 text-sm font-semibold transition" :class="store.currentOwner === owner ? 'bg-white shadow text-blue-700' : 'text-gray-500'" @click="switchOwner(owner)">{{ owner === 'papa' ? 'Papa' : 'Payton' }}</button>
+        </div>
+      </div>
       <!-- 云端未连接警告 -->
       <div
         v-if="cloudUnhealthy"
@@ -1089,6 +1108,7 @@ watch(
         <SalesAnalysisModule v-else-if="currentTab === 'sales-analysis'" />
         <PurchaseModule v-else-if="currentTab === 'purchase'" />
         <FinanceModule v-else-if="currentTab === 'finance'" />
+        <PaytonFinanceModule v-else-if="currentTab === 'payton-finance' && store.currentOwner === 'payton'" />
         <RushCarPrototypeModule v-else-if="currentTab === 'rushcar'" :source-data="store" />
         <MarketPriceModule v-else-if="currentTab === 'market-price'" />
 

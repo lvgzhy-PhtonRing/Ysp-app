@@ -57,16 +57,18 @@ export function aggregateSKUs(items = []) {
   // 按聚合规则分组
   const groups = {}
   soldItems.forEach(item => {
-    const skuKey = getAggregateKey(item)
+    const key = getAggregateKey(item)
+    const owner = item.owner || 'papa'
+    const skuKey = `${owner}:${key}`
     if (!groups[skuKey]) {
-      groups[skuKey] = { key: skuKey, items: [] }
+      groups[skuKey] = { key, owner, items: [] }
     }
     groups[skuKey].items.push(item)
   })
   
   // 计算每个 SKU 的指标
   const skus = Object.values(groups).map(group => {
-    const { key, items } = group
+    const { key, owner, items } = group
     
     // 基础统计
     const totalQty = items.reduce((s, i) => s + (i.qty || 1), 0)
@@ -90,6 +92,7 @@ export function aggregateSKUs(items = []) {
     
     return {
       key,
+      owner,
       totalQty,
       totalCost,
       totalProfit,

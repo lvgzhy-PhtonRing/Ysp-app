@@ -1,7 +1,7 @@
 {
   "name": "ysp-app",
   "private": true,
-  "version": "4.0.34",
+  "version": "5.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -8,10 +8,16 @@ function itemCount(payload) {
   return Array.isArray(payload?.items) ? payload.items.length : null
 }
 
-function lastSaleDate(payload) {
+function ownerRows(rows, owner) {
+  if (!Array.isArray(rows)) return null
+  return rows.filter((row) => (row?.owner || 'papa') === owner)
+}
+
+function lastSaleDate(payload, owner = null) {
   if (!Array.isArray(payload?.items)) return ''
   let latest = ''
   for (const item of payload.items) {
+    if (owner && (item?.owner || 'papa') !== owner) continue
     const d = item?.saleDetails?.date
     if (typeof d === 'string' && d && d > latest) latest = d
   }
@@ -39,18 +45,30 @@ function checkReduction(label, fromName, toName, fromArr, toArr, reasons) {
  */
 function detectDeficit(fromLabel, fromPayload, toLabel, toPayload) {
   const reasons = []
-
-  checkReduction('商品数', fromLabel, toLabel, fromPayload?.items, toPayload?.items, reasons)
-  checkReduction('收支记录', fromLabel, toLabel, fromPayload?.finance?.records, toPayload?.finance?.records, reasons)
-  checkReduction('借贷记录', fromLabel, toLabel, fromPayload?.finance?.loans, toPayload?.finance?.loans, reasons)
+  for (const owner of ['papa', 'payton']) {
+    const label = owner === 'papa' ? 'Papa ' : 'Payton '
+    checkReduction(`${label}商品数`, fromLabel, toLabel, ownerRows(fromPayload?.items, owner), ownerRows(toPayload?.items, owner), reasons)
+    checkReduction(`${label}收支记录`, fromLabel, toLabel, ownerRows(fromPayload?.finance?.records, owner), ownerRows(toPayload?.finance?.records, owner), reasons)
+    if (owner === 'papa') {
+      checkReduction('Papa 借贷记录', fromLabel, toLabel, ownerRows(fromPayload?.finance?.loans, 'papa'), ownerRows(toPayload?.finance?.loans, 'papa'), reasons)
+    } else {
+      const fromLoans = Array.isArray(fromPayload?.ownerRegistry?.payton?.loans) ? fromPayload.ownerRegistry.payton.loans : null
+      const toLoans = Array.isArray(toPayload?.ownerRegistry?.payton?.loans) ? toPayload.ownerRegistry.payton.loans : null
+      checkReduction('Payton 贷款明细数', fromLabel, toLabel, fromLoans, toLoans, reasons)
+      if (fromLoans && toLoans) {
+        const remaining = (loans) => loans.reduce((sum, loan) => sum + (loan?.status === 'active' ? Number(loan.remaining || 0) : 0), 0)
+        const fromBalance = remaining(fromLoans)
+        const toBalance = remaining(toLoans)
+        const threshold = Math.max(OVERWRITE_THRESHOLD_MIN, Math.floor(fromBalance * OVERWRITE_THRESHOLD_RATIO))
+        if (fromBalance - toBalance >= threshold) reasons.push(`${toLabel}Payton 贷款剩余比${fromLabel}少 ${fromBalance - toBalance}`)
+      }
+    }
+    const fromSale = lastSaleDate(fromPayload, owner)
+    const toSale = lastSaleDate(toPayload, owner)
+    if (fromSale && toSale && toSale < fromSale) reasons.push(`${toLabel}${owner === 'papa' ? 'Papa' : 'Payton'}最后销售日期早于${fromLabel}（${fromLabel} ${fromSale} → ${toLabel} ${toSale}）`)
+  }
   checkReduction('转运记录', fromLabel, toLabel, fromPayload?.transfers, toPayload?.transfers, reasons)
   checkReduction('美淘记录', fromLabel, toLabel, fromPayload?.rushcar?.entries, toPayload?.rushcar?.entries, reasons)
-
-  const fromSale = lastSaleDate(fromPayload)
-  const toSale = lastSaleDate(toPayload)
-  if (fromSale && toSale && toSale < fromSale) {
-    reasons.push(`${toLabel}最后销售日期早于${fromLabel}（${fromLabel} ${fromSale} → ${toLabel} ${toSale}）`)
-  }
 
   return reasons
 }

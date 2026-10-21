@@ -1,0 +1,11 @@
+{
+  "cars": [
+    { "sid": "keep-1", "name": "思域超宝", "subCategory": "超宝", "brand": "Hotwheels", "note": "", "isSold": false, "buyDate": "2026-06-01", "buyPrice": 21.9, "category": "invest", "soldDate": null, "sellPrice": null },
+    { "sid": "55aeffc4-b720-483f-b85e-1d85067f0189", "name": "宝马507", "subCategory": "普卡", "brand": "Hotwheels", "note": "", "isSold": true, "buyDate": "2026-09-28", "buyPrice": 10, "category": "keep", "soldDate": "2026-10-19", "sellPrice": 15 },
+    { "sid": "sold-old", "name": "旧车", "subCategory": "", "brand": "X", "note": "", "isSold": true, "buyDate": "2026-01-01", "buyPrice": 1, "category": "invest", "soldDate": "2026-10-14", "sellPrice": 2 }
+  ],
+  "accounts": {
+    "pocket": { "transactions": [{ "date": "2026-10-15", "type": "income", "amount": 10 }, { "date": "2026-10-16", "type": "expense", "amount": 50 }], "monthlyAllowance": 200 },
+    "invest": { "transactions": [{ "date": "2026-10-15", "type": "income", "amount": 20 }, { "date": "2026-10-16", "type": "expense", "amount": 99 }], "loans": [{ "id": "active", "name": "贷款", "amount": 100, "remaining": 80, "status": "active", "startDate": "2026-01-01", "dueDate": "2027-01-01" }, { "id": "paid", "name": "还清", "amount": 5, "remaining": 0, "status": "repaid" }] }
+  }
+}

@@ -2,6 +2,7 @@
 
 import { calcProfit } from '../../utils/calc'
 import { addOperationLog, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
+import { adjustPaytonBalance, getPaytonAccountForItem } from '../payton-finance/usePaytonFinance'
 
 function toNumber(value, fallback = 0) {
   const n = Number(value)
@@ -32,6 +33,11 @@ function valueForCompare(value) {
   }
 }
 
+function netProceeds(details = {}) {
+  const price = toNumber(details.price)
+  return price - toNumber(details.express) - price * toNumber(details.feeRate) - toNumber(details.deduction)
+}
+
 export function submitSell(itemId, saleData = {}, options = {}) {
   const item = store.items.find((x) => x.id === itemId)
   if (!item) return false
@@ -58,6 +64,8 @@ export function submitSell(itemId, saleData = {}, options = {}) {
     soldAt,
     profit,
   }
+  const paytonAccount = getPaytonAccountForItem(item)
+  if (paytonAccount) adjustPaytonBalance(paytonAccount, netProceeds(item.saleDetails))
 
   saveToLocalStorage()
   if (!options?.skipLog) {
@@ -85,6 +93,10 @@ export function unlistItem(itemId, unlistData = {}) {
   const item = store.items.find((x) => x.id === itemId)
   if (!item) return false
 
+  if (item.status === 'sold') {
+    const account = getPaytonAccountForItem(item)
+    if (account) adjustPaytonBalance(account, -netProceeds(item.saleDetails))
+  }
   item.status = 'unlisted'
   item.unlistDetails = {
     reason: unlistData.reason || '',
@@ -121,6 +133,8 @@ export function editSaleRecord(itemId, newSaleData = {}) {
   const beforeSaleDetails = {
     ...(item.saleDetails || {}),
   }
+  const account = getPaytonAccountForItem(item)
+  if (account) adjustPaytonBalance(account, -netProceeds(previous))
 
   item.saleDetails = {
     ...merged,
@@ -131,6 +145,7 @@ export function editSaleRecord(itemId, newSaleData = {}) {
     soldAt,
     profit: calcProfit(price, express, feeRate, deduction, toNumber(item.cost)),
   }
+  if (account) adjustPaytonBalance(account, netProceeds(item.saleDetails))
 
   const changes = {}
   Object.keys(item.saleDetails).forEach((key) => {

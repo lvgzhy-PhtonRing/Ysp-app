@@ -26,6 +26,7 @@ describe('useMarketPrice', () => {
 
   beforeEach(async () => {
     store.items.splice(0, store.items.length)
+    store.currentOwner = 'papa'
 
     const localStorageMock = {
       getItem: vi.fn(() => null),
@@ -97,6 +98,14 @@ describe('useMarketPrice', () => {
       const result = mod.getMarketPriceItems()
       expect(result).toHaveLength(2)
       expect(result.map(i => i.id)).toEqual(['1', '3'])
+    })
+
+    it('restricts linked price updates to the current Owner', () => {
+      store.currentOwner = 'payton'
+      const papa = makeItem({ id: 'papa', owner: 'papa', name: 'same', brand: 'same' })
+      const payton = makeItem({ id: 'payton', owner: 'payton', name: 'same', brand: 'same' })
+      resetItems([papa, payton])
+      expect(mod.getLinkedItems(payton).map((item) => item.id)).toEqual(['payton'])
     })
   })
 

@@ -1,13 +1,13 @@
-// 云同步槽位版本化纯函数：9 个数据集合的取值/版本/合并，与 DOM 与同步协议解耦
+// 云同步槽位版本化纯函数：10 个数据集合的取值/版本/合并，与 DOM 与同步协议解耦
 export const SLOT_KEYS = [
   'items', 'calc', 'finance.records', 'finance.loans', 'transfers',
-  'rushcar.entries', 'rushcar.forwarderInfos', 'rushcar.mattelSiteInfos', 'rushcar.paymentCards',
+  'rushcar.entries', 'rushcar.forwarderInfos', 'rushcar.mattelSiteInfos', 'rushcar.paymentCards', 'ownerRegistry',
 ]
 
 export const SLOT_LABELS = {
   items: '商品', calc: '财务结算', 'finance.records': '收支记录', 'finance.loans': '借贷记录',
   transfers: '转运记录', 'rushcar.entries': '美淘记录', 'rushcar.forwarderInfos': '转运公司',
-  'rushcar.mattelSiteInfos': '美泰站点', 'rushcar.paymentCards': '支付卡',
+  'rushcar.mattelSiteInfos': '美泰站点', 'rushcar.paymentCards': '支付卡', ownerRegistry: 'Owner 资金',
 }
 
 const SLOT_PATHS = {
@@ -15,10 +15,11 @@ const SLOT_PATHS = {
   transfers: ['transfers'], 'rushcar.entries': ['rushcar', 'entries'],
   'rushcar.forwarderInfos': ['rushcar', 'forwarderInfos'],
   'rushcar.mattelSiteInfos': ['rushcar', 'mattelSiteInfos'], 'rushcar.paymentCards': ['rushcar', 'paymentCards'],
+  ownerRegistry: ['ownerRegistry'],
 }
 
 function emptyFor(slot) {
-  return slot === 'calc' ? {} : []
+  return slot === 'calc' || slot === 'ownerRegistry' ? {} : []
 }
 
 export function slotValue(payload, slot) {
@@ -39,7 +40,7 @@ export function setSlotValue(payload, slot, value) {
   cur[path[path.length - 1]] = value
 }
 
-/** 云槽位是否可采纳：路径存在且类型正确（calc→object，其余→array） */
+/** 云槽位是否可采纳：路径存在且类型正确（calc/ownerRegistry→object，其余→array） */
 export function hasUsableSlotValue(payload, slot) {
   if (!payload || typeof payload !== 'object') return false
   const path = SLOT_PATHS[slot] || []
@@ -48,7 +49,7 @@ export function hasUsableSlotValue(payload, slot) {
     if (!cur || typeof cur !== 'object' || !(k in cur)) return false
     cur = cur[k]
   }
-  return slot === 'calc'
+  return slot === 'calc' || slot === 'ownerRegistry'
     ? cur !== null && typeof cur === 'object' && !Array.isArray(cur)
     : Array.isArray(cur)
 }

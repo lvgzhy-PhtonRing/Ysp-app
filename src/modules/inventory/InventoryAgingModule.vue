@@ -18,7 +18,7 @@ const filterAgingBucket = ref(null)  // 当前选中的库龄区间
 
 // 根据视图模式过滤数据
 const baseRows = computed(() => {
-  const allRows = buildInventoryAgingRows(store.items, store.transfers, new Date())
+  const allRows = buildInventoryAgingRows(store.items, store.transfers, new Date(), store.currentOwner)
   if (viewMode.value === 'long') {
     return allRows.filter(r => r.isLongTerm === true)
   } else if (viewMode.value === 'short') {

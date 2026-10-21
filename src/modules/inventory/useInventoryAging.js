@@ -42,14 +42,14 @@ function buildTransferDateMap(transfers = []) {
   return map
 }
 
-export function buildInventoryAgingRows(items = [], transfers = [], now = new Date()) {
+export function buildInventoryAgingRows(items = [], transfers = [], now = new Date(), owner = 'all') {
   const transferDateMap = buildTransferDateMap(transfers)
   const nowTs = now.getTime()
 
   return (items || [])
     // 带源数组索引：数据存在重复 id，不能用 id 当唯一键
     .map((item, sourceIndex) => ({ item, sourceIndex }))
-    .filter(({ item }) => item?.status === 'inventory')
+    .filter(({ item }) => item?.status === 'inventory' && (owner === 'all' || (item?.owner || 'papa') === owner))
     .map(({ item, sourceIndex }) => {
       const category = String(item?.category || '未分类')
       const batch = String(item?.batch || '未分批')
@@ -87,6 +87,7 @@ export function buildInventoryAgingRows(items = [], transfers = [], now = new Da
         // 用 id 当 Vue key 会让 diff 错乱——切换 短线/长线 视图时行残留显示
         rowKey: sourceIndex,
         id: item?.id,
+        owner: item?.owner || 'papa',
         sid: item?.sid,
         name: item?.name,
         brand: item?.brand,
@@ -117,7 +118,7 @@ export function groupInventoryAgingRows(rows = []) {
   const map = new Map()
   for (const r of rows) {
     if (!r) continue
-    const key = `${r.sid || ''}|${r.name || ''}`
+    const key = `${r.owner || 'papa'}|${r.sid || ''}|${r.name || ''}`
     const amount = Number(r.cost || 0) * Number(r.qty || 1)
     if (!map.has(key)) {
       map.set(key, {

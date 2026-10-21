@@ -10,6 +10,10 @@ const props = defineProps({
     type: String,
     required: true,
   },
+  currentOwner: {
+    type: String,
+    default: 'papa',
+  },
   version: {
     type: String,
     default: '',
@@ -30,7 +34,7 @@ function toggleDataOps() {
 
 // 分组配置
 const tabGroups = [
-  { name: '数据', tabs: ['home', 'finance'] },
+  { name: '数据', tabs: ['home', 'finance', 'payton-finance'] },
   { name: '库存', tabs: ['inventory', 'aging', 'market-price'] },
   { name: '销售', tabs: ['sales', 'sales-analysis'] },
   { name: '采购', tabs: ['purchase', 'rushcar'] },
@@ -46,6 +50,7 @@ const iconMap = {
   purchase: 'fa-solid fa-truck',
   rushcar: 'fa-solid fa-car-side',
   finance: 'fa-solid fa-wallet',
+  'payton-finance': 'fa-solid fa-coins',
 }
 
 function isTabDisabled(tab) {
@@ -66,7 +71,9 @@ function handleSelect(tab) {
 }
 
 function getGroupTabs(group) {
-  return props.tabs.filter(t => group.tabs.includes(t.id))
+  return props.tabs.filter(t => group.tabs.includes(t.id) &&
+    (t.id !== 'payton-finance' || props.currentOwner === 'payton') &&
+    (t.id !== 'finance' || props.currentOwner === 'papa'))
 }
 </script>
 

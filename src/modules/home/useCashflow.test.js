@@ -109,4 +109,22 @@ describe('getCashflowData', () => {
     expect(result.last12Months[0]).toMatchObject({ year: 2025, month: 1 })
     expect(result.last12Months[11]).toMatchObject({ year: 2025, month: 12 })
   })
+
+  it('Payton cashflow is owner-scoped and blank before the configured opening month', () => {
+    const store = makeStore({
+      currentOwner: 'payton',
+      ownerRegistry: { payton: { openingAt: '2026-10-15', loans: [{ status: 'active', remaining: 80 }] } },
+      items: [
+        { owner: 'papa', status: 'sold', cost: 100, saleDetails: { date: '2026-10-20', profit: 50 } },
+        { owner: 'payton', status: 'sold', cost: 10, saleDetails: { date: '2026-10-20', profit: 5 } },
+      ],
+      snapshots: [{ date: '2026-09-30', calc: { debt: 9999 }, finance: { loanBalance: 9999 } }],
+    })
+    const result = getCashflowData(store, new Date('2026-10-22'))
+    const september = result.last12Months.find((month) => month.year === 2026 && month.month === 9)
+    expect(september).toMatchObject({ netCollection: null, inventoryDigestion: null, procurement: null, debt: null, totalDebt: null })
+    expect(result.current.netCollection).toBe(15)
+    expect(result.current.inventoryDigestion).toBe(10)
+    expect(result.current.totalDebt).toBe(80)
+  })
 })

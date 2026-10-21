@@ -36,16 +36,21 @@ function prevMonth(year, month) {
  * @returns {{ current, last12Months }}
  */
 export function getCashflowData(store, now = new Date()) {
-  const items = store.items || []
+  const owner = store.currentOwner || 'papa'
+  const paytonMode = owner === 'payton'
+  const items = (store.items || []).filter((item) => (item?.owner || 'papa') === owner)
   const snapshots = store.snapshots || []
+  const openingAt = paytonMode ? String(store.ownerRegistry?.payton?.openingAt || '2026-10-15') : ''
+  const openingMonth = openingAt.slice(0, 7)
 
   // 当月借贷余额（从 live state 实时计算）
-  const loanBalance = (store.loanRecords || []).reduce((sum, l) => {
+  const loanBalance = (paytonMode ? store.ownerRegistry?.payton?.loans || [] : store.loanRecords || []).reduce((sum, l) => {
+    if (paytonMode) return sum + (l?.status === 'active' ? Number(l?.remaining || 0) : 0)
     if (l?.isRepaid || l?.repaid) return sum
     return sum + (l?.type === 'borrow' ? Number(l?.amount || 0) : -Number(l?.amount || 0))
   }, 0)
   // 当月负债总规模 = 挖财总负债 + 借贷余额
-  const currentDebt = Number(store.calc?.debt || 0) + loanBalance
+  const currentDebt = paytonMode ? loanBalance : Number(store.calc?.debt || 0) + loanBalance
 
   // 当月净回款（profit + cost，利用已有利润结果避免重复计算费率/扣减）
   function netCollection(year, month) {
@@ -75,6 +80,7 @@ export function getCashflowData(store, now = new Date()) {
       .sort((a, b) => (b?.date || '').localeCompare(a?.date || ''))
     if (monthSnaps.length === 0) return null
     const last = monthSnaps[0]
+    if (paytonMode) return Number.isFinite(Number(last?.payton?.loanRemaining)) ? Number(last.payton.loanRemaining) : null
     return Number(last.calc?.debt || 0) + Number(last.finance?.loanBalance || 0)
   }
 
@@ -91,6 +97,9 @@ export function getCashflowData(store, now = new Date()) {
   //   debt      = 新增负债（月环比增量，供迷你卡片）
   //   totalDebt = 负债总规模（绝对值，供大图折线）
   function buildMonth(year, month, liveDebt) {
+    if (paytonMode && `${year}-${String(month).padStart(2, '0')}` < openingMonth) {
+      return { year, month, netCollection: null, inventoryDigestion: null, procurement: null, debt: null, totalDebt: null }
+    }
     const abs = (liveDebt !== undefined) ? liveDebt : absoluteDebt(year, month)
     return {
       year,

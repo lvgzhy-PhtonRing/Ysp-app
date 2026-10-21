@@ -14,6 +14,7 @@ function genId() {
 export function addFinanceRecord(recordData = {}) {
   const record = {
     id: genId(),
+    owner: 'papa',
     type: recordData.type,
     date: recordData.date || '',
     item: recordData.item || '',
@@ -81,6 +82,7 @@ export function updateFinanceRecord(recordId, patch = {}) {
 export function addLoanRecord(loanData = {}) {
   const loan = {
     id: genId(),
+    owner: 'papa',
     type: loanData.type,
     date: loanData.date || '',
     counterparty: loanData.counterparty || '',

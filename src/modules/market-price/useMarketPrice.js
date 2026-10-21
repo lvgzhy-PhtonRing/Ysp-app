@@ -33,7 +33,7 @@ export function isPriced(item) {
  * 获取所有应参与市场价格计算的长线货品（isLongTerm===true）
  */
 export function getMarketPriceItems() {
-  return store.items.filter(i => i?.isLongTerm === true && i?.status === 'inventory')
+  return store.items.filter(i => (i?.owner || 'papa') === store.currentOwner && i?.isLongTerm === true && i?.status === 'inventory')
 }
 
 /**
@@ -115,7 +115,8 @@ export function getLinkedItems(item) {
   return store.items.filter(i =>
     i?.isLongTerm === true &&
     i?.name === item.name &&
-    i?.brand === item.brand
+    i?.brand === item.brand &&
+    (i?.owner || 'papa') === (item?.owner || 'papa')
   )
 }
 

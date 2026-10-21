@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import sampleData from '../../__tests__/fixtures/sampleData.json'
 import { loadData, state as store } from '../../data/store'
-import { editItem, filterInventory, getInventoryStats } from './useInventory'
+import { deleteItem, editItem, filterInventory, getInventoryStats } from './useInventory'
 
 describe('useInventory logic', () => {
   beforeEach(() => {
@@ -73,5 +73,24 @@ describe('useInventory logic', () => {
     expect(item.name).toBe(`${oldName}_UPDATED`)
     expect(item.cost).toBe(oldCost)
     expect(item.sid).toBe(oldSid)
+  })
+
+  it('isolates same-SID edits by owner and adjusts Payton account for cost changes', () => {
+    loadData({
+      items: [
+        { id: 'p', sid: 'same', owner: 'payton', status: 'inventory', cost: 50, isLongTerm: false },
+        { id: 'a', sid: 'same', owner: 'papa', status: 'inventory', cost: 80 },
+      ],
+      ownerRegistry: { papa: { label: 'Papa' }, payton: { pocketBalance: 100, investBalance: 100, loans: [], accountTransfers: [] } },
+    })
+    editItem('p', { cost: 60, name: 'updated' })
+    expect(store.items[1].name).not.toBe('updated')
+    expect(store.ownerRegistry.payton.investBalance).toBe(90)
+  })
+
+  it('returns Payton purchase cost only for mistaken or duplicate deletion', () => {
+    loadData({ items: [{ id: 'p', owner: 'payton', status: 'inventory', cost: 25, isLongTerm: true }] })
+    expect(deleteItem('p', { reason: 'mistake' })).toBe(true)
+    expect(store.ownerRegistry.payton.pocketBalance).toBe(25)
   })
 })

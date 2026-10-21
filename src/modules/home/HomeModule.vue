@@ -1,8 +1,7 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import GlassModal from '../../components/GlassModal.vue'
 import { addOperationLog, FIELD_LABEL_MAP, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
-import { fetchCarFundBalance } from '../../services/cloudStore'
 import {
   getBatchReturnStats,
   getLast3MonthsStats,
@@ -13,16 +12,19 @@ import {
 import CashflowMonitor from './CashflowMonitor.vue'
 import { getPublicExpense } from '../finance/useFinance'
 import { buildAlipayBreakdown } from '../../utils/calc'
+import { getPaytonFund } from '../payton-finance/usePaytonFinance'
 
 const now = computed(() => new Date())
 const todayDate = computed(() => now.value.toISOString().slice(0, 10))
 
-const soldItems = computed(() => store.items.filter((i) => i?.status === 'sold'))
-const inventoryItems = computed(() => store.items.filter((i) => i?.status === 'inventory'))
+const currentItems = computed(() => store.items.filter((item) => (item?.owner || 'papa') === store.currentOwner))
+const papaItems = computed(() => store.items.filter((item) => (item?.owner || 'papa') === 'papa'))
+const soldItems = computed(() => currentItems.value.filter((i) => i?.status === 'sold'))
+const inventoryItems = computed(() => currentItems.value.filter((i) => i?.status === 'inventory'))
 
-const monthStats = computed(() => getMonthStats(store.items, now.value))
-const last3MonthsStats = computed(() => getLast3MonthsStats(store.items, now.value))
-const purchaseStats = computed(() => getPurchaseStatus(store.items))
+const monthStats = computed(() => getMonthStats(currentItems.value, now.value))
+const last3MonthsStats = computed(() => getLast3MonthsStats(currentItems.value, now.value))
+const purchaseStats = computed(() => getPurchaseStatus(currentItems.value))
 
 const inventoryValue = computed(() => inventoryItems.value.reduce((s, i) => s + Number(i?.cost || 0), 0))
 const inventoryCount = computed(() => inventoryItems.value.length)
@@ -32,7 +34,14 @@ const longTermItems = computed(() =>
 const longTermValue = computed(() => longTermItems.value.reduce((s, i) => s + Number(i?.cost || 0), 0))
 const longTermCount = computed(() => longTermItems.value.length)
 
-const financePublicExpense = computed(() => getPublicExpense(store.financeRecords))
+const financeRecords = computed(() => store.financeRecords.filter((record) => (record?.owner || 'papa') === store.currentOwner))
+const financePublicExpense = computed(() => getPublicExpense(financeRecords.value))
+const papaPublicExpense = computed(() => getPublicExpense(store.financeRecords.filter((record) => !record?.owner || record.owner === 'papa')))
+const papaLoanBalance = computed(() => store.loanRecords.filter((loan) => !loan?.owner || loan.owner === 'papa').reduce((sum, loan) => {
+  if (loan?.isRepaid || loan?.repaid) return sum
+  return sum + (loan?.type === 'borrow' ? Number(loan?.amount || 0) : -Number(loan?.amount || 0))
+}, 0))
+const carFundBalance = computed(() => getPaytonFund())
 
 const totalSalesProfit = computed(() =>
   soldItems.value.reduce((s, i) => s + Number(i?.saleDetails?.profit || 0), 0),
@@ -41,67 +50,49 @@ const totalActualProfit = computed(() => totalSalesProfit.value - financePublicE
 const soldCost = computed(() => soldItems.value.reduce((s, i) => s + Number(i?.cost || 0), 0))
 const totalProfitMargin = computed(() => (soldCost.value > 0 ? totalActualProfit.value / soldCost.value : 0))
 
-const financeLoanBalance = computed(() =>
-  store.loanRecords.reduce((sum, l) => {
+const financeLoanBalance = computed(() => store.currentOwner === 'payton'
+  ? (store.ownerRegistry.payton?.loans || []).reduce((sum, loan) => sum + (loan?.status === 'active' ? Number(loan.remaining || 0) : 0), 0)
+  : store.loanRecords.filter((loan) => !loan?.owner || loan.owner === 'papa').reduce((sum, l) => {
     const repaid = typeof l?.isRepaid === 'boolean' ? l.isRepaid : !!l?.repaid
     if (repaid) return sum
     if (l?.type === 'borrow') return sum + Number(l?.amount || 0)
     if (l?.type === 'lend') return sum - Number(l?.amount || 0)
     return sum
-  }, 0),
-)
+  }, 0))
 
-const carFundBalance = ref(0)
-const carFundUpdatedAt = ref('')
 const actualBalance = computed(() => alipayBalance.value - (store.calc.forwarderBalance || 0) - (store.calc.watchBalance || 0))
-
-async function refreshCarFundBalance() {
-  try {
-    const data = await fetchCarFundBalance()
-    if (data) {
-      carFundBalance.value = data.balance
-      carFundUpdatedAt.value = data.updatedAt
-    }
-  } catch (_) {
-    // 基金数据读取失败时保持旧值
-  }
-}
-
-onMounted(() => {
-  refreshCarFundBalance()
-})
 
 const alipayBalance = computed(() => {
   return (
     Number(store.calc.debt || 0) +
-    financeLoanBalance.value +
-    totalSalesProfit.value -
-    financePublicExpense.value -
-    inventoryValue.value -
+    papaLoanBalance.value +
+    papaItems.value.filter((item) => item.status === 'sold').reduce((sum, item) => sum + Number(item.saleDetails?.profit || 0), 0) -
+    papaPublicExpense.value -
+    papaItems.value.filter((item) => item.status === 'inventory').reduce((sum, item) => sum + Number(item.cost || 0), 0) -
     Number(store.calc.unconfirmed || 0) +
     carFundBalance.value -
-    purchaseStats.value.totalCost
+    getPurchaseStatus(papaItems.value).totalCost
   )
 })
 
 const alipayBreakdown = computed(() =>
   buildAlipayBreakdown(
     store.calc.debt,
-    financeLoanBalance.value,
-    totalSalesProfit.value,
-    financePublicExpense.value,
-    inventoryValue.value,
+    papaLoanBalance.value,
+    papaItems.value.filter((item) => item.status === 'sold').reduce((sum, item) => sum + Number(item.saleDetails?.profit || 0), 0),
+    papaPublicExpense.value,
+    papaItems.value.filter((item) => item.status === 'inventory').reduce((sum, item) => sum + Number(item.cost || 0), 0),
     store.calc.unconfirmed,
     carFundBalance.value,
-    purchaseStats.value.totalCost,
+    getPurchaseStatus(papaItems.value).totalCost,
   ),
 )
 
 const searchKeyword = ref('')
-const searchResults = computed(() => searchItems(store.items, searchKeyword.value))
+const searchResults = computed(() => searchItems(currentItems.value, searchKeyword.value))
 const totalSearchCount = computed(() => searchResults.value.reduce((sum, item) => sum + Number(item?._groupCount || 1), 0))
 const mergedGroupCount = computed(() => searchResults.value.length)
-const batchReturnStats = computed(() => getBatchReturnStats(store.items))
+const batchReturnStats = computed(() => getBatchReturnStats(currentItems.value))
 const selectedItem = ref(null)
 const showItemDetailModal = ref(false)
 const batchStatsCollapsed = ref(true)
@@ -283,7 +274,7 @@ function statusText(status) {
         <div>
           <label class="text-xs text-gray-500">Payton's基金</label>
           <div class="mt-2 text-lg font-bold text-gray-600">{{ fmtMoney(carFundBalance) }}</div>
-          <div v-if="carFundUpdatedAt" class="text-[10px] text-gray-400 mt-0.5">更新于 {{ new Date(carFundUpdatedAt).toLocaleString() }}</div>
+          <div class="text-[10px] text-gray-400 mt-0.5">零钱 {{ fmtMoney(store.ownerRegistry.payton?.pocketBalance) }} · 投资 {{ fmtMoney(store.ownerRegistry.payton?.investBalance) }} · 贷款 {{ fmtMoney((store.ownerRegistry.payton?.loans || []).filter(l => l.status === 'active').reduce((s,l) => s + Number(l.remaining || 0), 0)) }}</div>
         </div>
       </div>
       <div class="bg-white p-4 rounded-xl shadow-sm border border-blue-50">

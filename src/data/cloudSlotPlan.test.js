@@ -11,8 +11,8 @@ function p(items = [], calc = { debt: 0 }, rev = {}) {
 }
 
 describe('SLOT_KEYS / slotValue / setSlotValue', () => {
-  it('共 9 槽位且值默认空', () => {
-    expect(SLOT_KEYS).toHaveLength(9)
+  it('共 10 槽位且值默认空', () => {
+    expect(SLOT_KEYS).toHaveLength(10)
     const pay = p()
     for (const s of SLOT_KEYS) {
       expect(Array.isArray(slotValue(pay, s)) || typeof slotValue(pay, s) === 'object').toBe(true)
@@ -24,6 +24,18 @@ describe('SLOT_KEYS / slotValue / setSlotValue', () => {
     setSlotValue(pay, 'finance.records', [{ id: 9 }])
     expect(slotValue(pay, 'items')).toEqual([{ id: 1 }])
     expect(pay.finance.records).toEqual([{ id: 9 }])
+  })
+  it('ownerRegistry 是对象槽，可写回、比较并合并', () => {
+    const local = p()
+    const cloud = p()
+    local.ownerRegistry = { payton: { pocketBalance: 1 } }
+    cloud.ownerRegistry = { payton: { pocketBalance: 2 } }
+    expect(slotValue(local, 'ownerRegistry')).toEqual(local.ownerRegistry)
+    expect(hasUsableSlotValue(cloud, 'ownerRegistry')).toBe(true)
+    expect(hasUsableSlotValue({ ownerRegistry: [] }, 'ownerRegistry')).toBe(false)
+    const plan = computeSlotPlan(local, cloud, { 'ownerRegistry': 1 }, ser)
+    expect(plan.ownerRegistry).toBe('conflict')
+    expect(buildMerged(local, cloud, plan, { ownerRegistry: 'cloud' }).ownerRegistry).toEqual(cloud.ownerRegistry)
   })
 })
 
@@ -66,7 +78,7 @@ describe('computeSlotPlan', () => {
   it('rev 皆未越基线但内容不同 → 保守 conflict', () => {
     expect(computeSlotPlan(L, p([{ id: 1, name: 'cloud' }], { debt: 0 }, { items: { rev: 2, at: '' } }), { items: 2 }, ser).items).toBe('conflict')
   })
-  it('9 槽位全部产出', () => {
+  it('10 槽位全部产出', () => {
     const plan = computeSlotPlan(L, C, { items: 1 }, ser)
     for (const s of SLOT_KEYS) expect(plan[s]).toBeDefined()
   })

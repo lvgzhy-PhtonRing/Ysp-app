@@ -86,7 +86,7 @@ const editForm = reactive({
 })
 
 const soldItems = computed(() =>
-  store.items.filter((item) => item?.status === 'sold' && item?.saleDetails),
+  store.items.filter((item) => item?.status === 'sold' && item?.saleDetails && (item?.owner || 'papa') === store.currentOwner),
 )
 
 const saleCategoryOptions = computed(() => {

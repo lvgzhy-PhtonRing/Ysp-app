@@ -52,4 +52,10 @@ describe('calc utilities', () => {
       2,
     )
   })
+
+  it('keeps Payton fund sign in the combined Alipay balance at the real cutoff', () => {
+    const balance = calcAlipayBalance(119667.34, 6000, 22441.2, 128805.23, 388, -3939.42, 20487.37)
+    expect(balance).toBeCloseTo(-5511.48, 2)
+    expect(calcAlipayBalance(119667.34, 6000, 22441.2, 128805.23, 388, -3924.42, 20487.37)).toBeCloseTo(-5496.48, 2)
+  })
 })

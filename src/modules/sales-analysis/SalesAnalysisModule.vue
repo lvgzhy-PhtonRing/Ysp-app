@@ -82,7 +82,7 @@ let dualAxisChart = null
 let pieChart = null
 
 // 核心数据
-const skus = computed(() => aggregateSKUs(store.items))
+const skus = computed(() => aggregateSKUs(store.items.filter((item) => (item.owner || 'papa') === store.currentOwner)))
 const paretoData = computed(() => calcParetoData(skus.value))
 const quadrantStats = computed(() => calcQuadrantStats(skus.value))
 const quadrantLabels = computed(() => getQuadrantLabels(quadrantStats.value))
