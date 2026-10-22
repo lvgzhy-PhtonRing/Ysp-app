@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { calcProfit } from '../../utils/calc'
 import { addOperationLog, saveToLocalStorage, state as store } from '../../data/store'
 import { editSaleRecord, getOwnerInventory, getSalesChannelStats, getSalesStats, submitSell } from './useSales'
-import { DEFAULT_SALES_CHANNEL, filterSalesByShop, SALES_CHANNELS } from './salesChannels'
+import { DEFAULT_SALES_CHANNEL, filterSalesByOwner, filterSalesByShop, SALES_CHANNELS } from './salesChannels'
 
 const showAddModal = ref(false)
 const showEditModal = ref(false)
@@ -16,6 +16,7 @@ const filters = reactive({
   keyword: '',
 })
 const selectedShop = ref('全部')
+const ownerScope = ref('current')
 
 const addForm = reactive({
   itemId: null,
@@ -37,9 +38,11 @@ const editForm = reactive({
   date: '',
 })
 
-const soldItems = computed(() =>
-  store.items.filter((item) => item?.status === 'sold' && item?.saleDetails && (item?.owner || 'papa') === store.currentOwner),
-)
+const allSoldItems = computed(() => store.items.filter((item) => item?.status === 'sold' && item?.saleDetails))
+const soldItems = computed(() => filterSalesByOwner(
+  allSoldItems.value,
+  ownerScope.value === 'all' ? '全部' : store.currentOwner,
+))
 
 const saleCategoryOptions = computed(() => {
   const set = new Set(['全部'])
@@ -256,6 +259,7 @@ function collapseAllSalesGroups() {
 
 function resetSalesViewState() {
   selectedShop.value = '全部'
+  ownerScope.value = 'current'
   filters.category = '全部'
   filters.batch = '全部'
   filters.keyword = ''
@@ -358,9 +362,17 @@ watch(
         <input v-model="filters.keyword" placeholder="搜索名称、SID..." class="apple-input py-1.5 w-64 text-sm" />
       </div>
 
-      <div class="flex items-center justify-between gap-3 border-t border-gray-100 pt-4">
-        <div class="flex flex-wrap gap-2">
-          <button v-for="shop in ['全部', ...SALES_CHANNELS]" :key="shop" class="px-3 py-1 text-xs rounded-full transition" :class="selectedShop === shop ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'" @click="selectedShop = shop">{{ shop }}</button>
+      <div class="flex flex-col gap-3 border-t border-gray-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex flex-wrap items-center gap-4">
+          <div role="group" aria-label="Owner范围" class="flex flex-wrap items-center gap-2">
+            <span class="text-xs font-semibold text-gray-500">Owner</span>
+            <button class="px-3 py-1 text-xs rounded-full transition" :class="ownerScope === 'current' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'" :aria-pressed="ownerScope === 'current'" @click="ownerScope = 'current'">当前 Owner</button>
+            <button class="px-3 py-1 text-xs rounded-full transition" :class="ownerScope === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'" :aria-pressed="ownerScope === 'all'" @click="ownerScope = 'all'">全部 Owner</button>
+          </div>
+          <div role="group" aria-label="销售渠道" class="flex flex-wrap items-center gap-2">
+            <span class="text-xs font-semibold text-gray-500">店铺</span>
+            <button v-for="shop in ['全部', ...SALES_CHANNELS]" :key="shop" class="px-3 py-1 text-xs rounded-full transition" :class="selectedShop === shop ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'" :aria-pressed="selectedShop === shop" @click="selectedShop = shop">{{ shop }}</button>
+          </div>
         </div>
         <div class="flex gap-2 shrink-0">
           <button class="btn btn-outline btn-xs" @click="expandAllSalesGroups">展开全部</button>
@@ -402,7 +414,7 @@ watch(
               <tr v-for="item in group.items" :key="item.id">
                 <td class="whitespace-nowrap">{{ item.saleDetails?.date }}</td>
                 <td class="whitespace-nowrap">{{ item.saleDetails?.shop || DEFAULT_SALES_CHANNEL }}</td>
-                <td class="align-middle"><div class="font-medium truncate">{{ item.name }}</div><div class="text-xs text-gray-400 font-mono">{{ item.sid }}</div></td>
+                <td class="align-middle"><div class="flex items-center gap-2"><span class="font-medium truncate">{{ item.name }}</span><span v-if="ownerScope === 'all'" class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold" :class="item.owner === 'payton' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'">{{ item.owner === 'payton' ? 'PAYTON' : 'PAPA' }}</span></div><div class="text-xs text-gray-400 font-mono">{{ item.sid }}</div></td>
                 <td class="whitespace-nowrap">{{ item.brand }}<br><span class="text-xs text-gray-500">{{ item.batch }}</span></td>
                 <td class="text-center"><span class="bg-primary/10 text-primary px-2 py-1 rounded font-semibold">{{ item.qty || 1 }}</span></td>
                 <td class="font-semibold text-gray-900 text-right whitespace-nowrap">{{ fmtMoney(item.saleDetails?.price) }}</td>

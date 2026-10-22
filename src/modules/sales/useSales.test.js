@@ -3,7 +3,7 @@ import sampleData from '../../__tests__/fixtures/sampleData.json'
 import { loadData, state as store } from '../../data/store'
 import { calcAlipayBalance } from '../../utils/calc'
 import { editSaleRecord, getOwnerInventory, getSalesChannelStats, getSalesStats, submitSell } from './useSales'
-import { DEFAULT_SALES_CHANNEL, filterSalesByShop, SALES_CHANNELS } from './salesChannels'
+import { DEFAULT_SALES_CHANNEL, filterSalesByOwner, filterSalesByShop, SALES_CHANNELS } from './salesChannels'
 
 describe('useSales logic', () => {
   beforeEach(() => {
@@ -53,6 +53,19 @@ describe('useSales logic', () => {
       totalRevenue: 200,
       totalProfit: 50,
     })
+  })
+
+  it('can filter sales by one owner or include all owners', () => {
+    const sales = [
+      { id: 'papa', owner: 'papa', status: 'sold', saleDetails: { shop: 'PhtonRIng' } },
+      { id: 'payton', owner: 'payton', status: 'sold', saleDetails: { shop: 'PhtonRIng' } },
+      { id: 'legacy', status: 'sold', saleDetails: { shop: '其它' } },
+    ]
+
+    expect(filterSalesByOwner(sales, 'papa').map((item) => item.id)).toEqual(['papa', 'legacy'])
+    expect(filterSalesByOwner(sales, 'payton').map((item) => item.id)).toEqual(['payton'])
+    expect(filterSalesByOwner(sales, '全部').map((item) => item.id)).toEqual(['papa', 'payton', 'legacy'])
+    expect(filterSalesByShop(filterSalesByOwner(sales, '全部'), 'PhtonRIng').map((item) => item.id)).toEqual(['papa', 'payton'])
   })
 
   it('summarizes sales by shop and assigns undated legacy sales to Other', () => {

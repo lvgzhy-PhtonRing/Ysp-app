@@ -17,3 +17,8 @@ export function filterSalesByShop(items = [], shop = '全部') {
   if (shop === '全部') return items
   return items.filter((item) => item?.saleDetails?.shop === shop)
 }
+
+export function filterSalesByOwner(items = [], owner = '全部') {
+  if (owner === '全部') return items
+  return items.filter((item) => (item?.owner || 'papa') === owner)
+}
