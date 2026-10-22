@@ -58,7 +58,10 @@ function editTransfer(transfer) {
 <template>
   <div class="space-y-6">
     <div>
-      <h2 class="text-3xl font-extrabold">Payton 资金管理</h2>
+      <div class="flex items-baseline gap-3">
+        <h2 class="text-3xl font-extrabold">皮蛋金库</h2>
+        <span class="text-base text-gray-400 font-light">Payton Treasury</span>
+      </div>
       <p class="mt-1 text-sm text-gray-500">车辆买卖在库存与销售模块记账；此处管理零钱收支、贷款和账户互转。</p>
     </div>
 

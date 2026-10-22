@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import sampleData from '../../__tests__/fixtures/sampleData.json'
 import { loadData, state as store } from '../../data/store'
 import { calcAlipayBalance } from '../../utils/calc'
-import { editSaleRecord, getSalesStats, submitSell } from './useSales'
+import { editSaleRecord, getOwnerInventory, getSalesStats, submitSell } from './useSales'
 
 describe('useSales logic', () => {
   beforeEach(() => {
@@ -45,6 +45,17 @@ describe('useSales logic', () => {
     expect(stats.totalSoldCount).toBe(soldItems.length)
     expect(Number.isNaN(stats.totalProfit)).toBe(false)
     expect(stats.recoveryRate).toBeGreaterThanOrEqual(0)
+  })
+
+  it('filters add-sale inventory by the selected owner', () => {
+    const inventory = [
+      { id: 'papa', owner: 'papa', status: 'inventory' },
+      { id: 'payton', owner: 'payton', status: 'inventory' },
+      { id: 'legacy', status: 'inventory' },
+    ]
+
+    expect(getOwnerInventory(inventory, 'papa').map((item) => item.id)).toEqual(['papa', 'legacy'])
+    expect(getOwnerInventory(inventory, 'payton').map((item) => item.id)).toEqual(['payton'])
   })
 
   it('test3 editSaleRecord', () => {

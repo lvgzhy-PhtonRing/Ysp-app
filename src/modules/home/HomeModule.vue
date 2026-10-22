@@ -14,6 +14,8 @@ import { getPublicExpense } from '../finance/useFinance'
 import { buildAlipayBreakdown } from '../../utils/calc'
 import { getPaytonFund } from '../payton-finance/usePaytonFinance'
 
+const emit = defineEmits(['update-owner'])
+
 const now = computed(() => new Date())
 const todayDate = computed(() => now.value.toISOString().slice(0, 10))
 
@@ -89,10 +91,13 @@ const alipayBreakdown = computed(() =>
 )
 
 const searchKeyword = ref('')
-const searchResults = computed(() => searchItems(currentItems.value, searchKeyword.value))
+const searchResults = computed(() => searchItems(store.items, searchKeyword.value))
 const totalSearchCount = computed(() => searchResults.value.reduce((sum, item) => sum + Number(item?._groupCount || 1), 0))
 const mergedGroupCount = computed(() => searchResults.value.length)
-const batchReturnStats = computed(() => getBatchReturnStats(currentItems.value))
+const batchReturnStats = computed(() => getBatchReturnStats(store.items))
+const paytonPocketBalance = computed(() => Number(store.ownerRegistry.payton?.pocketBalance || 0))
+const paytonInvestBalance = computed(() => Number(store.ownerRegistry.payton?.investBalance || 0))
+const paytonLoanRemaining = computed(() => (store.ownerRegistry.payton?.loans || []).filter((loan) => loan.status === 'active').reduce((sum, loan) => sum + Number(loan.remaining || 0), 0))
 const selectedItem = ref(null)
 const showItemDetailModal = ref(false)
 const batchStatsCollapsed = ref(true)
@@ -103,6 +108,11 @@ function fmtMoney(v) {
 
 function fmtNum(v) {
   return Number(v || 0).toFixed(2)
+}
+
+function fmtCurrency(v) {
+  const amount = Number(v || 0)
+  return `${amount < 0 ? '−' : ''}¥${Math.abs(amount).toFixed(2)}`
 }
 
 // 记录修改前的值（在 @focus 时捕捉），用于操作日志回溯
@@ -161,167 +171,57 @@ function statusText(status) {
       <div class="text-sm text-gray-400">当前日期: {{ todayDate }}</div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <div class="apple-card">
-        <h3 class="text-lg font-semibold mb-4 text-gray-800"><i class="fa-solid fa-calendar-check text-blue-400 mr-2"></i>本月数据</h3>
-        <div class="grid grid-cols-2 gap-4">
-          <div class="bg-gray-50 p-4 rounded-xl border-l-4 border-primary">
-            <div class="text-xs text-gray-500 mb-1">月销售额</div>
-            <div class="text-2xl font-bold text-gray-800">{{ fmtMoney(monthStats.revenue) }}</div>
-          </div>
-          <div class="bg-gray-50 p-4 rounded-xl border-l-4 border-warning">
-            <div class="text-xs text-gray-500 mb-1">对应投入成本</div>
-            <div class="text-2xl font-bold text-gray-800">{{ fmtMoney(monthStats.cost) }}</div>
-          </div>
-        </div>
-        <div class="mt-4 bg-gray-50 p-4 rounded-xl border-l-4 border-gray-400">
-          <div class="text-xs text-gray-500 mb-1">月利润</div>
-          <div class="flex items-baseline gap-3">
-            <span class="text-3xl font-bold" :class="monthStats.profit >= 0 ? 'text-gray-700' : 'text-danger'">
-              {{ fmtMoney(monthStats.profit) }}
-            </span>
-            <span class="text-sm text-gray-400">
-              利润率 {{ monthStats.cost > 0 ? fmtNum((monthStats.profit / monthStats.cost) * 100) + '%' : '--' }}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <div class="apple-card">
-        <h3 class="text-lg font-semibold mb-4 text-gray-800"><i class="fa-solid fa-chart-simple text-blue-400 mr-2"></i>近三个月销售数据</h3>
-        <div class="overflow-x-auto">
-          <table class="apple-table text-sm">
-            <thead>
-              <tr>
-                <th>月份</th><th class="text-right">件数</th><th class="text-right">回款</th>
-                <th class="text-right">成本</th><th class="text-right">利润</th><th class="text-right">利润率</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="m in last3MonthsStats" :key="m.year + '-' + m.month">
-                <td>{{ m.year }}/{{ m.month }}</td>
-                <td class="text-right">{{ m.count }}</td>
-                <td class="text-right">{{ fmtMoney(m.revenue) }}</td>
-                <td class="text-right">{{ fmtMoney(m.cost) }}</td>
-                <td class="text-right" :class="m.profit >= 0 ? 'text-gray-700' : 'text-danger'">{{ fmtMoney(m.profit) }}</td>
-                <td class="text-right">{{ m.cost > 0 ? fmtNum((m.profit / m.cost) * 100) + '%' : '-' }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <div class="apple-card">
-      <div class="flex items-center justify-between bg-gradient-to-r from-yellow-100 via-yellow-50 to-orange-50 p-4 rounded-xl border border-yellow-300">
-        <div class="flex items-baseline gap-2">
-          <div class="text-5xl font-extrabold text-warning drop-shadow-sm">{{ fmtMoney(purchaseStats.inProgressAmount) }}</div>
-          <div class="text-sm text-yellow-800 font-medium">采购中金额（含转运费）</div>
-        </div>
-        <div class="flex gap-6">
-          <div class="text-center">
-            <div class="text-3xl font-bold text-warning">{{ purchaseStats.count }}</div>
-            <div class="text-xs text-gray-600">采购中(件)</div>
-          </div>
-          <div class="text-center">
-            <div class="text-3xl font-bold text-gray-700">{{ purchaseStats.pendingCount }}</div>
-            <div class="text-xs text-gray-600">待转运(件)</div>
-          </div>
-        </div>
-      </div>
-      <div class="mt-3 flex gap-6 text-sm text-gray-500">
-        <div>累计采购: <span class="font-medium text-warning">{{ fmtMoney(purchaseStats.purchaseAmount) }}</span></div>
-        <div>累计转运: <span class="font-medium text-[#5AC8FA]">{{ fmtMoney(purchaseStats.transferAmount) }}</span></div>
-      </div>
-    </div>
-
-    <div class="apple-card bg-gradient-to-br from-blue-50 to-white border-2 border-blue-100 shadow-lg p-8 md:p-10">
-      <div class="grid grid-cols-3 gap-4 md:gap-6">
-        <div class="flex flex-col justify-center text-center p-4 bg-white rounded-lg shadow-sm border border-gray-100 h-40">
-          <div class="text-sm text-gray-500 mb-2 font-medium">库存总货值</div>
-          <div class="text-5xl md:text-6xl font-extrabold text-primary tracking-tighter">{{ fmtMoney(inventoryValue) }}</div>
-          <div class="text-lg text-gray-400 mt-1">库存 {{ inventoryCount }} 件</div>
-        </div>
-        <div class="flex flex-col justify-center text-center p-4 bg-white rounded-lg shadow-sm border border-gray-100 h-40">
-          <div class="text-sm text-gray-500 mb-2 font-medium">上架短线货值</div>
-          <div class="text-5xl md:text-6xl font-extrabold text-purple-600 tracking-tighter">{{ fmtMoney(inventoryValue - longTermValue) }}</div>
-          <div class="text-lg text-gray-400 mt-1">库存 {{ inventoryCount - longTermCount }} 件</div>
-        </div>
-        <div class="flex flex-col justify-center text-center p-4 bg-white rounded-lg shadow-sm border border-gray-100 h-40">
-          <div class="text-sm text-gray-500 mb-2 font-medium">总实盈利润</div>
-          <div class="text-5xl md:text-6xl font-extrabold tracking-tighter" :class="totalActualProfit >= 0 ? 'text-success' : 'text-danger'">{{ fmtMoney(totalActualProfit) }}</div>
-          <div class="flex items-center justify-center gap-2 mt-1">
-            <span class="text-lg text-gray-400">利润率 {{ fmtNum(totalProfitMargin * 100) }}%</span>
-            <span class="text-xs text-gray-400">已扣除公共支出</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <div class="apple-card bg-gradient-to-br from-white to-gray-50 border-blue-100">
       <h3 class="text-lg font-semibold mb-4 text-blue-800"><i class="fa-brands fa-alipay text-blue-500 mr-2 text-xl"></i>支付宝余额计算器</h3>
       <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <div>
-          <label class="text-xs text-gray-500">挖财总负债</label>
-          <input type="number" v-model.number="store.calc.debt" class="apple-input mt-1" @focus="onCalcFocus('debt')" @change="persistCalc('debt')" />
-        </div>
-        <div><label class="text-xs text-gray-500">借贷余额</label><div class="mt-2 text-lg font-bold text-gray-700">{{ fmtMoney(financeLoanBalance) }}</div></div>
-        <div><label class="text-xs text-gray-500">公共支出</label><div class="mt-2 text-lg font-bold text-gray-700">{{ fmtMoney(financePublicExpense) }}</div></div>
-        <div>
-          <label class="text-xs text-gray-500">未确认交易</label>
-          <input type="number" v-model.number="store.calc.unconfirmed" class="apple-input mt-1" @focus="onCalcFocus('unconfirmed')" @change="persistCalc('unconfirmed')" />
-        </div>
-        <div>
-          <label class="text-xs text-gray-500">Payton's基金</label>
-          <div class="mt-2 text-lg font-bold text-gray-600">{{ fmtMoney(carFundBalance) }}</div>
-          <div class="text-[10px] text-gray-400 mt-0.5">零钱 {{ fmtMoney(store.ownerRegistry.payton?.pocketBalance) }} · 投资 {{ fmtMoney(store.ownerRegistry.payton?.investBalance) }} · 贷款 {{ fmtMoney((store.ownerRegistry.payton?.loans || []).filter(l => l.status === 'active').reduce((s,l) => s + Number(l.remaining || 0), 0)) }}</div>
-        </div>
+        <div><label class="text-xs text-gray-500">挖财总负债</label><input type="number" v-model.number="store.calc.debt" class="apple-input mt-1" @focus="onCalcFocus('debt')" @change="persistCalc('debt')" /></div>
+        <div><label class="text-xs text-gray-500">借贷余额</label><div class="mt-2 text-lg font-bold text-gray-700">{{ fmtMoney(papaLoanBalance) }}</div></div>
+        <div><label class="text-xs text-gray-500">公共支出</label><div class="mt-2 text-lg font-bold text-gray-700">{{ fmtMoney(papaPublicExpense) }}</div></div>
+        <div><label class="text-xs text-gray-500">未确认交易</label><input type="number" v-model.number="store.calc.unconfirmed" class="apple-input mt-1" @focus="onCalcFocus('unconfirmed')" @change="persistCalc('unconfirmed')" /></div>
+        <div><label class="text-xs text-gray-500">Payton's基金</label><div class="mt-2 text-lg font-bold text-gray-600">{{ fmtMoney(carFundBalance) }}</div><div class="text-[10px] text-gray-400 mt-0.5">零钱 {{ fmtMoney(paytonPocketBalance) }} · 投资 {{ fmtMoney(paytonInvestBalance) }} · 贷款 {{ fmtMoney(paytonLoanRemaining) }}</div></div>
       </div>
       <div class="bg-white p-4 rounded-xl shadow-sm border border-blue-50">
-        <div class="flex items-center justify-between mb-3">
-          <div class="text-sm font-bold text-gray-700">应有支付宝余额</div>
-          <div class="text-2xl font-bold text-primary">{{ fmtMoney(alipayBalance) }}</div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+          <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+            <div class="text-sm font-bold text-blue-800">应有支付宝余额</div>
+            <div class="text-3xl md:text-4xl font-extrabold text-blue-700 tracking-tight">{{ fmtCurrency(alipayBalance) }}</div>
+          </div>
+          <div class="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">
+            <div class="text-sm font-bold text-sky-800">实际支付宝余额</div>
+            <div class="text-3xl md:text-4xl font-extrabold text-sky-700 tracking-tight">{{ fmtCurrency(actualBalance) }}</div>
+          </div>
         </div>
-        <div class="grid grid-cols-2 gap-2">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
           <div class="bg-green-50 border border-green-200 rounded-lg p-2.5 grid grid-rows-[auto_1fr_auto]">
             <div class="text-[11px] font-bold text-green-700 mb-1">进 / 资金</div>
-            <div>
-              <div v-for="x in alipayBreakdown.incoming" :key="x.label" class="flex justify-between text-xs text-gray-600 py-0.5">
-                <span>{{ x.label }}</span><span class="text-green-700">{{ x.value >= 0 ? '+' : '' }}{{ fmtMoney(x.value) }}</span>
-              </div>
-            </div>
-            <div class="flex justify-between text-xs font-bold text-green-700 border-t border-green-200 mt-1 pt-1">
-              <span>小计</span><span>{{ alipayBreakdown.inSubtotal >= 0 ? '+' : '' }}{{ fmtMoney(alipayBreakdown.inSubtotal) }}</span>
-            </div>
+            <div><div v-for="x in alipayBreakdown.incoming" :key="x.label" class="flex justify-between text-xs text-gray-600 py-0.5"><span>{{ x.label }}</span><span class="text-green-700">{{ x.value >= 0 ? '+' : '' }}{{ fmtMoney(x.value) }}</span></div></div>
+            <div class="flex justify-between text-xs font-bold text-green-700 border-t border-green-200 mt-1 pt-1"><span>小计</span><span>{{ alipayBreakdown.inSubtotal >= 0 ? '+' : '' }}{{ fmtMoney(alipayBreakdown.inSubtotal) }}</span></div>
           </div>
           <div class="bg-orange-50 border border-orange-200 rounded-lg p-2.5 grid grid-rows-[auto_1fr_auto]">
             <div class="text-[11px] font-bold text-orange-700 mb-1">出 / 货·债·基金</div>
-            <div>
-              <div v-for="x in alipayBreakdown.outgoing" :key="x.label" class="flex justify-between text-xs text-gray-600 py-0.5">
-                <span>{{ x.label }}</span><span class="text-orange-700">{{ fmtMoney(x.value) }}</span>
-              </div>
-            </div>
-            <div class="flex justify-between text-xs font-bold text-orange-700 border-t border-orange-200 mt-1 pt-1">
-              <span>小计</span><span>{{ fmtMoney(alipayBreakdown.outSubtotal) }}</span>
+            <div><div v-for="x in alipayBreakdown.outgoing" :key="x.label" class="flex justify-between text-xs text-gray-600 py-0.5"><span>{{ x.label }}</span><span class="text-orange-700">{{ fmtMoney(x.value) }}</span></div></div>
+            <div class="flex justify-between text-xs font-bold text-orange-700 border-t border-orange-200 mt-1 pt-1"><span>小计</span><span>{{ fmtMoney(alipayBreakdown.outSubtotal) }}</span></div>
+          </div>
+          <div class="bg-violet-50 border border-violet-200 rounded-lg p-3">
+            <div class="text-[11px] font-bold text-violet-800 mb-2">Payton's基金计算</div>
+            <div class="space-y-1 text-xs text-violet-900">
+              <div class="flex justify-between"><span>零钱余额</span><span>{{ fmtCurrency(paytonPocketBalance) }}</span></div>
+              <div class="flex justify-between"><span>＋ 投资余额</span><span>{{ fmtCurrency(paytonInvestBalance) }}</span></div>
+              <div class="flex justify-between"><span>－ 贷款剩余</span><span>{{ fmtCurrency(paytonLoanRemaining) }}</span></div>
+              <div class="flex justify-between border-t border-violet-200 pt-1 font-bold"><span>＝ Payton's基金</span><span>{{ fmtCurrency(carFundBalance) }}</span></div>
             </div>
           </div>
         </div>
       </div>
-      <div class="flex items-center gap-2 mt-2 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-100 text-xs text-gray-400">
-        <span class="shrink-0">应有支付宝余额<span class="font-medium text-gray-600">{{ fmtMoney(alipayBalance) }}</span>元中包括</span>
-        <label class="shrink-0">转运公司余额</label>
-        <input type="number" v-model.number="store.calc.forwarderBalance" class="w-16 px-1.5 py-0.5 border border-gray-200 rounded text-xs" @change="saveToLocalStorage()" />
-        <label class="shrink-0">皮蛋手表账户余额</label>
-        <input type="number" v-model.number="store.calc.watchBalance" class="w-16 px-1.5 py-0.5 border border-gray-200 rounded text-xs" @change="saveToLocalStorage()" />
-        <span class="shrink-0">故实际<span class="font-semibold text-gray-700">{{ fmtMoney(actualBalance) }}</span>元</span>
+      <div class="flex flex-wrap items-center gap-2 mt-2 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-100 text-xs text-gray-500">
+        <span>实际余额扣除应有余额中包含的下列账户</span>
+        <label>转运公司余额</label><input type="number" v-model.number="store.calc.forwarderBalance" class="w-20 px-1.5 py-0.5 border border-gray-200 rounded text-xs" @change="saveToLocalStorage()" />
+        <label>皮蛋手表账户余额</label><input type="number" v-model.number="store.calc.watchBalance" class="w-20 px-1.5 py-0.5 border border-gray-200 rounded text-xs" @change="saveToLocalStorage()" />
       </div>
     </div>
 
-    <!-- 现金流与负债监控 -->
-    <CashflowMonitor />
-
     <div class="apple-card">
-      <h3 class="text-lg font-semibold mb-4 text-gray-800"><i class="fa-solid fa-magnifying-glass text-blue-500 mr-2"></i>商品查询器</h3>
+      <h3 class="text-lg font-semibold mb-4 text-gray-800"><i class="fa-solid fa-magnifying-glass text-blue-500 mr-2"></i>商品查询器 <span class="text-xs font-normal text-gray-400">跨 Owner</span></h3>
       <div class="mb-4"><input type="text" v-model="searchKeyword" placeholder="输入SID/名称/品牌搜索（不区分大小写）" class="apple-input" /></div>
       <div v-if="searchResults.length > 0" class="mt-4">
         <div class="text-sm text-gray-500 mb-2">找到 {{ totalSearchCount }} 条记录（合并后 {{ mergedGroupCount }} 组）：</div>
@@ -329,50 +229,73 @@ function statusText(status) {
           <div v-for="(item, idx) in searchResults" :key="idx" @click="showItemDetail(item)" class="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer flex justify-between items-center">
             <div>
               <div class="font-medium text-sm">{{ item.name }}</div>
-              <div class="text-xs text-gray-500">
-                SID: {{ item.sid }}
-                <template v-if="item._isMerged"> | 数量: x{{ item._groupCount }} | 单件: {{ fmtMoney(item.cost) }} | 合计: {{ fmtMoney(item._groupTotalCost) }}</template>
-                <template v-else> | 成本: {{ fmtMoney(item.cost) }}</template>
-              </div>
-              <div v-if="item._searchMatchTypes?.length" class="mt-1 flex flex-wrap gap-1">
-                <span
-                  v-for="tag in item._searchMatchTypes"
-                  :key="tag"
-                  class="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700"
-                >
-                  {{ tag }}
-                </span>
-              </div>
+              <div class="text-xs text-gray-500">SID: {{ item.sid }}<template v-if="item._isMerged"> | 数量: x{{ item._groupCount }} | 单件: {{ fmtMoney(item.cost) }} | 合计: {{ fmtMoney(item._groupTotalCost) }}</template><template v-else> | 成本: {{ fmtMoney(item.cost) }}</template></div>
+              <div v-if="item._searchMatchTypes?.length" class="mt-1 flex flex-wrap gap-1"><span v-for="tag in item._searchMatchTypes" :key="tag" class="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{{ tag }}</span></div>
             </div>
-            <span :class="{'bg-green-100 text-green-700': item.status === 'inventory', 'bg-blue-100 text-blue-700': item.status === 'purchase', 'bg-gray-100 text-gray-600': item.status === 'sold'}" class="text-xs px-2 py-1 rounded">
-              {{ statusText(item.status) }}
-            </span>
+            <div class="flex items-center gap-2">
+              <span class="text-xs px-2 py-1 rounded bg-slate-100 text-slate-600">{{ item.owner === 'payton' ? 'Payton' : 'Papa' }}</span>
+              <span :class="{'bg-green-100 text-green-700': item.status === 'inventory', 'bg-blue-100 text-blue-700': item.status === 'purchase', 'bg-gray-100 text-gray-600': item.status === 'sold'}" class="text-xs px-2 py-1 rounded">{{ statusText(item.status) }}</span>
+            </div>
           </div>
         </div>
       </div>
     </div>
 
     <div class="apple-card">
-      <h3 class="text-lg font-semibold mb-4 text-gray-800 cursor-pointer select-none" @click="batchStatsCollapsed = !batchStatsCollapsed"><i class="fa-solid fa-chart-line text-blue-500 mr-2"></i>各批次回款统计 <span class="text-xs text-gray-400">{{ batchStatsCollapsed ? '▼' : '▲' }}</span></h3>
+      <h3 class="text-lg font-semibold mb-4 text-gray-800 cursor-pointer select-none" @click="batchStatsCollapsed = !batchStatsCollapsed"><i class="fa-solid fa-chart-line text-blue-500 mr-2"></i>各批次回款统计 <span class="text-xs font-normal text-gray-400">跨 Owner</span> <span class="text-xs text-gray-400">{{ batchStatsCollapsed ? '▼' : '▲' }}</span></h3>
       <div class="overflow-x-auto" v-show="!batchStatsCollapsed">
         <table class="apple-table text-sm w-full">
           <thead><tr><th>批次</th><th class="text-right">总成本</th><th class="text-right">回款</th><th class="text-right">回款比例</th></tr></thead>
-          <tbody>
-            <template v-for="b in batchReturnStats" :key="b.category + b.batch">
-              <tr v-if="b.isSummary" class="bg-blue-50 font-bold border-t-2 border-blue-200"><td class="text-blue-700">汇总</td><td class="text-right text-blue-700">{{ fmtMoney(b.totalCost) }}</td><td class="text-right text-blue-700">{{ fmtMoney(b.revenue) }}</td><td class="text-right text-blue-700">{{ fmtNum(b.rate) }}%</td></tr>
-              <tr v-else-if="b.isCategory" class="bg-gray-100 font-bold"><td style="color:#9ca3af">{{ b.category }}</td><td class="text-right" style="color:#9ca3af">{{ fmtMoney(b.totalCost) }}</td><td class="text-right" style="color:#9ca3af">{{ fmtMoney(b.revenue) }}</td><td class="text-right" :style="returnRateStyle(b.rate)">{{ fmtNum(b.rate) }}%</td></tr>
-              <tr v-else><td class="pl-6" style="color:#9ca3af">{{ b.batch }}</td><td class="text-right" style="color:#9ca3af">{{ fmtMoney(b.totalCost) }}</td><td class="text-right" style="color:#9ca3af">{{ fmtMoney(b.revenue) }}</td><td class="text-right font-medium" :style="returnRateStyle(b.rate)">{{ fmtNum(b.rate) }}%</td></tr>
-            </template>
-          </tbody>
+          <tbody><template v-for="b in batchReturnStats" :key="b.category + b.batch"><tr v-if="b.isSummary" class="bg-blue-50 font-bold border-t-2 border-blue-200"><td class="text-blue-700">汇总</td><td class="text-right text-blue-700">{{ fmtMoney(b.totalCost) }}</td><td class="text-right text-blue-700">{{ fmtMoney(b.revenue) }}</td><td class="text-right text-blue-700">{{ fmtNum(b.rate) }}%</td></tr><tr v-else-if="b.isCategory" class="bg-gray-100 font-bold"><td style="color:#9ca3af">{{ b.category }}</td><td class="text-right" style="color:#9ca3af">{{ fmtMoney(b.totalCost) }}</td><td class="text-right" style="color:#9ca3af">{{ fmtMoney(b.revenue) }}</td><td class="text-right" :style="returnRateStyle(b.rate)">{{ fmtNum(b.rate) }}%</td></tr><tr v-else><td class="pl-6" style="color:#9ca3af">{{ b.batch }}</td><td class="text-right" style="color:#9ca3af">{{ fmtMoney(b.totalCost) }}</td><td class="text-right" style="color:#9ca3af">{{ fmtMoney(b.revenue) }}</td><td class="text-right font-medium" :style="returnRateStyle(b.rate)">{{ fmtNum(b.rate) }}%</td></tr></template></tbody>
         </table>
       </div>
     </div>
+
+    <section class="rounded-2xl border border-blue-100 bg-blue-50/40 p-4 md:p-5 space-y-5">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div><h3 class="text-lg font-bold text-blue-900">Owner 经营数据</h3><p class="text-xs text-blue-700/70">以下五个模块按所选 Owner 展示</p></div>
+        <div class="inline-flex rounded-xl bg-white/80 p-1 shadow-sm" aria-label="选择数据 Owner">
+          <button v-for="owner in ['papa', 'payton']" :key="owner" class="rounded-lg px-4 py-2 text-sm font-semibold transition" :class="store.currentOwner === owner ? 'bg-blue-600 text-white shadow' : 'text-gray-500 hover:text-gray-800'" @click="emit('update-owner', owner)">{{ owner === 'papa' ? 'Papa' : 'Payton' }}</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div class="apple-card">
+          <h3 class="text-lg font-semibold mb-4 text-gray-800"><i class="fa-solid fa-calendar-check text-blue-400 mr-2"></i>本月数据</h3>
+          <div class="grid grid-cols-2 gap-4"><div class="bg-gray-50 p-4 rounded-xl border-l-4 border-primary"><div class="text-xs text-gray-500 mb-1">月销售额</div><div class="text-2xl font-bold text-gray-800">{{ fmtMoney(monthStats.revenue) }}</div></div><div class="bg-gray-50 p-4 rounded-xl border-l-4 border-warning"><div class="text-xs text-gray-500 mb-1">对应投入成本</div><div class="text-2xl font-bold text-gray-800">{{ fmtMoney(monthStats.cost) }}</div></div></div>
+          <div class="mt-4 bg-gray-50 p-4 rounded-xl border-l-4 border-gray-400"><div class="text-xs text-gray-500 mb-1">月利润</div><div class="flex items-baseline gap-3"><span class="text-3xl font-bold" :class="monthStats.profit >= 0 ? 'text-gray-700' : 'text-danger'">{{ fmtMoney(monthStats.profit) }}</span><span class="text-sm text-gray-400">利润率 {{ monthStats.cost > 0 ? fmtNum((monthStats.profit / monthStats.cost) * 100) + '%' : '--' }}</span></div></div>
+        </div>
+        <div class="apple-card">
+          <h3 class="text-lg font-semibold mb-4 text-gray-800"><i class="fa-solid fa-chart-simple text-blue-400 mr-2"></i>近三个月销售数据</h3>
+          <div class="overflow-x-auto"><table class="apple-table text-sm"><thead><tr><th>月份</th><th class="text-right">件数</th><th class="text-right">回款</th><th class="text-right">成本</th><th class="text-right">利润</th><th class="text-right">利润率</th></tr></thead><tbody><tr v-for="m in last3MonthsStats" :key="m.year + '-' + m.month"><td>{{ m.year }}/{{ m.month }}</td><td class="text-right">{{ m.count }}</td><td class="text-right">{{ fmtMoney(m.revenue) }}</td><td class="text-right">{{ fmtMoney(m.cost) }}</td><td class="text-right" :class="m.profit >= 0 ? 'text-gray-700' : 'text-danger'">{{ fmtMoney(m.profit) }}</td><td class="text-right">{{ m.cost > 0 ? fmtNum((m.profit / m.cost) * 100) + '%' : '-' }}</td></tr></tbody></table></div>
+        </div>
+      </div>
+
+      <div class="apple-card">
+        <div class="flex flex-wrap items-center justify-between gap-4 bg-gradient-to-r from-yellow-100 via-yellow-50 to-orange-50 p-4 rounded-xl border border-yellow-300">
+          <div class="flex items-baseline gap-2"><div class="text-4xl md:text-5xl font-extrabold text-warning drop-shadow-sm">{{ fmtMoney(purchaseStats.inProgressAmount) }}</div><div class="text-sm text-yellow-800 font-medium">采购中金额（含转运费）</div></div>
+          <div class="flex gap-6"><div class="text-center"><div class="text-3xl font-bold text-warning">{{ purchaseStats.count }}</div><div class="text-xs text-gray-600">采购中(件)</div></div><div class="text-center"><div class="text-3xl font-bold text-gray-700">{{ purchaseStats.pendingCount }}</div><div class="text-xs text-gray-600">待转运(件)</div></div></div>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-6 text-sm text-gray-500"><div>累计采购: <span class="font-medium text-warning">{{ fmtMoney(purchaseStats.purchaseAmount) }}</span></div><div>累计转运: <span class="font-medium text-[#5AC8FA]">{{ fmtMoney(purchaseStats.transferAmount) }}</span></div></div>
+      </div>
+
+      <div class="apple-card bg-gradient-to-br from-blue-50 to-white border-2 border-blue-100 shadow-lg p-5 md:p-7">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+          <div class="flex flex-col justify-center text-center p-4 bg-white rounded-lg shadow-sm border border-gray-100 min-h-36"><div class="text-sm text-gray-500 mb-2 font-medium">库存总货值</div><div class="text-4xl md:text-5xl font-extrabold text-primary tracking-tight">{{ fmtMoney(inventoryValue) }}</div><div class="text-base text-gray-400 mt-1">库存 {{ inventoryCount }} 件</div></div>
+          <div class="flex flex-col justify-center text-center p-4 bg-white rounded-lg shadow-sm border border-gray-100 min-h-36"><div class="text-sm text-gray-500 mb-2 font-medium">上架短线货值</div><div class="text-4xl md:text-5xl font-extrabold text-purple-600 tracking-tight">{{ fmtMoney(inventoryValue - longTermValue) }}</div><div class="text-base text-gray-400 mt-1">库存 {{ inventoryCount - longTermCount }} 件</div></div>
+          <div class="flex flex-col justify-center text-center p-4 bg-white rounded-lg shadow-sm border border-gray-100 min-h-36"><div class="text-sm text-gray-500 mb-2 font-medium">总实盈利润</div><div class="text-4xl md:text-5xl font-extrabold tracking-tight" :class="totalActualProfit >= 0 ? 'text-success' : 'text-danger'">{{ fmtMoney(totalActualProfit) }}</div><div class="flex items-center justify-center gap-2 mt-1"><span class="text-base text-gray-400">利润率 {{ fmtNum(totalProfitMargin * 100) }}%</span><span class="text-xs text-gray-400">已扣除公共支出</span></div></div>
+        </div>
+      </div>
+
+      <CashflowMonitor />
+    </section>
 
     <GlassModal v-model="showItemDetailModal" panel-class="w-full max-w-2xl p-5">
       <div class="mb-4 text-lg font-semibold">商品详情</div>
       <div v-if="selectedItem" class="space-y-3 text-sm">
         <div class="grid grid-cols-2 gap-4">
           <div><span class="text-gray-500">SID：</span>{{ selectedItem.sid || '-' }}</div>
+          <div><span class="text-gray-500">Owner：</span>{{ selectedItem.owner === 'payton' ? 'Payton' : 'Papa' }}</div>
           <div><span class="text-gray-500">名称：</span>{{ selectedItem.name || '-' }}</div>
           <div><span class="text-gray-500">品牌：</span>{{ selectedItem.brand || '-' }}</div>
           <div><span class="text-gray-500">大类/批次：</span>{{ selectedItem.category || '-' }} / {{ selectedItem.batch || '-' }}</div>

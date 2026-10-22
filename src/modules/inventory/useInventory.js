@@ -67,7 +67,7 @@ export function filterInventory(items = [], filters = {}) {
 
   return items.filter((item) => {
     if (status && item?.status !== status) return false
-    if (filters.owner && filters.owner !== 'all' && item?.owner !== filters.owner) return false
+    if (filters.owner && filters.owner !== 'all' && (item?.owner || 'papa') !== filters.owner) return false
     if (category && item?.category !== category) return false
     if (batch && item?.batch !== batch) return false
     if (brand && item?.brand !== brand) return false
@@ -84,6 +84,14 @@ export function filterInventory(items = [], filters = {}) {
 
     return true
   })
+}
+
+export function sortInventoryItems(items = [], key, direction = 'asc') {
+  if (!['name', 'brand'].includes(key)) return [...items]
+  const sign = direction === 'desc' ? -1 : 1
+  return [...items].sort((a, b) =>
+    String(a?.[key] || '').localeCompare(String(b?.[key] || ''), 'zh-CN', { sensitivity: 'base' }) * sign,
+  )
 }
 
 export function editItem(itemId, updateData = {}) {

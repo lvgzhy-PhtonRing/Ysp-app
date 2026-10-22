@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { deleteItem, editItem, filterInventory, getInventoryStats, submitManualAdd } from './useInventory'
+import { deleteItem, editItem, filterInventory, getInventoryStats, sortInventoryItems, submitManualAdd } from './useInventory'
 import { submitSell } from '../sales/useSales'
 import { calcProfit } from '../../utils/calc'
 import { addOperationLog, saveToLocalStorage, state as store } from '../../data/store'
@@ -68,7 +68,7 @@ function batchRank(category, batch) {
 const collapsedGroups = reactive({})
 const inventoryViewMode = ref('batch')
 const longTermFilter = ref('all')
-const ownerScope = ref('current')
+const inventorySort = ref({ key: '', direction: 'asc' })
 const inventoryCollapseStorageKey = 'ysp_ui_inventory_collapse'
 const inventoryViewModeStorageKey = 'ysp_ui_inventory_view_mode'
 const inventoryLongTermFilterStorageKey = 'ysp_ui_inventory_long_term_filter'
@@ -132,7 +132,7 @@ const longTermForm = reactive({
 const allBrands = computed(() => {
   const set = new Set(['Hotwheels', 'MINIGT', 'TLV', 'Kyosho', 'Tomica', 'Matchbox', 'AR BOX', 'KingModel', 'Mortal', '其它'])
   store.items.forEach((item) => {
-    if (item?.brand && (ownerScope.value === 'all' || (item?.owner || 'papa') === store.currentOwner)) set.add(item.brand)
+    if (item?.brand && (item?.owner || 'papa') === store.currentOwner) set.add(item.brand)
   })
   return ['全部', ...Array.from(set)]
 })
@@ -296,7 +296,7 @@ watch(
 const inventoryItems = computed(() => {
   const result = filterInventory(store.items, {
     status: 'inventory',
-    owner: ownerScope.value === 'all' ? 'all' : store.currentOwner,
+    owner: store.currentOwner,
     category: filters.category !== '全部' ? filters.category : undefined,
     batch: filters.batch !== '全部' ? filters.batch : undefined,
     brand: filters.brand !== '全部' ? filters.brand : undefined,
@@ -384,7 +384,7 @@ const groupedInventory = computed(() => {
 
   const list = Array.from(map.values()).map((group) => ({
     ...group,
-    items: mergeItemsBySidName(group.items),
+    items: sortInventoryItems(mergeItemsBySidName(group.items), inventorySort.value.key, inventorySort.value.direction),
   }))
   if (inventoryViewMode.value === 'batch') {
     return list.sort((a, b) => {
@@ -417,7 +417,11 @@ const groupedInventory = computed(() => {
 })
 
 
-const stats = computed(() => getInventoryStats(ownerScope.value === 'all' ? store.items : store.items.filter((item) => (item?.owner || 'papa') === store.currentOwner)))
+const stats = computed(() => getInventoryStats(store.items.filter((item) => (item?.owner || 'papa') === store.currentOwner)))
+
+function setInventorySort(key, direction) {
+  inventorySort.value = { key, direction }
+}
 
 function getSellableItemIds(item) {
   if (!item) return []
@@ -900,13 +904,9 @@ watch(invFilterMode, (val) => {
     <!-- 筛选/视图控制 -->
     <div class="apple-card overflow-visible p-4 flex flex-col gap-4">
       <div class="flex flex-wrap gap-4 items-center">
-        <div class="inline-flex rounded-lg bg-gray-100 p-1">
-          <button class="px-3 py-1.5 text-xs rounded-md" :class="ownerScope === 'current' ? 'bg-white shadow' : 'text-gray-500'" @click="ownerScope='current'">当前 Owner</button>
-          <button class="px-3 py-1.5 text-xs rounded-md" :class="ownerScope === 'all' ? 'bg-white shadow' : 'text-gray-500'" @click="ownerScope='all'">全部 Owner</button>
-        </div>
         <select v-model="filters.category" class="apple-select py-1.5 w-32">
           <option value="全部">所有大类</option>
-          <option v-for="c in CATEGORY_OPTIONS.filter(x => x !== '全部' && (x !== 'payton库存' || ownerScope === 'all' || store.currentOwner === 'payton'))" :key="c" :value="c">{{ c }}</option>
+          <option v-for="c in CATEGORY_OPTIONS.filter(x => x !== '全部' && (x !== 'payton库存' || store.currentOwner === 'payton'))" :key="c" :value="c">{{ c }}</option>
         </select>
         <select v-model="filters.batch" class="apple-select py-1.5 w-32">
           <option value="全部">所有批次</option>
@@ -974,7 +974,7 @@ watch(invFilterMode, (val) => {
           <span>{{ inventoryViewMode === 'all' ? '全列表' : (inventoryViewMode === 'batch' ? `${group.category} / ${group.batch}` : group.category) }}</span>
           <span class="ml-2 text-gray-500 font-normal">共 {{ group.items.reduce((s,i)=>s+Number(i.qty||1),0) }} 件</span>
           <span class="ml-4 text-primary font-normal">总货值: {{ fmtMoney(group.items.reduce((s,i)=>s+Number(i.totalCost || i.cost || 0),0)) }}</span>
-          <span v-if="group.items.reduce((s,i)=>s+Number(i.longTermCount || (i.isLongTerm ? (i.qty||1) : 0)),0) > 0" class="ml-4 text-purple-500 font-normal">其中长线库存 {{ group.items.reduce((s,i)=>s+Number(i.longTermCount || (i.isLongTerm ? (i.qty||1) : 0)),0) }} 件 {{ fmtMoney(group.items.reduce((s,i)=>s+Number(i.longTermValue || (i.isLongTerm ? (i.totalCost || i.cost || 0) : 0)),0)) }}</span>
+          <span v-if="group.items.reduce((s,i)=>s+Number(i.longTermCount || (i.isLongTerm ? (i.qty||1) : 0)),0) > 0" class="ml-4 text-purple-500 font-normal">其中{{ store.currentOwner === 'payton' ? '自留库存' : '长线库存' }} {{ group.items.reduce((s,i)=>s+Number(i.longTermCount || (i.isLongTerm ? (i.qty||1) : 0)),0) }} 件 {{ fmtMoney(group.items.reduce((s,i)=>s+Number(i.longTermValue || (i.isLongTerm ? (i.totalCost || i.cost || 0) : 0)),0)) }}</span>
           <span v-if="group.items.reduce((s,i)=>s+Number(i.defectCount || (i.isDefect ? (i.qty||1) : 0)),0) > 0" class="ml-4 text-red-500 font-normal">残次品 {{ group.items.reduce((s,i)=>s+Number(i.defectCount || (i.isDefect ? (i.qty||1) : 0)),0) }} 件 {{ fmtMoney(group.items.reduce((s,i)=>s+Number(i.defectValue || (i.isDefect ? (i.totalCost || i.cost || 0) : 0)),0)) }}</span>
         </div>
 
@@ -984,8 +984,16 @@ watch(invFilterMode, (val) => {
               <tr>
                 <th>状态</th>
                 <th>SID</th>
-                <th>名称/品相</th>
-                <th>品牌</th>
+                <th>
+                  <span>名称/品相</span>
+                  <button class="ml-1 text-gray-400 hover:text-blue-600" aria-label="名称升序" title="名称升序" @click="setInventorySort('name', 'asc')"><i class="fa-solid fa-arrow-up" /></button>
+                  <button class="ml-0.5 text-gray-400 hover:text-blue-600" aria-label="名称降序" title="名称降序" @click="setInventorySort('name', 'desc')"><i class="fa-solid fa-arrow-down" /></button>
+                </th>
+                <th>
+                  <span>品牌</span>
+                  <button class="ml-1 text-gray-400 hover:text-blue-600" aria-label="品牌升序" title="品牌升序" @click="setInventorySort('brand', 'asc')"><i class="fa-solid fa-arrow-up" /></button>
+                  <button class="ml-0.5 text-gray-400 hover:text-blue-600" aria-label="品牌降序" title="品牌降序" @click="setInventorySort('brand', 'desc')"><i class="fa-solid fa-arrow-down" /></button>
+                </th>
                 <th>大类/批次</th>
                 <th class="w-28">单品成本</th>
                 <th>数量</th>
@@ -995,8 +1003,8 @@ watch(invFilterMode, (val) => {
             <tbody>
               <tr v-for="item in group.items" :key="item.id" :style="item.isLongTerm ? {backgroundColor: '#f3e8ff'} : {}">
                 <td><span v-if="item.isDefect" class="text-xs bg-danger text-white px-2 py-0.5 rounded">残次品</span><span v-else class="text-xs bg-success text-white px-2 py-0.5 rounded">正常</span></td>
-                <td class="text-xs text-gray-400 font-mono" :title="item.sid"><button class="hover:text-blue-600" @click.stop="copySid(item.sid)">{{ item.sid?.length > 20 ? `${item.sid.slice(0, 8)}…${item.sid.slice(-4)}` : item.sid }}</button><span v-if="ownerScope === 'all'" class="block text-[10px] text-gray-400">{{ item.owner === 'payton' ? 'Payton' : 'Papa' }}</span></td>
-                <td class="font-medium">{{ item.name }}<span v-if="item.isLongTerm" class="ml-1 text-xs bg-purple-500 text-white px-1 rounded">长线</span></td>
+                <td class="text-xs text-gray-400 font-mono" :title="item.sid"><button class="hover:text-blue-600" @click.stop="copySid(item.sid)">{{ item.sid?.length > 20 ? `${item.sid.slice(0, 8)}…${item.sid.slice(-4)}` : item.sid }}</button></td>
+                <td class="font-medium">{{ item.name }}<span v-if="item.isLongTerm" class="ml-1 text-xs bg-purple-500 text-white px-1 rounded">{{ store.currentOwner === 'payton' ? '自留' : '长线' }}</span></td>
                 <td>{{ item.brand }}</td>
                 <td><span class="bg-gray-100 px-2 py-1 rounded text-xs">{{ item.category }}</span> {{ item.batch }}</td>
                 <td class="font-semibold text-primary w-24">{{ fmtMoney(item.cost) }}</td>

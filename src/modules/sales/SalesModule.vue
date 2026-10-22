@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { calcProfit } from '../../utils/calc'
 import { addOperationLog, saveToLocalStorage, state as store } from '../../data/store'
-import { editSaleRecord, getSalesStats, submitSell } from './useSales'
+import { editSaleRecord, getOwnerInventory, getSalesStats, submitSell } from './useSales'
 
 const showAddModal = ref(false)
 const showEditModal = ref(false)
@@ -136,11 +136,9 @@ const filteredSoldItems = computed(() => {
   return list
 })
 
-const inventoryItems = computed(() =>
-  store.items.filter((item) => item?.status === 'inventory'),
-)
+const inventoryItems = computed(() => getOwnerInventory(store.items, store.currentOwner))
 
-const salesStats = computed(() => getSalesStats(store.items))
+const salesStats = computed(() => getSalesStats(soldItems.value))
 
 const addSelectedItem = computed(() =>
   inventoryItems.value.find((item) => item.id === addForm.itemId) || null,

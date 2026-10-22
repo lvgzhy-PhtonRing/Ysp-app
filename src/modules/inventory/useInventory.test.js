@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import sampleData from '../../__tests__/fixtures/sampleData.json'
 import { loadData, state as store } from '../../data/store'
-import { deleteItem, editItem, filterInventory, getInventoryStats } from './useInventory'
+import { deleteItem, editItem, filterInventory, getInventoryStats, sortInventoryItems } from './useInventory'
 
 describe('useInventory logic', () => {
   beforeEach(() => {
@@ -58,6 +58,26 @@ describe('useInventory logic', () => {
       expect(item.category).toBe('日淘')
       expect(item.isDefect).toBe(false)
     })
+  })
+
+  it('sorts inventory by name and brand in either direction without mutating input', () => {
+    const items = [
+      { id: 'z', name: 'Z-Car', brand: 'Alpha' },
+      { id: 'b', name: 'A-Car', brand: 'Beta' },
+      { id: 'a', name: 'A-Car', brand: 'Alpha' },
+    ]
+
+    expect(sortInventoryItems(items, 'name', 'asc').map((item) => item.id)).toEqual(['b', 'a', 'z'])
+    expect(sortInventoryItems(items, 'name', 'desc').map((item) => item.id)).toEqual(['z', 'b', 'a'])
+    expect(sortInventoryItems(items, 'brand', 'asc').map((item) => item.id)).toEqual(['z', 'a', 'b'])
+    expect(sortInventoryItems(items, 'brand', 'desc').map((item) => item.id)).toEqual(['b', 'z', 'a'])
+    expect(items.map((item) => item.id)).toEqual(['z', 'b', 'a'])
+  })
+
+  it('treats legacy items without an owner as Papa inventory', () => {
+    const legacy = { id: 'legacy', status: 'inventory' }
+    expect(filterInventory([legacy], { owner: 'papa' })).toEqual([legacy])
+    expect(filterInventory([legacy], { owner: 'payton' })).toEqual([])
   })
 
   it('test3 editItem', () => {

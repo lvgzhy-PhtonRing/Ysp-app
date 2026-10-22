@@ -78,6 +78,9 @@ export function getBatchReturnStats(items = []) {
   const allCategoryCostMap = {}
   items.forEach((item) => {
     const key = `${item?.category}|${item?.batch}`
+    if (item?.category && !categoryMap[item.category]) {
+      categoryMap[item.category] = { category: item.category, totalCost: 0, revenue: 0 }
+    }
     allCostMap[key] = (allCostMap[key] || 0) + Number(item?.cost || 0)
     allCategoryCostMap[item?.category] = (allCategoryCostMap[item?.category] || 0) + Number(item?.cost || 0)
     if (!batchMap[key]) {
@@ -94,7 +97,7 @@ export function getBatchReturnStats(items = []) {
   const saleGroups = {}
   items.forEach((item) => {
     if (item?.status !== 'sold') return
-    const groupKey = `${item?.sid || ''}|${item?.saleDetails?.date || ''}`
+    const groupKey = `${item?.owner || 'papa'}|${item?.sid || ''}|${item?.saleDetails?.date || ''}`
     if (!saleGroups[groupKey]) {
       saleGroups[groupKey] = {
         sid: item?.sid,
@@ -340,6 +343,7 @@ export function searchItems(items = [], keyword = '') {
     const cost = Number(item?.cost || 0)
     const transferCost = Number(p?.transferCost || 0)
     return [
+      String(item?.owner || 'papa'),
       String(item?.sid || ''),
       status,
       cost.toFixed(4),

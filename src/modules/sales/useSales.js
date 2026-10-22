@@ -189,11 +189,16 @@ export function getSalesStats(items = []) {
   }
 }
 
+export function getOwnerInventory(items = [], owner = 'papa') {
+  return items.filter((item) => item?.status === 'inventory' && (item?.owner || 'papa') === owner)
+}
+
 export function useSales() {
   return {
     submitSell,
     unlistItem,
     editSaleRecord,
     getSalesStats,
+    getOwnerInventory,
   }
 }

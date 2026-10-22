@@ -12,6 +12,8 @@ describe('PaytonFinanceModule', () => {
 
   it('renders the balance cards and required workflows', async () => {
     const html = await renderToString(h(PaytonFinanceModule))
+    expect(html).toContain('皮蛋金库')
+    expect(html).toContain('Payton Treasury')
     expect(html).toContain('零钱')
     expect(html).toContain('投资账户')
     expect(html).toContain('贷款剩余')

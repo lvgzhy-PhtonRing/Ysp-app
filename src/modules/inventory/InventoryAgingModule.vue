@@ -366,7 +366,7 @@ onBeforeUnmount(() => {
           :class="viewMode === 'long' ? 'ring-2 ring-purple-500' : ''"
           @click="viewMode = 'long'"
         >
-          长线库存
+          {{ store.currentOwner === 'payton' ? '自留库存' : '长线库存' }}
         </button>
         <button 
           class="btn btn-outline btn-sm px-4"

@@ -71,6 +71,7 @@ import {
   signOutCloudSession,
 } from './services/cloudStore'
 import { shouldWarnBeforeOverwrite, shouldWarnBeforeUploadLocal, downloadJsonBackup } from './services/dataProtection'
+import { shouldShowGlobalOwnerSwitch } from './utils/appNavigation'
 import {
   TAB_DISMISS_COOLDOWN_MS,
   TAB_HEARTBEAT_MS,
@@ -90,7 +91,7 @@ const tabs = [
   { id: 'purchase', name: '采购管理' },
   { id: 'rushcar', name: '美淘记录' },
   { id: 'finance', name: '公共收支' },
-  { id: 'payton-finance', name: 'Payton 资金管理' },
+  { id: 'payton-finance', name: '皮蛋金库' },
 ]
 
 const currentTab = ref('home')
@@ -1066,7 +1067,7 @@ watch(
     />
 
     <main :class="['flex-1 overflow-y-auto p-8', currentTab === 'inventory-aging' ? 'bg-sky-50/60' : '']">
-      <div class="mx-auto max-w-7xl mb-6 flex items-center justify-between">
+      <div v-if="shouldShowGlobalOwnerSwitch(currentTab)" class="mx-auto max-w-7xl mb-6 flex items-center justify-between">
         <div class="text-sm text-gray-500">当前数据归属</div>
         <div class="inline-flex rounded-xl bg-gray-100 p-1">
           <button v-for="owner in ['papa', 'payton']" :key="owner" class="rounded-lg px-4 py-2 text-sm font-semibold transition" :class="store.currentOwner === owner ? 'bg-white shadow text-blue-700' : 'text-gray-500'" @click="switchOwner(owner)">{{ owner === 'papa' ? 'Papa' : 'Payton' }}</button>
@@ -1100,7 +1101,7 @@ watch(
         </div>
       </div>
       <div class="mx-auto max-w-7xl space-y-6 pb-8">
-        <HomeModule v-if="currentTab === 'home'" />
+        <HomeModule v-if="currentTab === 'home'" @update-owner="switchOwner" />
         <InventoryModule v-else-if="currentTab === 'inventory'" @open-aging="currentTab = 'aging'" />
         <InventoryAgingModule v-else-if="currentTab === 'inventory-aging'" @back="currentTab = 'inventory'" />
         <InventoryAgingModule v-else-if="currentTab === 'aging'" />
