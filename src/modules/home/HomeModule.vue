@@ -189,6 +189,7 @@ function statusText(status) {
           <div class="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">
             <div class="text-sm font-bold text-sky-800">实际支付宝余额</div>
             <div class="text-3xl md:text-4xl font-extrabold text-sky-700 tracking-tight">{{ fmtCurrency(actualBalance) }}</div>
+            <div class="mt-1 text-[10px] leading-tight text-sky-700/70">较应有余额扣除：转运公司余额 {{ fmtCurrency(store.calc.forwarderBalance) }} · 皮蛋手表账户余额 {{ fmtCurrency(store.calc.watchBalance) }}</div>
           </div>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
@@ -214,7 +215,6 @@ function statusText(status) {
         </div>
       </div>
       <div class="flex flex-wrap items-center gap-2 mt-2 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-100 text-xs text-gray-500">
-        <span>实际余额扣除应有余额中包含的下列账户</span>
         <label>转运公司余额</label><input type="number" v-model.number="store.calc.forwarderBalance" class="w-20 px-1.5 py-0.5 border border-gray-200 rounded text-xs" @change="saveToLocalStorage()" />
         <label>皮蛋手表账户余额</label><input type="number" v-model.number="store.calc.watchBalance" class="w-20 px-1.5 py-0.5 border border-gray-200 rounded text-xs" @change="saveToLocalStorage()" />
       </div>
@@ -282,7 +282,7 @@ function statusText(status) {
       <div class="apple-card bg-gradient-to-br from-blue-50 to-white border-2 border-blue-100 shadow-lg p-5 md:p-7">
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
           <div class="flex flex-col justify-center text-center p-4 bg-white rounded-lg shadow-sm border border-gray-100 min-h-36"><div class="text-sm text-gray-500 mb-2 font-medium">库存总货值</div><div class="text-4xl md:text-5xl font-extrabold text-primary tracking-tight">{{ fmtMoney(inventoryValue) }}</div><div class="text-base text-gray-400 mt-1">库存 {{ inventoryCount }} 件</div></div>
-          <div class="flex flex-col justify-center text-center p-4 bg-white rounded-lg shadow-sm border border-gray-100 min-h-36"><div class="text-sm text-gray-500 mb-2 font-medium">上架短线货值</div><div class="text-4xl md:text-5xl font-extrabold text-purple-600 tracking-tight">{{ fmtMoney(inventoryValue - longTermValue) }}</div><div class="text-base text-gray-400 mt-1">库存 {{ inventoryCount - longTermCount }} 件</div></div>
+          <div class="flex flex-col justify-center text-center p-4 bg-white rounded-lg shadow-sm border border-gray-100 min-h-36"><div class="text-sm text-gray-500 mb-2 font-medium">{{ store.currentOwner === 'payton' ? '投资自留' : '上架短线货值' }}</div><div class="text-4xl md:text-5xl font-extrabold text-purple-600 tracking-tight">{{ fmtMoney(inventoryValue - longTermValue) }}</div><div class="text-base text-gray-400 mt-1">库存 {{ inventoryCount - longTermCount }} 件</div></div>
           <div class="flex flex-col justify-center text-center p-4 bg-white rounded-lg shadow-sm border border-gray-100 min-h-36"><div class="text-sm text-gray-500 mb-2 font-medium">总实盈利润</div><div class="text-4xl md:text-5xl font-extrabold tracking-tight" :class="totalActualProfit >= 0 ? 'text-success' : 'text-danger'">{{ fmtMoney(totalActualProfit) }}</div><div class="flex items-center justify-center gap-2 mt-1"><span class="text-base text-gray-400">利润率 {{ fmtNum(totalProfitMargin * 100) }}%</span><span class="text-xs text-gray-400">已扣除公共支出</span></div></div>
         </div>
       </div>

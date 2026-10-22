@@ -8,7 +8,7 @@ describe('HomeModule owner layout and balance display', () => {
   beforeEach(() => {
     loadData({
       items: [],
-      calc: { debt: 0, unconfirmed: 0, forwarderBalance: 0, watchBalance: 0 },
+      calc: { debt: 0, unconfirmed: 0, forwarderBalance: 0, watchBalance: 218.87 },
       ownerRegistry: {
         papa: {},
         payton: {
@@ -27,6 +27,12 @@ describe('HomeModule owner layout and balance display', () => {
     expect(positions.every((position) => position >= 0)).toBe(true)
     expect(positions).toEqual([...positions].sort((a, b) => a - b))
     expect(html).toContain('实际支付宝余额')
+    const actualBalanceTitle = html.indexOf('实际支付宝余额')
+    const actualBalanceDifference = html.indexOf('较应有余额扣除：转运公司余额 ¥0.00 · 皮蛋手表账户余额 ¥218.87')
+    const breakdownStart = html.indexOf('进 / 资金')
+    expect(actualBalanceDifference).toBeGreaterThan(actualBalanceTitle)
+    expect(actualBalanceDifference).toBeLessThan(breakdownStart)
+    expect(html).not.toContain('实际余额扣除应有余额中包含的下列账户')
     expect(html).toContain('−¥290.96')
     expect(html).toContain('¥366.54')
     expect(html).toContain('－ 贷款剩余')
@@ -57,5 +63,20 @@ describe('HomeModule owner layout and balance display', () => {
 
     expect(await renderInputs('papa')).toEqual({ loan: '6000.00', publicExpense: '20.00' })
     expect(await renderInputs('payton')).toEqual({ loan: '6000.00', publicExpense: '20.00' })
+  })
+
+  it('uses the Payton investment-retained label only for Payton inventory overview', async () => {
+    const renderForOwner = async (owner) => {
+      store.currentOwner = owner
+      return renderToString(h(HomeModule))
+    }
+
+    const papaHtml = await renderForOwner('papa')
+    expect(papaHtml).toContain('上架短线货值')
+    expect(papaHtml).not.toContain('投资自留')
+
+    const paytonHtml = await renderForOwner('payton')
+    expect(paytonHtml).toContain('投资自留')
+    expect(paytonHtml).not.toContain('上架短线货值')
   })
 })
