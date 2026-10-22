@@ -1067,9 +1067,9 @@ watch(
     />
 
     <main :class="['flex-1 overflow-y-auto p-5 md:p-6', currentTab === 'inventory-aging' ? 'bg-sky-50/60' : '']">
-      <div v-if="shouldShowGlobalOwnerSwitch(currentTab)" class="mx-auto max-w-7xl mb-3 flex justify-end">
-        <div class="inline-flex rounded-xl border border-blue-200 bg-white p-1.5 shadow-sm" aria-label="切换数据 Owner">
-          <button v-for="owner in ['papa', 'payton']" :key="owner" class="min-w-28 rounded-lg px-5 py-2.5 text-base font-bold transition" :class="store.currentOwner === owner ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-700'" :aria-pressed="store.currentOwner === owner" @click="switchOwner(owner)">{{ owner === 'papa' ? 'Papa' : 'Payton' }}</button>
+      <div v-if="shouldShowGlobalOwnerSwitch(currentTab)" class="mx-auto max-w-7xl mb-3 flex h-10 justify-end">
+        <div class="inline-flex h-10 items-center rounded-xl border border-blue-200 bg-white p-1 shadow-sm" aria-label="切换数据 Owner">
+          <button v-for="owner in ['papa', 'payton']" :key="owner" class="h-8 min-w-24 rounded-lg px-4 text-sm font-bold transition" :class="store.currentOwner === owner ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-700'" :aria-pressed="store.currentOwner === owner" @click="switchOwner(owner)">{{ owner === 'papa' ? 'Papa' : 'Payton' }}</button>
         </div>
       </div>
       <!-- 云端未连接警告 -->
@@ -1100,7 +1100,7 @@ watch(
         </div>
       </div>
       <div class="mx-auto max-w-7xl space-y-4 pb-8">
-        <HomeModule v-if="currentTab === 'home'" />
+        <HomeModule v-if="currentTab === 'home'" @update-owner="switchOwner" />
         <InventoryModule v-else-if="currentTab === 'inventory'" @open-aging="currentTab = 'aging'" />
         <InventoryAgingModule v-else-if="currentTab === 'inventory-aging'" @back="currentTab = 'inventory'" />
         <InventoryAgingModule v-else-if="currentTab === 'aging'" />

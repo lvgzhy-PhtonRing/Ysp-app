@@ -257,11 +257,8 @@ function formatAmount(v) {
       <!-- ===== 页面标题 ===== -->
       <div class="flex items-center justify-between">
         <div class="flex items-baseline gap-3">
-          <h2 class="text-3xl font-extrabold">市场价格</h2>
+          <h2 class="text-3xl leading-10 font-extrabold">市场价格</h2>
           <span class="text-base text-gray-400 font-light">Market Price</span>
-        </div>
-        <div class="text-xs text-gray-400">
-          <i class="fa-regular fa-clock mr-1"></i>{{ new Date().toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }}
         </div>
       </div>
 

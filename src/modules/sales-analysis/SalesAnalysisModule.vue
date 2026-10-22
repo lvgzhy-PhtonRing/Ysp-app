@@ -593,7 +593,7 @@ function toggleExpand(key) {
     <!-- 页面标题 -->
     <div class="flex items-center justify-between">
       <div class="flex items-baseline gap-3">
-        <h2 class="text-3xl font-extrabold">销售分析</h2>
+        <h2 class="text-3xl leading-10 font-extrabold">销售分析</h2>
         <span class="text-base text-gray-400 font-light">Sales Analysis</span>
       </div>
     </div>

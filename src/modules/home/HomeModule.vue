@@ -14,6 +14,8 @@ import { getPublicExpense } from '../finance/useFinance'
 import { buildAlipayBreakdown } from '../../utils/calc'
 import { getPaytonFund } from '../payton-finance/usePaytonFinance'
 
+const emit = defineEmits(['update-owner'])
+
 const now = computed(() => new Date())
 
 const currentItems = computed(() => store.items.filter((item) => (item?.owner || 'papa') === store.currentOwner))
@@ -161,7 +163,7 @@ function statusText(status) {
 <template>
   <div class="space-y-4">
     <div class="flex items-baseline gap-3 mb-3">
-      <h2 class="text-3xl font-extrabold">数据透视</h2>
+      <h2 class="text-3xl leading-10 font-extrabold">数据透视</h2>
       <span class="text-base text-gray-400 font-light">Data Insights</span>
     </div>
 
@@ -245,24 +247,27 @@ function statusText(status) {
       </div>
     </div>
 
-    <section class="rounded-2xl border border-blue-100 bg-blue-50/40 p-4 md:p-5 space-y-5">
+    <section class="apple-card bg-white space-y-5">
         <div class="flex flex-wrap items-center justify-between gap-3">
-        <div><h3 class="text-lg font-bold text-blue-900">Owner 经营数据</h3><p class="text-xs text-blue-700/70">以下五个模块按所选 Owner 展示</p></div>
+        <div><h3 class="text-lg font-bold text-gray-800">Owner 经营数据</h3><p class="text-xs text-gray-400">以下五个模块按所选 Owner 展示</p></div>
+        <div class="inline-flex h-9 items-center rounded-xl border border-blue-200 bg-white p-1 shadow-sm" aria-label="选择数据 Owner">
+          <button v-for="owner in ['papa', 'payton']" :key="owner" class="h-7 min-w-20 rounded-lg px-3 text-xs font-bold transition" :class="store.currentOwner === owner ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-700'" :aria-pressed="store.currentOwner === owner" @click="emit('update-owner', owner)">{{ owner === 'papa' ? 'Papa' : 'Payton' }}</button>
+        </div>
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <div class="apple-card">
+        <div class="apple-card bg-gray-50">
           <h3 class="text-lg font-semibold mb-4 text-gray-800"><i class="fa-solid fa-calendar-check text-blue-400 mr-2"></i>本月数据</h3>
           <div class="grid grid-cols-2 gap-4"><div class="bg-gray-50 p-4 rounded-xl border-l-4 border-primary"><div class="text-xs text-gray-500 mb-1">月销售额</div><div class="text-2xl font-bold text-gray-800">{{ fmtMoney(monthStats.revenue) }}</div></div><div class="bg-gray-50 p-4 rounded-xl border-l-4 border-warning"><div class="text-xs text-gray-500 mb-1">对应投入成本</div><div class="text-2xl font-bold text-gray-800">{{ fmtMoney(monthStats.cost) }}</div></div></div>
           <div class="mt-4 bg-gray-50 p-4 rounded-xl border-l-4 border-gray-400"><div class="text-xs text-gray-500 mb-1">月利润</div><div class="flex items-baseline gap-3"><span class="text-3xl font-bold" :class="monthStats.profit >= 0 ? 'text-gray-700' : 'text-danger'">{{ fmtMoney(monthStats.profit) }}</span><span class="text-sm text-gray-400">利润率 {{ monthStats.cost > 0 ? fmtNum((monthStats.profit / monthStats.cost) * 100) + '%' : '--' }}</span></div></div>
         </div>
-        <div class="apple-card">
+        <div class="apple-card bg-gray-50">
           <h3 class="text-lg font-semibold mb-4 text-gray-800"><i class="fa-solid fa-chart-simple text-blue-400 mr-2"></i>近三个月销售数据</h3>
           <div class="overflow-x-auto"><table class="apple-table text-sm"><thead><tr><th>月份</th><th class="text-right">件数</th><th class="text-right">回款</th><th class="text-right">成本</th><th class="text-right">利润</th><th class="text-right">利润率</th></tr></thead><tbody><tr v-for="m in last3MonthsStats" :key="m.year + '-' + m.month"><td>{{ m.year }}/{{ m.month }}</td><td class="text-right">{{ m.count }}</td><td class="text-right">{{ fmtMoney(m.revenue) }}</td><td class="text-right">{{ fmtMoney(m.cost) }}</td><td class="text-right" :class="m.profit >= 0 ? 'text-gray-700' : 'text-danger'">{{ fmtMoney(m.profit) }}</td><td class="text-right">{{ m.cost > 0 ? fmtNum((m.profit / m.cost) * 100) + '%' : '-' }}</td></tr></tbody></table></div>
         </div>
       </div>
 
-      <div class="apple-card">
+      <div class="apple-card bg-gray-50">
         <div class="flex flex-wrap items-center justify-between gap-4 bg-gradient-to-r from-yellow-100 via-yellow-50 to-orange-50 p-4 rounded-xl border border-yellow-300">
           <div class="flex items-baseline gap-2"><div class="text-4xl md:text-5xl font-extrabold text-warning drop-shadow-sm">{{ fmtMoney(purchaseStats.inProgressAmount) }}</div><div class="text-sm text-yellow-800 font-medium">采购中金额（含转运费）</div></div>
           <div class="flex gap-6"><div class="text-center"><div class="text-3xl font-bold text-warning">{{ purchaseStats.count }}</div><div class="text-xs text-gray-600">采购中(件)</div></div><div class="text-center"><div class="text-3xl font-bold text-gray-700">{{ purchaseStats.pendingCount }}</div><div class="text-xs text-gray-600">待转运(件)</div></div></div>
@@ -270,7 +275,7 @@ function statusText(status) {
         <div class="mt-3 flex flex-wrap gap-6 text-sm text-gray-500"><div>累计采购: <span class="font-medium text-warning">{{ fmtMoney(purchaseStats.purchaseAmount) }}</span></div><div>累计转运: <span class="font-medium text-[#5AC8FA]">{{ fmtMoney(purchaseStats.transferAmount) }}</span></div></div>
       </div>
 
-      <div class="apple-card bg-gradient-to-br from-blue-50 to-white border-2 border-blue-100 shadow-lg p-5 md:p-7">
+      <div class="apple-card bg-gray-50 p-5 md:p-7">
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
           <div class="flex flex-col justify-center text-center p-4 bg-white rounded-lg shadow-sm border border-gray-100 min-h-36"><div class="text-sm text-gray-500 mb-2 font-medium">{{ store.currentOwner === 'payton' ? '自留+投资总货值' : '库存总货值' }}</div><div class="text-4xl md:text-5xl font-extrabold text-primary tracking-tight">{{ fmtMoney(inventoryValue) }}</div><div class="text-base text-gray-400 mt-1">库存 {{ inventoryCount }} 件</div></div>
           <div class="flex flex-col justify-center text-center p-4 bg-white rounded-lg shadow-sm border border-gray-100 min-h-36"><div class="text-sm text-gray-500 mb-2 font-medium">{{ store.currentOwner === 'payton' ? '投资货值' : '上架短线货值' }}</div><div class="text-4xl md:text-5xl font-extrabold text-purple-600 tracking-tight">{{ fmtMoney(inventoryValue - longTermValue) }}</div><div class="text-base text-gray-400 mt-1">库存 {{ inventoryCount - longTermCount }} 件</div></div>

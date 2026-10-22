@@ -379,19 +379,16 @@ function confirmRemovePaymentCard(id) {
   <div class="space-y-4">
     <div class="flex items-center justify-between">
       <div class="flex items-baseline gap-3">
-        <h2 class="text-3xl font-extrabold">美淘记录</h2>
+        <h2 class="text-3xl leading-10 font-extrabold">美淘记录</h2>
         <span class="text-base text-gray-400 font-light">US Import Records</span>
       </div>
       <div class="flex items-center gap-3">
-        <div class="text-right text-xs text-gray-500 hidden md:block">
-          <div>数据源：{{ state.sourceLoadedFrom }}</div>
-          <div>加载日期：{{ state.loadedAt }}</div>
-        </div>
         <button v-if="state.activePage === 'history'" class="btn btn-primary" @click="openEntryModal">
           <i class="fa-solid fa-plus" /> 新增美淘记录
         </button>
       </div>
     </div>
+    <div class="-mt-3 text-xs text-gray-400">数据源：{{ state.sourceLoadedFrom }} · 加载日期：{{ state.loadedAt }}</div>
 
     <div class="apple-card p-2">
       <div class="flex gap-2">

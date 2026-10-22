@@ -311,7 +311,7 @@ watch(
 <template>
   <div class="space-y-4">
     <div class="flex items-baseline gap-3 mb-3">
-      <h2 class="text-3xl font-extrabold">销售记账</h2>
+      <h2 class="text-3xl leading-10 font-extrabold">销售记账</h2>
       <span class="text-base text-gray-400 font-light">Sales Bookkeeping</span>
     </div>
 

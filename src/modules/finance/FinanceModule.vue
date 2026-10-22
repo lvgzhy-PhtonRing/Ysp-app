@@ -288,7 +288,7 @@ watch(
   <div class="space-y-4">
     <div class="flex flex-wrap items-center justify-start gap-4 mb-3">
       <div class="flex items-baseline gap-3">
-        <h2 class="text-3xl font-extrabold">公共收支</h2>
+        <h2 class="text-3xl leading-10 font-extrabold">公共收支</h2>
         <span class="text-base text-gray-400 font-light">General Income &amp; Expenses</span>
       </div>
       <div class="flex flex-wrap justify-start gap-2">

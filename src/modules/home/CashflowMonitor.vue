@@ -215,7 +215,7 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
 </script>
 
 <template>
-  <div class="apple-card space-y-5">
+  <div class="apple-card bg-gray-50 space-y-5">
     <h3 class="text-lg font-semibold mb-4 text-gray-800"><i class="fa-solid fa-coins text-blue-500 mr-2"></i>现金流与负债监控</h3>
 
     <!-- 三指标卡片 -->

@@ -18,8 +18,13 @@ describe('AppSidebar owner navigation', () => {
     expect(payton).not.toContain('公共收支')
   })
 
-  it('places a live date and time beside the version in the sidebar header', async () => {
+  it('places the live date and time below operation logs in the sidebar', async () => {
     const html = await renderToString(h(AppSidebar, { tabs, currentTab: 'home', currentOwner: 'papa', version: '5.0.3' }))
-    expect(html).toMatch(/v5\.0\.3[\s\S]*20\d{2}[/-]\d{1,2}[/-]\d{1,2}\s+\d{2}:\d{2}/)
+    const versionPosition = html.indexOf('v5.0.3')
+    const logsPosition = html.indexOf('操作日志')
+    const clockPosition = html.indexOf('<time')
+    expect(versionPosition).toBeLessThan(logsPosition)
+    expect(logsPosition).toBeLessThan(clockPosition)
+    expect(html.slice(versionPosition, logsPosition)).not.toContain('<time')
   })
 })

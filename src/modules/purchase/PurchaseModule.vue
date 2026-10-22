@@ -1662,7 +1662,7 @@ watch(purchaseViewCategory, () => {
   <div class="space-y-4 max-w-7xl mx-auto">
     <div class="flex justify-between items-end mb-3">
       <div class="flex items-baseline gap-3">
-        <h2 class="text-3xl font-extrabold">采购管理</h2>
+        <h2 class="text-3xl leading-10 font-extrabold">采购管理</h2>
         <span class="text-base text-gray-400 font-light">Procurement Management</span>
       </div>
       <div class="flex gap-2">

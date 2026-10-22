@@ -85,9 +85,16 @@ describe('HomeModule owner layout and balance display', () => {
     expect(paytonHtml).not.toContain('上架短线货值')
   })
 
-  it('does not render a second owner switch inside the owner data group', async () => {
+  it('places the owner switch beside its group title and uses a white group with gray modules', async () => {
     const html = await renderToString(h(HomeModule))
-    const ownerGroup = html.slice(html.indexOf('Owner 经营数据'), html.indexOf('本月数据'))
-    expect(ownerGroup).not.toContain('选择数据 Owner')
+    const ownerStart = html.lastIndexOf('<section', html.indexOf('Owner 经营数据'))
+    const ownerEnd = html.indexOf('</section>', html.indexOf('Owner 经营数据'))
+    const ownerGroup = html.slice(ownerStart, ownerEnd)
+    expect(ownerGroup).toContain('选择数据 Owner')
+    expect(ownerGroup).toContain('apple-card bg-white')
+    const monthPosition = ownerGroup.indexOf('本月数据')
+    const monthCardPosition = ownerGroup.indexOf('apple-card bg-gray-50')
+    expect(monthCardPosition).toBeGreaterThanOrEqual(0)
+    expect(monthCardPosition).toBeLessThan(monthPosition)
   })
 })
