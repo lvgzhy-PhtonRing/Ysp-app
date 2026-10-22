@@ -10,15 +10,10 @@ import {
 } from './usePurchase'
 import { calcItemCost, calcPreTransferCost, calcTransferCost } from '../../utils/calc'
 import { addOperationLog, clone, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
+import { CATEGORY_BATCHES } from './purchaseOptions'
 
 const BRANDS = ['Hotwheels', 'MINIGT', 'TLV', 'Kyosho', 'Tomica', 'Matchbox', 'AR BOX', 'KingModel', 'Mortal', '其它']
 const PURCHASE_TABS = ['日淘', '美淘', '国内']
-const CATEGORY_BATCHES = {
-  美淘: ['26下半年', '26上半年', 'B组下半年', 'B组上半年', 'A组下半年', 'A组上半年', '美淘现货'],
-  日淘: ['26h批', '26g批', '26f批', '26e批', '预订', 'd批', 'c批', 'b批', 'a批'],
-  国内: ['MINIGT预定', 'Hotwheels预定', '国内现货', '代理预定', '2026苏州', '2026HK香港', '2026佛山'],
-  '2025JAPAN': ['2025JAPAN'],
-}
 
 const collapsedGroups = reactive({})
 const expandedTransfers = reactive({})
