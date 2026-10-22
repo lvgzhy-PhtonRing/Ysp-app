@@ -7,16 +7,11 @@ import { buildInventorySalePayload } from './sellPayload'
 import { calcProfit } from '../../utils/calc'
 import { addOperationLog, saveToLocalStorage, state as store } from '../../data/store'
 import { adjustPaytonBalance } from '../payton-finance/usePaytonFinance'
+import { DEFAULT_BATCHES } from './inventoryOptions'
 
 const emit = defineEmits(['open-aging'])
 
 const CATEGORY_OPTIONS = ['全部', '日淘', '美淘', '国内', '2025JAPAN', 'payton库存']
-const DEFAULT_BATCHES = {
-  美淘: ['26下半年', '26上半年', 'B组下半年', 'B组上半年', 'A组下半年', 'A组上半年'],
-  日淘: ['26h批', '26g批', '26f批', '26e批', '预订', 'd批', 'c批', 'b批', 'a批'],
-  国内: ['MINIGT预定', 'Hotwheels预定', '国内现货', '代理预定', '2026苏州', '2026HK香港', '2026佛山'],
-  '2025JAPAN': ['2025JAPAN'],
-}
 const CATEGORY_ORDER = ['日淘', '美淘', '国内', '2025JAPAN']
 const BRAND_ORDER = ['hotwheels', 'minigt', 'tlv', 'kyosho', 'tomica', 'matchbox', 'ar box', 'kingmodel', 'mortal', '其它']
 
@@ -62,6 +57,7 @@ function batchRank(category, batch) {
     if (b.includes('国内现货')) return 0
     if (b.includes('代理预定')) return 1
     if (b.includes('2026苏州')) return 2
+    if (b.includes('2026上海CTE')) return 3
     return 99
   }
   return 99
@@ -805,10 +801,6 @@ function submitSellItem() {
 
   showSellModal.value = false
   currentSellItem.value = null
-}
-
-function getBatchesByCategory(cat) {
-  return DEFAULT_BATCHES[cat] || []
 }
 
 onMounted(() => {
