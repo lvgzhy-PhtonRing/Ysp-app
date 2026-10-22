@@ -56,7 +56,7 @@ function editTransfer(transfer) {
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4">
     <div>
       <div class="flex items-baseline gap-3">
         <h2 class="text-3xl font-extrabold">皮蛋金库</h2>

@@ -863,14 +863,14 @@ watch(invFilterMode, (val) => {
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4">
     <!-- 页面标题 -->
-    <div class="flex items-center justify-between">
+    <div class="flex flex-wrap items-center justify-start gap-4 mb-3">
       <div class="flex items-baseline gap-3">
         <h2 class="text-3xl font-extrabold">库存管理</h2>
         <span class="text-base text-gray-400 font-light">Inventory Management</span>
       </div>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap items-center justify-start gap-2">
         <button class="btn btn-outline btn-sm" @click="openAdd">
           <i class="fa-solid fa-bolt" /> 手动快速入库
         </button>
@@ -917,21 +917,18 @@ watch(invFilterMode, (val) => {
       <div class="flex items-center justify-between gap-3 border-t border-gray-100 pt-4">
         <div class="flex flex-wrap gap-2">
           <button
-            class="px-3 py-1 text-xs rounded-full transition"
-            :class="invFilterMode==='all' ? '' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
-            :style="invFilterMode==='all' ? { backgroundColor: '#f3e8ff', color: '#7e22ce' } : {}"
+            class="rounded-full border px-4 py-2 text-sm font-semibold transition"
+            :class="invFilterMode==='all' ? 'border-purple-600 bg-purple-600 text-white' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'"
             @click="invFilterMode='all'; longTermFilter='all'"
           >{{ store.currentOwner === 'payton' ? '投资/自留' : '长短线' }}</button>
           <button
-            class="px-3 py-1 text-xs rounded-full transition"
-            :class="invFilterMode==='longterm' ? '' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
-            :style="invFilterMode==='longterm' ? { backgroundColor: '#f3e8ff', color: '#7e22ce' } : {}"
+            class="rounded-full border px-4 py-2 text-sm font-semibold transition"
+            :class="invFilterMode==='longterm' ? 'border-purple-600 bg-purple-600 text-white' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'"
             @click="invFilterMode='longterm'; longTermFilter='long'"
           >{{ store.currentOwner === 'payton' ? '仅自留' : '仅长线' }}</button>
           <button
-            class="px-3 py-1 text-xs rounded-full transition"
-            :class="invFilterMode==='shortterm' ? '' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
-            :style="invFilterMode==='shortterm' ? { backgroundColor: '#f3e8ff', color: '#7e22ce' } : {}"
+            class="rounded-full border px-4 py-2 text-sm font-semibold transition"
+            :class="invFilterMode==='shortterm' ? 'border-purple-600 bg-purple-600 text-white' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'"
             @click="invFilterMode='shortterm'; longTermFilter='short'"
           >{{ store.currentOwner === 'payton' ? '仅投资' : '仅短线' }}</button>
           <span class="border-l border-gray-300 mx-1"></span>

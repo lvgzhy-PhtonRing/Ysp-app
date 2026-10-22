@@ -309,12 +309,10 @@ watch(
 </script>
 
 <template>
-  <div class="space-y-6">
-    <div class="flex justify-between items-end mb-6">
-      <div class="flex items-baseline gap-3">
-        <h2 class="text-3xl font-extrabold">销售记账</h2>
-        <span class="text-base text-gray-400 font-light">Sales Bookkeeping</span>
-      </div>
+  <div class="space-y-4">
+    <div class="flex items-baseline gap-3 mb-3">
+      <h2 class="text-3xl font-extrabold">销售记账</h2>
+      <span class="text-base text-gray-400 font-light">Sales Bookkeeping</span>
     </div>
 
     <div class="grid grid-cols-3 gap-4">

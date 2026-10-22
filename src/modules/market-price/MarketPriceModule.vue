@@ -245,7 +245,7 @@ function formatAmount(v) {
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4">
     <!-- ===== 空状态 ===== -->
     <div v-if="allItems.length === 0" class="apple-card p-12 text-center">
       <i class="fa-solid fa-chart-line text-4xl text-gray-300 mb-4"></i>

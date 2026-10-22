@@ -1,3 +1,3 @@
 export function shouldShowGlobalOwnerSwitch(currentTab) {
-  return !['home', 'purchase', 'rushcar'].includes(currentTab)
+  return !['finance', 'payton-finance', 'purchase', 'rushcar'].includes(currentTab)
 }

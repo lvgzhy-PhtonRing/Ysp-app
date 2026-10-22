@@ -84,4 +84,10 @@ describe('HomeModule owner layout and balance display', () => {
     expect(paytonHtml).not.toContain('投资自留')
     expect(paytonHtml).not.toContain('上架短线货值')
   })
+
+  it('does not render a second owner switch inside the owner data group', async () => {
+    const html = await renderToString(h(HomeModule))
+    const ownerGroup = html.slice(html.indexOf('Owner 经营数据'), html.indexOf('本月数据'))
+    expect(ownerGroup).not.toContain('选择数据 Owner')
+  })
 })

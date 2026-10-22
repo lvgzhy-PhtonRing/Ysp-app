@@ -14,10 +14,7 @@ import { getPublicExpense } from '../finance/useFinance'
 import { buildAlipayBreakdown } from '../../utils/calc'
 import { getPaytonFund } from '../payton-finance/usePaytonFinance'
 
-const emit = defineEmits(['update-owner'])
-
 const now = computed(() => new Date())
-const todayDate = computed(() => now.value.toISOString().slice(0, 10))
 
 const currentItems = computed(() => store.items.filter((item) => (item?.owner || 'papa') === store.currentOwner))
 const papaItems = computed(() => store.items.filter((item) => (item?.owner || 'papa') === 'papa'))
@@ -162,13 +159,10 @@ function statusText(status) {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <div class="flex justify-between items-end">
-      <div class="flex items-baseline gap-3">
-        <h2 class="text-3xl font-extrabold">数据透视</h2>
-        <span class="text-base text-gray-400 font-light">Data Insights</span>
-      </div>
-      <div class="text-sm text-gray-400">当前日期: {{ todayDate }}</div>
+  <div class="space-y-4">
+    <div class="flex items-baseline gap-3 mb-3">
+      <h2 class="text-3xl font-extrabold">数据透视</h2>
+      <span class="text-base text-gray-400 font-light">Data Insights</span>
     </div>
 
     <div class="apple-card bg-gradient-to-br from-white to-gray-50 border-blue-100">
@@ -252,11 +246,8 @@ function statusText(status) {
     </div>
 
     <section class="rounded-2xl border border-blue-100 bg-blue-50/40 p-4 md:p-5 space-y-5">
-      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
         <div><h3 class="text-lg font-bold text-blue-900">Owner 经营数据</h3><p class="text-xs text-blue-700/70">以下五个模块按所选 Owner 展示</p></div>
-        <div class="inline-flex rounded-xl bg-white/80 p-1 shadow-sm" aria-label="选择数据 Owner">
-          <button v-for="owner in ['papa', 'payton']" :key="owner" class="rounded-lg px-4 py-2 text-sm font-semibold transition" :class="store.currentOwner === owner ? 'bg-blue-600 text-white shadow' : 'text-gray-500 hover:text-gray-800'" @click="emit('update-owner', owner)">{{ owner === 'papa' ? 'Papa' : 'Payton' }}</button>
-        </div>
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">

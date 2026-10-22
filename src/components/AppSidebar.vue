@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 
 const props = defineProps({
   tabs: {
@@ -27,6 +27,21 @@ const props = defineProps({
 const emit = defineEmits(['select', 'import', 'export', 'cloud', 'logs', 'help'])
 
 const dataOpsOpen = ref(false)
+const currentDateTime = ref(formatDateTime())
+let clockTimer
+
+function formatDateTime() {
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).format(new Date())
+}
+
+onMounted(() => {
+  clockTimer = window.setInterval(() => { currentDateTime.value = formatDateTime() }, 60_000)
+})
+
+onBeforeUnmount(() => window.clearInterval(clockTimer))
 
 function toggleDataOps() {
   dataOpsOpen.value = !dataOpsOpen.value
@@ -80,9 +95,12 @@ function getGroupTabs(group) {
 <template>
   <aside class="z-10 flex h-screen w-64 shrink-0 flex-col border-r border-gray-200 bg-white relative">
     <div class="flex-1">
-      <div class="h-24 border-b border-gray-100 px-6 py-5">
+      <div class="h-20 border-b border-gray-100 px-5 py-4">
         <div class="font-bold text-xl tracking-wide text-gray-800">PhtonRing在哪儿</div>
-        <div class="mt-1 text-xs text-gray-400">v{{ version }}</div>
+        <div class="mt-1 flex items-center justify-between gap-2 text-[11px] text-gray-400">
+          <span>v{{ version }}</span>
+          <time>{{ currentDateTime }}</time>
+        </div>
       </div>
 
       <nav class="space-y-4 p-4">

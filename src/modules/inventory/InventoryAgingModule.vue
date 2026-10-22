@@ -346,31 +346,31 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4">
     <!-- 页面标题 -->
-    <div class="flex items-center justify-between">
+    <div class="flex flex-wrap items-center justify-start gap-4 mb-3">
       <div class="flex items-baseline gap-3">
         <h2 class="text-3xl font-extrabold">账龄分析</h2>
         <span class="text-base text-gray-400 font-light">Inventory Aging Analysis</span>
       </div>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap justify-start gap-2">
         <button 
-          class="btn btn-outline btn-sm px-4"
-          :class="viewMode === 'all' ? 'ring-2 ring-sky-500' : ''"
+          class="rounded-full border px-4 py-2 text-sm font-semibold transition"
+          :class="viewMode === 'all' ? 'border-sky-600 bg-sky-600 text-white' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'"
           @click="viewMode = 'all'"
         >
           所有库存
         </button>
         <button 
-          class="btn btn-outline btn-sm px-4"
-          :class="viewMode === 'long' ? 'ring-2 ring-purple-500' : ''"
+          class="rounded-full border px-4 py-2 text-sm font-semibold transition"
+          :class="viewMode === 'long' ? 'border-purple-600 bg-purple-600 text-white' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'"
           @click="viewMode = 'long'"
         >
           {{ store.currentOwner === 'payton' ? '自留库存' : '长线库存' }}
         </button>
         <button 
-          class="btn btn-outline btn-sm px-4"
-          :class="viewMode === 'short' ? 'ring-2 ring-blue-500' : ''"
+          class="rounded-full border px-4 py-2 text-sm font-semibold transition"
+          :class="viewMode === 'short' ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'"
           @click="viewMode = 'short'"
         >
           短线库存

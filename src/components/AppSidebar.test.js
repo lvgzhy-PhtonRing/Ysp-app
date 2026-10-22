@@ -17,4 +17,9 @@ describe('AppSidebar owner navigation', () => {
     expect(payton).toContain('皮蛋金库')
     expect(payton).not.toContain('公共收支')
   })
+
+  it('places a live date and time beside the version in the sidebar header', async () => {
+    const html = await renderToString(h(AppSidebar, { tabs, currentTab: 'home', currentOwner: 'papa', version: '5.0.3' }))
+    expect(html).toMatch(/v5\.0\.3[\s\S]*20\d{2}[/-]\d{1,2}[/-]\d{1,2}\s+\d{2}:\d{2}/)
+  })
 })

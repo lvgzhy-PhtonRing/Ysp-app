@@ -589,7 +589,7 @@ function toggleExpand(key) {
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4">
     <!-- 页面标题 -->
     <div class="flex items-center justify-between">
       <div class="flex items-baseline gap-3">
