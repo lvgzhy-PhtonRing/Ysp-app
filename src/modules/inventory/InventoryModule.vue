@@ -2,6 +2,8 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { deleteItem, editItem, filterInventory, getInventoryStats, sortInventoryItems, submitManualAdd } from './useInventory'
 import { submitSell } from '../sales/useSales'
+import { DEFAULT_SALES_CHANNEL, SALES_CHANNELS } from '../sales/salesChannels'
+import { buildInventorySalePayload } from './sellPayload'
 import { calcProfit } from '../../utils/calc'
 import { addOperationLog, saveToLocalStorage, state as store } from '../../data/store'
 import { adjustPaytonBalance } from '../payton-finance/usePaytonFinance'
@@ -88,6 +90,7 @@ const sellForm = reactive({
   feeRate: 0,
   deduction: 0,
   date: new Date().toISOString().slice(0, 10),
+  shop: DEFAULT_SALES_CHANNEL,
 })
 
 const filters = reactive({
@@ -754,6 +757,7 @@ function openSellModal(item) {
   sellForm.feeRate = 0
   sellForm.deduction = 0
   sellForm.date = new Date().toISOString().slice(0, 10)
+  sellForm.shop = DEFAULT_SALES_CHANNEL
   showSellModal.value = true
 }
 
@@ -764,17 +768,7 @@ function submitSellItem() {
 
   const soldItems = []
   itemIds.forEach((id, idx) => {
-    const qty = Number(itemIds.length || 1)
-    const avgPrice = Number(sellForm.price || 0) / qty
-    const soldItem = submitSell(id, {
-      price: idx === itemIds.length - 1
-        ? Number(sellForm.price || 0) - avgPrice * (itemIds.length - 1)
-        : avgPrice,
-      express: idx === 0 ? Number(sellForm.express || 0) : 0,
-      feeRate: Number(sellForm.feeRate || 0),
-      deduction: idx === 0 ? Number(sellForm.deduction || 0) : 0,
-      date: sellForm.date,
-    }, { skipLog: true })
+    const soldItem = submitSell(id, buildInventorySalePayload(sellForm, idx, itemIds.length), { skipLog: true })
     if (soldItem) soldItems.push(soldItem)
   })
 
@@ -1219,10 +1213,22 @@ watch(invFilterMode, (val) => {
         <button @click="showSellModal = false" class="absolute top-4 right-4 text-gray-400 hover:text-gray-800"><i class="fa-solid fa-xmark text-xl"></i></button>
         <div class="text-center mb-6">
           <h3 class="text-2xl font-bold text-gray-900">卖出成交</h3>
-          <p class="text-sm text-gray-500 mt-1">{{ currentSellItem?.name }}</p>
+          <div class="mt-2 flex items-center justify-center gap-2">
+            <p class="text-sm font-medium text-gray-700">{{ currentSellItem?.name }}</p>
+            <span
+              class="inline-flex items-center rounded-full px-3 py-1 text-xs font-extrabold shadow-sm ring-1 ring-inset"
+              :class="currentSellItem?.owner === 'payton' ? 'bg-purple-600 text-white ring-purple-700' : 'bg-blue-600 text-white ring-blue-700'"
+            >{{ currentSellItem?.owner === 'payton' ? 'PAYTON' : 'PAPA' }}</span>
+          </div>
           <p class="text-xs text-gray-400">可售数量: {{ maxSellQty }} 件</p>
         </div>
         <div class="space-y-4">
+          <div class="flex justify-between items-center border-b pb-2">
+            <label for="inventorySaleShop" class="text-sm font-semibold text-gray-700">销售渠道</label>
+            <select id="inventorySaleShop" v-model="sellForm.shop" class="apple-select w-40 text-sm font-semibold">
+              <option v-for="shop in SALES_CHANNELS" :key="shop" :value="shop">{{ shop }}</option>
+            </select>
+          </div>
           <div class="flex justify-between items-center border-b pb-2">
             <label class="text-sm text-gray-600">售出数量</label>
             <input type="number" min="1" :max="maxSellQty" v-model.number="sellForm.qty" class="text-right w-24 border-none focus:ring-0 bg-transparent text-sm" placeholder="1">
