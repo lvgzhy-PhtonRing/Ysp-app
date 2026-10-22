@@ -1066,9 +1066,9 @@ watch(
       @help="showDataHelp = true"
     />
 
-    <main :class="['flex-1 overflow-y-auto p-5 md:p-6', currentTab === 'inventory-aging' ? 'bg-sky-50/60' : '']">
-      <div v-if="shouldShowGlobalOwnerSwitch(currentTab)" class="mx-auto max-w-7xl mb-3 flex h-10 justify-end">
-        <div class="inline-flex h-10 items-center rounded-xl border border-blue-200 bg-white p-1 shadow-sm" aria-label="切换数据 Owner">
+    <main :class="['relative flex-1 overflow-y-auto p-5 md:p-6', currentTab === 'inventory-aging' ? 'bg-sky-50/60' : '']">
+      <div v-if="shouldShowGlobalOwnerSwitch(currentTab)" class="pointer-events-none absolute inset-x-0 top-0 z-10 mx-auto flex h-10 max-w-7xl justify-end">
+        <div class="pointer-events-auto inline-flex h-10 items-center rounded-xl border border-blue-200 bg-white p-1 shadow-sm" aria-label="切换数据 Owner">
           <button v-for="owner in ['papa', 'payton']" :key="owner" class="h-8 min-w-24 rounded-lg px-4 text-sm font-bold transition" :class="store.currentOwner === owner ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-700'" :aria-pressed="store.currentOwner === owner" @click="switchOwner(owner)">{{ owner === 'papa' ? 'Papa' : 'Payton' }}</button>
         </div>
       </div>
