@@ -23,6 +23,10 @@ describe('SalesModule owner scope', () => {
     }
 
     const papaHtml = await renderOwner('papa')
+    expect(papaHtml).toContain('销售渠道')
+    expect(papaHtml).toContain('PhtonRIng')
+    expect(papaHtml).toContain('侧空翻棉')
+    expect(papaHtml).toContain('其它')
     expect(papaHtml).toContain('累计成交</div><div class="text-2xl font-bold text-gray-800">1 <span')
     expect(papaHtml).toContain('成交总额</div><div class="text-2xl font-bold text-gray-800">100.00</div>')
     const paytonHtml = await renderOwner('payton')

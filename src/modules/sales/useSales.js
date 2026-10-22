@@ -3,6 +3,7 @@
 import { calcProfit } from '../../utils/calc'
 import { addOperationLog, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
 import { adjustPaytonBalance, getPaytonAccountForItem } from '../payton-finance/usePaytonFinance'
+import { DEFAULT_SALES_CHANNEL, inferLegacySalesChannel, isSalesChannel } from './salesChannels'
 
 function toNumber(value, fallback = 0) {
   const n = Number(value)
@@ -47,6 +48,7 @@ export function submitSell(itemId, saleData = {}, options = {}) {
   const feeRate = toNumber(saleData.feeRate)
   const deduction = toNumber(saleData.deduction)
   const date = saleData.date || ''
+  const shop = isSalesChannel(saleData.shop) ? saleData.shop : DEFAULT_SALES_CHANNEL
   const soldAt = toPositiveTimestamp(saleData.soldAt)
 
   const profit = calcProfit(price, express, feeRate, deduction, toNumber(item.cost))
@@ -61,6 +63,7 @@ export function submitSell(itemId, saleData = {}, options = {}) {
     feeRate,
     deduction,
     date,
+    shop,
     soldAt,
     profit,
   }
@@ -78,6 +81,7 @@ export function submitSell(itemId, saleData = {}, options = {}) {
       express,
       feeRate,
       deduction,
+      shop,
       date,
       soldAt,
       profit,
@@ -128,6 +132,7 @@ export function editSaleRecord(itemId, newSaleData = {}) {
   const express = toNumber(merged.express)
   const feeRate = toNumber(merged.feeRate)
   const deduction = toNumber(merged.deduction)
+  const shop = isSalesChannel(merged.shop) ? merged.shop : inferLegacySalesChannel(merged.date)
   const soldAt = toPositiveTimestamp(merged.soldAt, Number(item?.saleDetails?.soldAt || item?.id || 0))
 
   const beforeSaleDetails = {
@@ -142,6 +147,7 @@ export function editSaleRecord(itemId, newSaleData = {}) {
     express,
     feeRate,
     deduction,
+    shop,
     soldAt,
     profit: calcProfit(price, express, feeRate, deduction, toNumber(item.cost)),
   }

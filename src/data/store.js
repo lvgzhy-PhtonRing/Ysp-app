@@ -61,6 +61,7 @@ export const FIELD_LABEL_MAP = {
   isDefect: '品相', isLongTerm: '长线',
   marketPrices: '市场价格',
   price: '售价', express: '运费', feeRate: '费率', deduction: '扣减',
+  shop: '销售渠道',
   totalRMB: '总RMB', paymentBatch: '支付批次', paymentAccount: '支付账户',
   exchangeRate: '汇率', originalPrice: '日元原价', domesticShipping: '国内运费',
   transferCoefficient: '分摊系数',

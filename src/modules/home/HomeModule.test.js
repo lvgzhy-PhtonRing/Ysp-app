@@ -65,18 +65,23 @@ describe('HomeModule owner layout and balance display', () => {
     expect(await renderInputs('payton')).toEqual({ loan: '6000.00', publicExpense: '20.00' })
   })
 
-  it('uses the Payton investment-retained label only for Payton inventory overview', async () => {
+  it('uses Payton-specific retained and investment labels only in Payton inventory overview', async () => {
     const renderForOwner = async (owner) => {
       store.currentOwner = owner
-      return renderToString(h(HomeModule))
+      const html = await renderToString(h(HomeModule))
+      return html.slice(html.indexOf('Owner 经营数据'), html.indexOf('现金流与负债监控'))
     }
 
     const papaHtml = await renderForOwner('papa')
+    expect(papaHtml).toContain('库存总货值')
     expect(papaHtml).toContain('上架短线货值')
     expect(papaHtml).not.toContain('投资自留')
+    expect(papaHtml).not.toContain('自留+投资总货值')
 
     const paytonHtml = await renderForOwner('payton')
-    expect(paytonHtml).toContain('投资自留')
+    expect(paytonHtml).toContain('自留+投资总货值')
+    expect(paytonHtml).toContain('投资货值')
+    expect(paytonHtml).not.toContain('投资自留')
     expect(paytonHtml).not.toContain('上架短线货值')
   })
 })

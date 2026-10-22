@@ -1,3 +1,5 @@
+import { inferLegacySalesChannel, isSalesChannel } from '../../modules/sales/salesChannels'
+
 const DEFAULT_OWNER_REGISTRY = {
   papa: { label: 'Papa', source: 'native' },
   payton: {
@@ -16,6 +18,9 @@ export function migratePayload(payload) {
   if (!Array.isArray(data.finance.loans)) data.finance.loans = []
   for (const item of Array.isArray(data.items) ? data.items : []) {
     if (item && typeof item === 'object' && !item.owner) item.owner = 'papa'
+    if (item?.status === 'sold' && item.saleDetails && typeof item.saleDetails === 'object' && !isSalesChannel(item.saleDetails.shop)) {
+      item.saleDetails.shop = inferLegacySalesChannel(item.saleDetails.date)
+    }
   }
   for (const record of [...data.finance.records, ...data.finance.loans]) {
     if (record && typeof record === 'object' && !record.owner) record.owner = 'papa'

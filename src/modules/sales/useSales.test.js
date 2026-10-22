@@ -3,6 +3,7 @@ import sampleData from '../../__tests__/fixtures/sampleData.json'
 import { loadData, state as store } from '../../data/store'
 import { calcAlipayBalance } from '../../utils/calc'
 import { editSaleRecord, getOwnerInventory, getSalesStats, submitSell } from './useSales'
+import { DEFAULT_SALES_CHANNEL, filterSalesByShop, SALES_CHANNELS } from './salesChannels'
 
 describe('useSales logic', () => {
   beforeEach(() => {
@@ -32,8 +33,37 @@ describe('useSales logic', () => {
     })
 
     expect(item.status).toBe('sold')
+    expect(item.saleDetails.shop).toBe('PhtonRIng')
     const expected = 500 - 10 - 500 * 0.05 - 0 - Number(item.cost)
     expect(Number(item.saleDetails.profit)).toBeCloseTo(expected, 2)
+  })
+
+  it('filters the current sales rows by shop while keeping the all-shops view intact', () => {
+    const sales = [
+      { id: 'phton', status: 'sold', cost: 70, saleDetails: { shop: 'PhtonRIng', price: 100, profit: 30 } },
+      { id: 'side', status: 'sold', cost: 150, saleDetails: { shop: '侧空翻棉', price: 200, profit: 50 } },
+      { id: 'other', status: 'sold', cost: 40, saleDetails: { shop: '其它', price: 60, profit: 20 } },
+    ]
+
+    expect(filterSalesByShop(sales, '全部')).toEqual(sales)
+    expect(filterSalesByShop(sales, '侧空翻棉').map((item) => item.id)).toEqual(['side'])
+    expect(filterSalesByShop(sales, '其它').map((item) => item.id)).toEqual(['other'])
+    expect(getSalesStats(filterSalesByShop(sales, '侧空翻棉'))).toMatchObject({
+      totalSoldCount: 1,
+      totalRevenue: 200,
+      totalProfit: 50,
+    })
+  })
+
+  it('supports the three shop choices and saves selected shop changes when editing a sale', () => {
+    expect(SALES_CHANNELS).toEqual(['PhtonRIng', '侧空翻棉', '其它'])
+    loadData({ items: [{ id: 'shop-sale', status: 'inventory', cost: 10 }] })
+    submitSell('shop-sale', { price: 20, date: '2026-10-20', shop: '侧空翻棉' })
+    expect(store.items[0].saleDetails.shop).toBe('侧空翻棉')
+
+    editSaleRecord('shop-sale', { shop: '其它' })
+    expect(store.items[0].saleDetails.shop).toBe('其它')
+    expect(DEFAULT_SALES_CHANNEL).toBe('PhtonRIng')
   })
 
   it('test2 getSalesStats', () => {

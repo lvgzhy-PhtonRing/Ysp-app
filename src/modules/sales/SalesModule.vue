@@ -3,69 +3,19 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { calcProfit } from '../../utils/calc'
 import { addOperationLog, saveToLocalStorage, state as store } from '../../data/store'
 import { editSaleRecord, getOwnerInventory, getSalesStats, submitSell } from './useSales'
+import { DEFAULT_SALES_CHANNEL, filterSalesByShop, SALES_CHANNELS } from './salesChannels'
 
 const showAddModal = ref(false)
 const showEditModal = ref(false)
 const collapsedSalesGroups = reactive({})
-const salesViewMode = ref('month')
 const salesCollapseStorageKey = 'ysp_ui_sales_collapse'
-const salesViewModeStorageKey = 'ysp_ui_sales_view_mode'
 const salesFiltersStorageKey = 'ysp_ui_sales_filters'
-const CATEGORY_ORDER = ['日淘', '美淘', '国内', '2025JAPAN']
-const BRAND_ORDER = ['hotwheels', 'minigt', 'tlv', 'kyosho', 'tomica', 'matchbox', 'ar box', 'kingmodel', 'mortal', '其它']
-
-function normalizeBrand(brand) {
-  return String(brand || '').trim().toLowerCase()
-}
-
-function brandRank(brand) {
-  const n = normalizeBrand(brand)
-  const idx = BRAND_ORDER.indexOf(n)
-  return idx >= 0 ? idx : 99
-}
-
-function categoryRank(category) {
-  const idx = CATEGORY_ORDER.indexOf(String(category || ''))
-  return idx >= 0 ? idx : 99
-}
-
-function batchRank(category, batch) {
-  const b = String(batch || '').trim().toLowerCase()
-  if (category === '日淘') {
-    if (b.includes('26h')) return 0
-    if (b.includes('26g')) return 1
-    if (b.includes('26f')) return 2
-    if (b.includes('26e')) return 3
-    if (b.includes('预订')) return 4
-    if (b === 'd' || b.includes('d批')) return 5
-    if (b === 'c' || b.includes('c批')) return 6
-    if (b === 'b' || b.includes('b批')) return 7
-    if (b === 'a' || b.includes('a批')) return 8
-    return 99
-  }
-  if (category === '美淘') {
-    if (b.includes('26下半年')) return 0
-    if (b.includes('26上半年')) return 1
-    if (b.includes('b组下半年')) return 2
-    if (b.includes('b组上半年')) return 3
-    if (b.includes('a组下半年')) return 4
-    if (b.includes('a组上半年')) return 5
-    return 99
-  }
-  if (category === '国内') {
-    if (b.includes('国内现货')) return 0
-    if (b.includes('代理预定')) return 1
-    if (b.includes('2026苏州')) return 2
-    return 99
-  }
-  return 99
-}
-
 const filters = reactive({
   category: '全部',
   batch: '全部',
   keyword: '',
 })
+const selectedShop = ref('全部')
 
 const addForm = reactive({
   itemId: null,
@@ -73,6 +23,7 @@ const addForm = reactive({
   express: 0,
   feeRate: 0,
   deduction: 0,
+  shop: DEFAULT_SALES_CHANNEL,
   date: new Date().toISOString().slice(0, 10),
 })
 
@@ -82,6 +33,7 @@ const editForm = reactive({
   express: 0,
   feeRate: 0,
   deduction: 0,
+  shop: DEFAULT_SALES_CHANNEL,
   date: '',
 })
 
@@ -91,7 +43,7 @@ const soldItems = computed(() =>
 
 const saleCategoryOptions = computed(() => {
   const set = new Set(['全部'])
-  soldItems.value.forEach((item) => {
+  shopFilteredItems.value.forEach((item) => {
     if (item?.category) set.add(item.category)
   })
   return Array.from(set)
@@ -100,13 +52,13 @@ const saleCategoryOptions = computed(() => {
 const saleBatchOptions = computed(() => {
   if (filters.category === '全部') {
     const all = new Set(['全部'])
-    soldItems.value.forEach((item) => {
+    shopFilteredItems.value.forEach((item) => {
       if (item?.batch) all.add(item.batch)
     })
     return Array.from(all)
   }
   const set = new Set(['全部'])
-  soldItems.value.forEach((item) => {
+  shopFilteredItems.value.forEach((item) => {
     if (item?.category === filters.category && item?.batch) set.add(item.batch)
   })
   return Array.from(set)
@@ -119,7 +71,7 @@ function normalizeFuzzy(text) {
 }
 
 const filteredSoldItems = computed(() => {
-  let list = soldItems.value
+  let list = shopFilteredItems.value
   if (filters.category !== '全部') {
     list = list.filter((item) => item?.category === filters.category)
   }
@@ -138,7 +90,8 @@ const filteredSoldItems = computed(() => {
 
 const inventoryItems = computed(() => getOwnerInventory(store.items, store.currentOwner))
 
-const salesStats = computed(() => getSalesStats(soldItems.value))
+const shopFilteredItems = computed(() => filterSalesByShop(soldItems.value, selectedShop.value))
+const salesStats = computed(() => getSalesStats(shopFilteredItems.value))
 
 const addSelectedItem = computed(() =>
   inventoryItems.value.find((item) => item.id === addForm.itemId) || null,
@@ -181,31 +134,14 @@ function compareSoldItemsDesc(a, b) {
   return Number(b?.id || 0) - Number(a?.id || 0)
 }
 
-function compareGroupsByLatestSaleDesc(a, b) {
-  const ai = a?.items?.[0]
-  const bi = b?.items?.[0]
-  if (ai && bi) {
-    const cmp = compareSoldItemsDesc(ai, bi)
-    if (cmp !== 0) return cmp
-  }
-  if (ai && !bi) return -1
-  if (!ai && bi) return 1
-  return String(a?.key || '').localeCompare(String(b?.key || ''), 'zh-CN')
-}
-
 const groupedSalesList = computed(() => {
   const map = new Map()
 
   filteredSoldItems.value.forEach((item) => {
-    let key = '全部'
-    if (salesViewMode.value === 'all') key = String(item.id)
-    if (salesViewMode.value === 'month') key = item.saleDetails?.date?.slice(0, 7) || '未记录月份'
-    if (salesViewMode.value === 'category') key = item.category || '未分类'
-    if (salesViewMode.value === 'batch') key = `${item.category || '未分类'} / ${item.batch || '未分批'}`
-    if (salesViewMode.value === 'brand') key = item.brand || '未分类品牌'
+    const key = item.saleDetails?.date?.slice(0, 7) || '未记录月份'
 
     if (!map.has(key)) {
-      map.set(key, { key, title: salesViewMode.value === 'all' ? `${item.sid || ''} / ${item.name || ''}` : key, items: [], count: 0, revenue: 0, cost: 0, profit: 0 })
+      map.set(key, { key, items: [], count: 0, revenue: 0, cost: 0, profit: 0 })
     }
     const g = map.get(key)
     g.items.push(item)
@@ -220,46 +156,7 @@ const groupedSalesList = computed(() => {
     g.items.sort(compareSoldItemsDesc)
   })
 
-  if (salesViewMode.value === 'all') {
-    return list.sort(compareGroupsByLatestSaleDesc)
-  }
-  if (salesViewMode.value === 'month') {
-    return list.sort((a, b) => String(b.key).localeCompare(String(a.key)))
-  }
-  if (salesViewMode.value === 'category') {
-    return list.sort((a, b) => {
-      const x = categoryRank(a.key)
-      const y = categoryRank(b.key)
-      if (x !== y) return x - y
-      return String(a.key).localeCompare(String(b.key), 'zh-CN')
-    })
-  }
-  if (salesViewMode.value === 'batch') {
-    return list.sort((a, b) => {
-      const [ca, ba] = String(a.key || '').split(' / ')
-      const [cb, bb] = String(b.key || '').split(' / ')
-      const c1 = categoryRank(ca)
-      const c2 = categoryRank(cb)
-      if (c1 !== c2) return c1 - c2
-      const br1 = batchRank(ca, ba)
-      const br2 = batchRank(cb, bb)
-      if (br1 !== br2) return br1 - br2
-      return String(ba).localeCompare(String(bb), 'zh-CN')
-    })
-  }
-  if (salesViewMode.value === 'brand') {
-    return list.sort((a, b) => {
-      const r1 = brandRank(a.key)
-      const r2 = brandRank(b.key)
-      if (r1 !== r2) return r1 - r2
-      return String(a.key).localeCompare(String(b.key), 'zh-CN')
-    })
-  }
-  return list.sort((a, b) => {
-    const cmp = compareGroupsByLatestSaleDesc(a, b)
-    if (cmp !== 0) return cmp
-    return String(a.key).localeCompare(String(b.key), 'zh-CN')
-  })
+  return list.sort((a, b) => String(b.key).localeCompare(String(a.key)))
 })
 
 function fmtMoney(v) {
@@ -281,6 +178,7 @@ function openAddSaleModal() {
   addForm.express = 0
   addForm.feeRate = 0
   addForm.deduction = 0
+  addForm.shop = DEFAULT_SALES_CHANNEL
   addForm.date = new Date().toISOString().slice(0, 10)
   showAddModal.value = true
 }
@@ -292,6 +190,7 @@ function submitAddSale() {
     express: Number(addForm.express || 0),
     feeRate: Number(addForm.feeRate || 0),
     deduction: Number(addForm.deduction || 0),
+    shop: addForm.shop,
     date: addForm.date,
   })
   showAddModal.value = false
@@ -303,6 +202,7 @@ function openEditSale(item) {
   editForm.express = Number(item.saleDetails?.express || 0)
   editForm.feeRate = Number(item.saleDetails?.feeRate || 0)
   editForm.deduction = Number(item.saleDetails?.deduction || 0)
+  editForm.shop = item.saleDetails?.shop || DEFAULT_SALES_CHANNEL
   editForm.date = item.saleDetails?.date || ''
   showEditModal.value = true
 }
@@ -314,6 +214,7 @@ function submitEditSale() {
     express: Number(editForm.express || 0),
     feeRate: Number(editForm.feeRate || 0),
     deduction: Number(editForm.deduction || 0),
+    shop: editForm.shop,
     date: editForm.date,
   })
   showEditModal.value = false
@@ -353,7 +254,7 @@ function collapseAllSalesGroups() {
 }
 
 function resetSalesViewState() {
-  salesViewMode.value = 'month'
+  selectedShop.value = '全部'
   filters.category = '全部'
   filters.batch = '全部'
   filters.keyword = ''
@@ -361,28 +262,13 @@ function resetSalesViewState() {
     delete collapsedSalesGroups[k]
   })
   localStorage.removeItem(salesCollapseStorageKey)
-  localStorage.removeItem(salesViewModeStorageKey)
   localStorage.removeItem(salesFiltersStorageKey)
-}
-
-function viewModeLabel() {
-  if (salesViewMode.value === 'all') return '全列表'
-  if (salesViewMode.value === 'month') return '按月份'
-  if (salesViewMode.value === 'category') return '按大类'
-  if (salesViewMode.value === 'batch') return '按批次'
-  if (salesViewMode.value === 'brand') return '按品牌'
-  return '按分组'
 }
 
 onMounted(() => {
   try {
     const collapsedRaw = localStorage.getItem(salesCollapseStorageKey)
     if (collapsedRaw) Object.assign(collapsedSalesGroups, JSON.parse(collapsedRaw))
-
-    const modeRaw = localStorage.getItem(salesViewModeStorageKey)
-    if (modeRaw && ['all', 'month', 'category', 'batch', 'brand'].includes(modeRaw)) {
-      salesViewMode.value = modeRaw
-    }
 
     const filtersRaw = localStorage.getItem(salesFiltersStorageKey)
     if (filtersRaw) {
@@ -405,10 +291,6 @@ watch(
   },
   { deep: true },
 )
-
-watch(salesViewMode, (val) => {
-  localStorage.setItem(salesViewModeStorageKey, val)
-})
 
 watch(
   filters,
@@ -463,11 +345,7 @@ watch(
 
       <div class="flex items-center justify-between gap-3 border-t border-gray-100 pt-4">
         <div class="flex flex-wrap gap-2">
-          <button class="px-3 py-1 text-xs rounded-full transition" :class="salesViewMode==='all' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'" @click="salesViewMode='all'">全列表</button>
-          <button class="px-3 py-1 text-xs rounded-full transition" :class="salesViewMode==='month' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'" @click="salesViewMode='month'">按月份</button>
-          <button class="px-3 py-1 text-xs rounded-full transition" :class="salesViewMode==='category' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'" @click="salesViewMode='category'">按大类</button>
-          <button class="px-3 py-1 text-xs rounded-full transition" :class="salesViewMode==='batch' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'" @click="salesViewMode='batch'">按批次</button>
-          <button class="px-3 py-1 text-xs rounded-full transition" :class="salesViewMode==='brand' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'" @click="salesViewMode='brand'">按品牌</button>
+          <button v-for="shop in ['全部', ...SALES_CHANNELS]" :key="shop" class="px-3 py-1 text-xs rounded-full transition" :class="selectedShop === shop ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'" @click="selectedShop = shop">{{ shop }}</button>
         </div>
         <div class="flex gap-2 shrink-0">
           <button class="btn btn-outline btn-xs" @click="expandAllSalesGroups">展开全部</button>
@@ -485,10 +363,8 @@ watch(
           <span class="font-semibold">{{ group.title || group.key }}</span>
           <span class="ml-2 text-gray-500 font-normal">共 {{ group.count }} 件</span>
           <span class="ml-4 text-primary font-normal">成交总额: {{ fmtMoney(group.revenue) }}</span>
-          <template v-if="salesViewMode !== 'all'">
-            <span class="ml-4 text-gray-500 font-normal">成本: {{ fmtMoney(group.cost) }}</span>
-            <span class="ml-4 font-normal" :class="group.cost > 0 ? (group.profit / group.cost * 100 >= 0 ? 'text-success' : 'text-danger') : 'text-gray-500'">利润率: {{ group.cost > 0 ? (group.profit / group.cost * 100).toFixed(2) : '0.00' }}%</span>
-          </template>
+          <span class="ml-4 text-gray-500 font-normal">成本: {{ fmtMoney(group.cost) }}</span>
+          <span class="ml-4 font-normal" :class="group.cost > 0 ? (group.profit / group.cost * 100 >= 0 ? 'text-success' : 'text-danger') : 'text-gray-500'">利润率: {{ group.cost > 0 ? (group.profit / group.cost * 100).toFixed(2) : '0.00' }}%</span>
           <span class="ml-4 font-normal" :class="group.profit >= 0 ? 'text-success' : 'text-danger'">实盈利润: {{ fmtProfit(group.profit) }}<span v-if="group.profit < 0" class="ml-1">(亏损)</span></span>
         </div>
 
@@ -497,6 +373,7 @@ watch(
             <thead class="bg-white text-xs text-gray-500">
               <tr>
               <th class="w-28">成交日期</th>
+              <th class="w-28">销售渠道</th>
               <th class="w-72">SID / 名称</th>
               <th class="w-40">品牌 / 批次</th>
               <th class="w-20">数量</th>
@@ -509,6 +386,7 @@ watch(
             <tbody>
               <tr v-for="item in group.items" :key="item.id">
                 <td class="whitespace-nowrap">{{ item.saleDetails?.date }}</td>
+                <td class="whitespace-nowrap">{{ item.saleDetails?.shop || DEFAULT_SALES_CHANNEL }}</td>
                 <td class="align-middle"><div class="font-medium truncate">{{ item.name }}</div><div class="text-xs text-gray-400 font-mono">{{ item.sid }}</div></td>
                 <td class="whitespace-nowrap">{{ item.brand }}<br><span class="text-xs text-gray-500">{{ item.batch }}</span></td>
                 <td class="text-center"><span class="bg-primary/10 text-primary px-2 py-1 rounded font-semibold">{{ item.qty || 1 }}</span></td>
@@ -541,6 +419,7 @@ watch(
               </option>
             </select>
           </div>
+          <div><label class="block text-sm mb-1 text-gray-600">销售渠道</label><select v-model="addForm.shop" class="apple-select" required><option v-for="shop in SALES_CHANNELS" :key="shop" :value="shop">{{ shop }}</option></select></div>
           <div class="grid grid-cols-2 gap-4">
             <div><label class="block text-sm mb-1 text-gray-600">成交总价</label><input v-model.number="addForm.price" type="number" class="apple-input" /></div>
             <div><label class="block text-sm mb-1 text-gray-600">快递费</label><input v-model.number="addForm.express" type="number" class="apple-input" /></div>
@@ -569,6 +448,7 @@ watch(
             <div><label class="block text-sm mb-1 text-gray-600">平台费率</label><input v-model.number="editForm.feeRate" type="number" step="0.001" class="apple-input" /></div>
             <div><label class="block text-sm mb-1 text-gray-600">扣减</label><input v-model.number="editForm.deduction" type="number" class="apple-input" /></div>
           </div>
+          <div><label class="block text-sm mb-1 text-gray-600">销售渠道</label><select v-model="editForm.shop" class="apple-select" required><option v-for="shop in SALES_CHANNELS" :key="shop" :value="shop">{{ shop }}</option></select></div>
           <div><label class="block text-sm mb-1 text-gray-600">日期</label><input v-model="editForm.date" type="date" class="apple-input" /></div>
         </div>
         <div class="mt-6 flex justify-end gap-3">

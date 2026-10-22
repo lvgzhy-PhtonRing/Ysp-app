@@ -32,4 +32,19 @@ describe('migratePayload', () => {
     expect(migratePayload(first)).toEqual(first)
     expect(migratePayload(null).items).toEqual([])
   })
+
+  it('assigns legacy sales shops from the 2026-10-15 cutoff and preserves valid choices', () => {
+    const output = migratePayload({ items: [
+      { id: 'before', status: 'sold', saleDetails: { date: '2026-10-14' } },
+      { id: 'cutoff', status: 'sold', saleDetails: { date: '2026-10-15' } },
+      { id: 'after', status: 'sold', saleDetails: { date: '2026-10-16' } },
+      { id: 'missing', status: 'sold', saleDetails: {} },
+      { id: 'explicit', status: 'sold', saleDetails: { date: '2026-10-12', shop: '侧空翻棉' } },
+      { id: 'unsold', status: 'inventory', saleDetails: { date: '2026-10-20' } },
+    ] })
+
+    expect(output.items.map((item) => item.saleDetails?.shop)).toEqual([
+      '其它', 'PhtonRIng', 'PhtonRIng', '其它', '侧空翻棉', undefined,
+    ])
+  })
 })
