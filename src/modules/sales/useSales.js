@@ -3,7 +3,7 @@
 import { calcProfit } from '../../utils/calc'
 import { addOperationLog, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
 import { adjustPaytonBalance, getPaytonAccountForItem } from '../payton-finance/usePaytonFinance'
-import { DEFAULT_SALES_CHANNEL, inferLegacySalesChannel, isSalesChannel } from './salesChannels'
+import { DEFAULT_SALES_CHANNEL, inferLegacySalesChannel, isSalesChannel, SALES_CHANNELS } from './salesChannels'
 
 function toNumber(value, fallback = 0) {
   const n = Number(value)
@@ -193,6 +193,17 @@ export function getSalesStats(items = []) {
     profitMargin,
     recoveryRate,
   }
+}
+
+export function getSalesChannelStats(items = []) {
+  const byChannel = Object.fromEntries(SALES_CHANNELS.map((shop) => [shop, []]))
+  items.forEach((item) => {
+    if (item?.status !== 'sold') return
+    const details = item.saleDetails || {}
+    const shop = isSalesChannel(details.shop) ? details.shop : inferLegacySalesChannel(details.date)
+    byChannel[shop].push(item)
+  })
+  return SALES_CHANNELS.map((shop) => ({ shop, ...getSalesStats(byChannel[shop]) }))
 }
 
 export function getOwnerInventory(items = [], owner = 'papa') {

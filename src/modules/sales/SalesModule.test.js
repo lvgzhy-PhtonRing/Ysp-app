@@ -33,4 +33,25 @@ describe('SalesModule owner scope', () => {
     expect(paytonHtml).toContain('累计成交</div><div class="text-2xl font-bold text-gray-800">1 <span')
     expect(paytonHtml).toContain('成交总额</div><div class="text-2xl font-bold text-gray-800">900.00</div>')
   })
+
+  it('shows the three shop summaries for the selected owner and categorizes undated legacy sales as Other', async () => {
+    loadData({ items: [
+      { id: 'phton', owner: 'papa', status: 'sold', cost: 20, saleDetails: { price: 40, profit: 20, date: '2026-10-15' } },
+      { id: 'side', owner: 'papa', status: 'sold', cost: 30, saleDetails: { shop: '侧空翻棉', price: 60, profit: 30, date: '2026-10-16' } },
+      { id: 'legacy', owner: 'papa', status: 'sold', cost: 10, saleDetails: { price: 25, profit: 15 } },
+      { id: 'payton', owner: 'payton', status: 'sold', cost: 50, saleDetails: { shop: 'PhtonRIng', price: 100, profit: 50 } },
+    ] })
+
+    store.currentOwner = 'papa'
+    const papaHtml = await renderToString(h(SalesModule))
+    expect(papaHtml).toContain('data-shop-summary="PhtonRIng"')
+    expect(papaHtml).toContain('data-shop-summary="侧空翻棉"')
+    expect(papaHtml).toContain('data-shop-summary="其它"')
+    expect(store.items.find((item) => item.id === 'legacy').saleDetails.shop).toBe('其它')
+
+    store.currentOwner = 'payton'
+    const paytonHtml = await renderToString(h(SalesModule))
+    expect(paytonHtml).toContain('data-shop-summary="PhtonRIng"')
+    expect(paytonHtml).toMatch(/<article data-shop-summary="侧空翻棉"[\s\S]*?0 件[\s\S]*?0\.00[\s\S]*?<\/article>/)
+  })
 })

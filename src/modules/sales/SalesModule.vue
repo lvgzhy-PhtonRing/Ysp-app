@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { calcProfit } from '../../utils/calc'
 import { addOperationLog, saveToLocalStorage, state as store } from '../../data/store'
-import { editSaleRecord, getOwnerInventory, getSalesStats, submitSell } from './useSales'
+import { editSaleRecord, getOwnerInventory, getSalesChannelStats, getSalesStats, submitSell } from './useSales'
 import { DEFAULT_SALES_CHANNEL, filterSalesByShop, SALES_CHANNELS } from './salesChannels'
 
 const showAddModal = ref(false)
@@ -92,6 +92,7 @@ const inventoryItems = computed(() => getOwnerInventory(store.items, store.curre
 
 const shopFilteredItems = computed(() => filterSalesByShop(soldItems.value, selectedShop.value))
 const salesStats = computed(() => getSalesStats(shopFilteredItems.value))
+const salesChannelStats = computed(() => getSalesChannelStats(soldItems.value))
 
 const addSelectedItem = computed(() =>
   inventoryItems.value.find((item) => item.id === addForm.itemId) || null,
@@ -314,6 +315,22 @@ watch(
       <h2 class="text-3xl leading-10 font-extrabold">销售记账</h2>
       <span class="text-base text-gray-400 font-light">Sales Bookkeeping</span>
     </div>
+
+    <section aria-label="各店铺销售汇总" class="space-y-2">
+      <h3 class="text-sm font-semibold text-gray-500">店铺汇总</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <article v-for="summary in salesChannelStats" :key="summary.shop" :data-shop-summary="summary.shop" class="rounded-xl border border-gray-100 border-l-4 border-l-blue-400 bg-gray-50 p-3">
+          <div class="flex items-center justify-between gap-2">
+            <h4 class="font-semibold text-gray-800">{{ summary.shop }}</h4>
+            <span class="text-xs text-gray-500">{{ summary.totalSoldCount }} 件</span>
+          </div>
+          <div class="mt-2 grid grid-cols-2 gap-3">
+            <div><div class="text-[11px] text-gray-400">成交额</div><div class="text-sm font-bold text-gray-700">{{ fmtMoney(summary.totalRevenue) }}</div></div>
+            <div><div class="text-[11px] text-gray-400">实盈利润</div><div class="text-sm font-bold" :class="summary.totalProfit >= 0 ? 'text-success' : 'text-danger'">{{ fmtMoney(summary.totalProfit) }}</div></div>
+          </div>
+        </article>
+      </div>
+    </section>
 
     <div class="grid grid-cols-3 gap-4">
       <div class="bg-gray-50 p-4 rounded-xl border-l-4 border-gray-400">

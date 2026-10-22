@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import sampleData from '../../__tests__/fixtures/sampleData.json'
 import { loadData, state as store } from '../../data/store'
 import { calcAlipayBalance } from '../../utils/calc'
-import { editSaleRecord, getOwnerInventory, getSalesStats, submitSell } from './useSales'
+import { editSaleRecord, getOwnerInventory, getSalesChannelStats, getSalesStats, submitSell } from './useSales'
 import { DEFAULT_SALES_CHANNEL, filterSalesByShop, SALES_CHANNELS } from './salesChannels'
 
 describe('useSales logic', () => {
@@ -53,6 +53,20 @@ describe('useSales logic', () => {
       totalRevenue: 200,
       totalProfit: 50,
     })
+  })
+
+  it('summarizes sales by shop and assigns undated legacy sales to Other', () => {
+    const stats = getSalesChannelStats([
+      { status: 'sold', cost: 70, saleDetails: { shop: 'PhtonRIng', price: 100, profit: 30 } },
+      { status: 'sold', cost: 150, saleDetails: { shop: '侧空翻棉', price: 200, profit: 50 } },
+      { status: 'sold', cost: 40, saleDetails: { price: 60, profit: 20 } },
+    ])
+
+    expect(stats.map(({ shop, totalSoldCount, totalRevenue, totalProfit }) => ({ shop, totalSoldCount, totalRevenue, totalProfit }))).toEqual([
+      { shop: 'PhtonRIng', totalSoldCount: 1, totalRevenue: 100, totalProfit: 30 },
+      { shop: '侧空翻棉', totalSoldCount: 1, totalRevenue: 200, totalProfit: 50 },
+      { shop: '其它', totalSoldCount: 1, totalRevenue: 60, totalProfit: 20 },
+    ])
   })
 
   it('supports the three shop choices and saves selected shop changes when editing a sale', () => {
