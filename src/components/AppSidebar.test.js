@@ -27,4 +27,11 @@ describe('AppSidebar owner navigation', () => {
     expect(logsPosition).toBeLessThan(clockPosition)
     expect(html.slice(versionPosition, logsPosition)).not.toContain('<time')
   })
+
+  it('keeps the data operations arrow close to its label and aligns date with version', async () => {
+    const html = await renderToString(h(AppSidebar, { tabs, currentTab: 'home', version: '5.0.3' }))
+    expect(html).toContain('w-56')
+    expect(html).not.toContain('flex-1">数据操作')
+    expect(html).toContain('text-left text-[11px] text-gray-400')
+  })
 })

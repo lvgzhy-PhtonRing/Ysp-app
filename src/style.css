@@ -184,6 +184,20 @@ a {
   font-size: 0.75rem;
 }
 
+.page-header-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2rem;
+  min-width: 5.5rem;
+  padding: 0 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .btn-xs {
   padding: 0.25rem 0.5rem;
   font-size: 0.7rem;

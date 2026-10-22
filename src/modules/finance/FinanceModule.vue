@@ -291,9 +291,9 @@ watch(
         <h2 class="text-3xl leading-10 font-extrabold">公共收支</h2>
         <span class="text-base text-gray-400 font-light">General Income &amp; Expenses</span>
       </div>
-      <div class="flex flex-wrap justify-start gap-2">
-        <button class="btn btn-yellow btn-sm" @click="openRecordModal"><i class="fa-solid fa-wallet"></i> 记收支</button>
-        <button class="btn bg-gray-500 text-white btn-sm" @click="openLoanModal"><i class="fa-solid fa-hand-holding-dollar"></i> 记借贷</button>
+      <div class="flex flex-wrap items-center justify-start gap-2">
+        <button class="btn btn-yellow page-header-action" @click="openRecordModal">记收支</button>
+        <button class="btn bg-gray-500 text-white page-header-action" @click="openLoanModal">记借贷</button>
       </div>
     </div>
 

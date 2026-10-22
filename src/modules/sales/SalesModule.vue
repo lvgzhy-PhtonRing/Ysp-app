@@ -330,7 +330,7 @@ watch(
           </div>
           <div class="mt-2 grid grid-cols-2 gap-3">
             <div><div class="text-[11px] text-gray-400">成交额</div><div class="text-sm font-bold text-gray-700">{{ fmtMoney(summary.totalRevenue) }}</div></div>
-            <div><div class="text-[11px] text-gray-400">实盈利润</div><div class="text-sm font-bold" :class="summary.totalProfit >= 0 ? 'text-success' : 'text-danger'">{{ fmtMoney(summary.totalProfit) }}</div></div>
+            <div><div class="text-[11px] text-gray-400">销售利润</div><div class="text-sm font-bold" :class="summary.totalProfit >= 0 ? 'text-success' : 'text-danger'">{{ fmtMoney(summary.totalProfit) }}</div></div>
           </div>
         </article>
       </div>
@@ -346,8 +346,9 @@ watch(
         <div class="text-2xl font-bold text-gray-800">{{ fmtMoney(salesStats.totalRevenue) }}</div>
       </div>
       <div class="bg-gray-50 p-4 rounded-xl border-l-4" :class="salesStats.totalProfit >= 0 ? 'border-green-500' : 'border-red-500'">
-        <div class="text-xs text-gray-500 mb-1">实盈利润</div>
+        <div class="text-xs text-gray-500 mb-1">销售利润</div>
         <div class="text-2xl font-bold" :class="salesStats.totalProfit >= 0 ? 'text-success' : 'text-danger'">{{ fmtMoney(salesStats.totalProfit) }}</div>
+        <div class="mt-1 text-xs text-gray-400">未扣公共支出</div>
       </div>
     </div>
 
@@ -392,7 +393,7 @@ watch(
           <span class="ml-4 text-primary font-normal">成交总额: {{ fmtMoney(group.revenue) }}</span>
           <span class="ml-4 text-gray-500 font-normal">成本: {{ fmtMoney(group.cost) }}</span>
           <span class="ml-4 font-normal" :class="group.cost > 0 ? (group.profit / group.cost * 100 >= 0 ? 'text-success' : 'text-danger') : 'text-gray-500'">利润率: {{ group.cost > 0 ? (group.profit / group.cost * 100).toFixed(2) : '0.00' }}%</span>
-          <span class="ml-4 font-normal" :class="group.profit >= 0 ? 'text-success' : 'text-danger'">实盈利润: {{ fmtProfit(group.profit) }}<span v-if="group.profit < 0" class="ml-1">(亏损)</span></span>
+          <span class="ml-4 font-normal" :class="group.profit >= 0 ? 'text-success' : 'text-danger'">销售利润: {{ fmtProfit(group.profit) }}<span v-if="group.profit < 0" class="ml-1">(亏损)</span></span>
         </div>
 
         <div v-show="collapsedSalesGroups[group.key] !== true" class="overflow-x-auto">

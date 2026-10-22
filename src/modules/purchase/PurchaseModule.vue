@@ -1655,15 +1655,15 @@ watch(purchaseViewCategory, () => {
 
 <template>
   <div class="space-y-4 max-w-7xl mx-auto">
-    <div class="flex justify-between items-end mb-3">
+    <div class="flex flex-wrap items-center justify-start gap-4 mb-3">
       <div class="flex items-baseline gap-3">
         <h2 class="text-3xl leading-10 font-extrabold">采购管理</h2>
         <span class="text-base text-gray-400 font-light">Procurement Management</span>
       </div>
-      <div class="flex gap-2">
-        <button class="btn btn-primary btn-sm" @click="openAddModal"><i class="fa-solid fa-plus" /> 新建购买</button>
-        <button class="btn btn-warning btn-sm" :disabled="!hasPurchaseItems" @click="handleNewTransfer"><i class="fa-solid fa-truck" /> 新建转运</button>
-        <button class="btn btn-outline btn-sm" @click="showTransferListModal = true"><i class="fa-solid fa-list" /> 转运记录</button>
+      <div class="flex flex-wrap items-center gap-2">
+        <button class="btn btn-primary page-header-action" @click="openAddModal">新建购买</button>
+        <button class="btn btn-warning page-header-action" :disabled="!hasPurchaseItems" @click="handleNewTransfer">新建转运</button>
+        <button class="btn btn-outline page-header-action" @click="showTransferListModal = true">转运记录</button>
       </div>
     </div>
 

@@ -377,14 +377,14 @@ function confirmRemovePaymentCard(id) {
 
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-wrap items-center justify-start gap-4">
       <div class="flex items-baseline gap-3">
         <h2 class="text-3xl leading-10 font-extrabold">美淘记录</h2>
         <span class="text-base text-gray-400 font-light">US Import Records</span>
       </div>
-      <div class="flex items-center gap-3">
-        <button v-if="state.activePage === 'history'" class="btn btn-primary" @click="openEntryModal">
-          <i class="fa-solid fa-plus" /> 新增美淘记录
+      <div class="flex items-center gap-2">
+        <button v-if="state.activePage === 'history'" class="btn btn-primary page-header-action" @click="openEntryModal">
+          新增美淘记录
         </button>
       </div>
     </div>

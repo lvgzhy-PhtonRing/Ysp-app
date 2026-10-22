@@ -355,21 +355,21 @@ onBeforeUnmount(() => {
       </div>
       <div class="flex flex-wrap justify-start gap-2">
         <button 
-          class="rounded-full border px-4 py-2 text-sm font-semibold transition"
+          class="page-header-action border"
           :class="viewMode === 'all' ? 'border-sky-600 bg-sky-600 text-white' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'"
           @click="viewMode = 'all'"
         >
           所有库存
         </button>
         <button 
-          class="rounded-full border px-4 py-2 text-sm font-semibold transition"
+          class="page-header-action border"
           :class="viewMode === 'long' ? 'border-purple-600 bg-purple-600 text-white' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'"
           @click="viewMode = 'long'"
         >
           {{ store.currentOwner === 'payton' ? '自留库存' : '长线库存' }}
         </button>
         <button 
-          class="rounded-full border px-4 py-2 text-sm font-semibold transition"
+          class="page-header-action border"
           :class="viewMode === 'short' ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'"
           @click="viewMode = 'short'"
         >

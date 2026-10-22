@@ -93,7 +93,7 @@ function getGroupTabs(group) {
 </script>
 
 <template>
-  <aside class="z-10 flex h-screen w-64 shrink-0 flex-col border-r border-gray-200 bg-white relative">
+  <aside class="z-10 flex h-screen w-56 shrink-0 flex-col border-r border-gray-200 bg-white relative">
     <div class="flex-1">
       <div class="h-20 border-b border-gray-100 px-5 py-4">
         <div class="font-bold text-xl tracking-wide text-gray-800">PhtonRing在哪儿</div>
@@ -129,8 +129,8 @@ function getGroupTabs(group) {
         class="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer flex items-center gap-2"
         @click="toggleDataOps"
       >
-        <i class="fa-solid fa-database mr-1" />
-        <span class="flex-1">数据操作</span>
+        <i class="fa-solid fa-database" />
+        <span>数据操作</span>
         <i :class="dataOpsOpen ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'" class="text-xs text-gray-400" />
       </button>
       <div v-if="dataOpsOpen" class="space-y-1 ml-3 pl-3 border-l border-gray-200">
@@ -167,7 +167,7 @@ function getGroupTabs(group) {
       >
         <i class="fa-solid fa-clock-rotate-left mr-2" />操作日志
       </button>
-      <time class="block pt-1 text-center text-[11px] text-gray-400">{{ currentDateTime }}</time>
+      <time class="block px-1 pt-1 text-left text-[11px] text-gray-400">{{ currentDateTime }}</time>
     </div>
   </aside>
 </template>

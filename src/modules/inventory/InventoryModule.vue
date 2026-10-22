@@ -857,11 +857,11 @@ watch(invFilterMode, (val) => {
         <span class="text-base text-gray-400 font-light">Inventory Management</span>
       </div>
       <div class="flex flex-wrap items-center justify-start gap-2">
-        <button class="btn btn-outline btn-sm" @click="openAdd">
-          <i class="fa-solid fa-bolt" /> 手动快速入库
+        <button class="btn btn-outline page-header-action" @click="openAdd">
+          手动快速入库
         </button>
-        <button class="btn btn-purple btn-sm" @click="openLongTermModal">
-          <i class="fa-solid fa-inbox" /> {{ store.currentOwner === 'payton' ? '标记自留库存' : '标记长线库存' }}
+        <button class="btn btn-purple page-header-action" @click="openLongTermModal">
+          {{ store.currentOwner === 'payton' ? '标记自留库存' : '标记长线库存' }}
         </button>
       </div>
     </div>
