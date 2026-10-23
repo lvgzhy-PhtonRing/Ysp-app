@@ -15,6 +15,7 @@ import RushCarPrototypeModule from './modules/rushcar/RushCarPrototypeModule.vue
 import MarketPriceModule from './modules/market-price/MarketPriceModule.vue'
 import { primaryConflictAction } from './utils/cloudConflict'
 import { SLOT_LABELS, slotValue } from './data/cloudSlotPlan'
+import { summarizeConflictPayload, summarizeConflictSlot } from './data/cloudConflictSummary'
 import {
   CLOUD_AUTO_SYNC_INTERVAL,
   addOperationLog,
@@ -226,7 +227,7 @@ const cloudBusy = ref(false)
 
 // 逐槽位冲突弹窗（Slot 版本化，本地与云端同槽都改过时按槽位选择）
 const slotConflict = ref(false)
-const slotConflictInfo = ref({ rows: [], plan: {}, localPayload: {}, cloudPayload: {}, localAt: '', cloudAt: '', uploadRisk: { shouldWarn: false, reasons: [] } })
+const slotConflictInfo = ref({ rows: [], plan: {}, localPayload: {}, cloudPayload: {}, cloudSummary: {}, localSummary: {}, localAt: '', cloudAt: '', uploadRisk: { shouldWarn: false, reasons: [] } })
 const slotChoice = ref({})
 let slotConflictResolver = null
 
@@ -393,6 +394,11 @@ function formatConflictTime(t) {
   return d.toLocaleString()
 }
 
+function conflictMoney(value) {
+  const amount = Number(value) || 0
+  return `${amount < 0 ? '-' : ''}¥${Math.abs(amount).toFixed(2)}`
+}
+
 /**
  * 冲突决策模态框（字段级差异展示）。
  * 由 store.js performSyncDecision 通过 registerCloudConflictHandler 调用；
@@ -409,15 +415,25 @@ async function askSlotConflict(data) {
   const slots = Array.isArray(decisionSlots)
     ? decisionSlots
     : Object.keys(plan).filter((s) => plan[s] === 'adopt-cloud' || plan[s] === 'conflict')
-  const diff = computeConflictDiff(localPayload, cloudPayload)
+  const diff = computeConflictDiff(localPayload, cloudPayload, { includeObjectSlots: true })
   // 内容风险：本地时间戳较新不代表本地内容更新（时间戳可被派生数据污染）。
   // 若本地实际比云端更少/更旧，默认方向不该偏本地。
   const uploadRisk = shouldWarnBeforeUploadLocal(localPayload, cloudPayload)
   const rows = slots.map((slot) => {
     const entries = diff.entries.filter((e) => e.collectionLabel === SLOT_LABELS[slot])
-    return { slot, label: SLOT_LABELS[slot] || slot, action: plan[slot], entries, defaultLocal: primaryConflictAction('manual-sync', localModifiedAt, cloudUpdatedAt, uploadRisk.shouldWarn) === 'upload' }
+      .sort((a, b) => Number(Boolean(b.deltaLabel)) - Number(Boolean(a.deltaLabel)))
+    return {
+      slot, label: SLOT_LABELS[slot] || slot, action: plan[slot], entries,
+      cloudSummary: summarizeConflictSlot(cloudPayload, slot),
+      localSummary: summarizeConflictSlot(localPayload, slot),
+      defaultLocal: primaryConflictAction('manual-sync', localModifiedAt, cloudUpdatedAt, uploadRisk.shouldWarn) === 'upload',
+    }
   })
-  slotConflictInfo.value = { rows, plan, localPayload, cloudPayload, localAt: localModifiedAt, cloudAt: cloudUpdatedAt, uploadRisk }
+  slotConflictInfo.value = {
+    rows, plan, localPayload, cloudPayload,
+    cloudSummary: summarizeConflictPayload(cloudPayload), localSummary: summarizeConflictPayload(localPayload),
+    localAt: localModifiedAt, cloudAt: cloudUpdatedAt, uploadRisk,
+  }
   // 重置上一轮残留的 UI 状态；quickChoice 不预填，必须用户主动选边（避免误触一键确认覆盖）
   quickChoice.value = null
   fineSelectMode.value = false
@@ -500,9 +516,6 @@ const fineSelectMode = ref(false)
 
 // 快速选择
 const quickChoice = ref(null)
-
-// 悬停选边（用于激活效果）
-const hoverChoice = ref(null)
 
 // 展开的槽位
 const expandedSlots = ref({})
@@ -1178,13 +1191,14 @@ watch(
       </div>
     </GlassModal>
 
-    <GlassModal v-model="slotConflict" panel-class="w-full max-w-lg p-5 relative max-h-[85vh] overflow-y-auto" :close-on-overlay="false">
+    <GlassModal v-model="slotConflict" panel-class="w-full max-w-4xl p-4 sm:p-6 relative max-h-[90vh] overflow-y-auto" :close-on-overlay="false">
       <div class="flex items-center justify-between mb-3">
         <div class="text-xl font-bold text-gray-800"><i class="fa-solid fa-triangle-exclamation text-orange-500 mr-1"></i>检测到数据冲突</div>
         <button class="text-xs text-blue-600 hover:text-blue-700 font-medium" @click="fineSelectMode = !fineSelectMode">
           <i class="fa-solid fa-sliders mr-1"></i>{{ fineSelectMode ? '快速选择' : '精细选择' }}
         </button>
       </div>
+      <p class="mb-4 text-sm text-gray-600">先核对两边的数据；下方的选择只作用于列出的模块。</p>
 
       <!-- 内容风险提示：本地时间戳较新但内容更少/更旧 → 默认方向已改偏云端 -->
       <div v-if="slotConflictInfo.uploadRisk && slotConflictInfo.uploadRisk.shouldWarn" class="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
@@ -1197,109 +1211,80 @@ watch(
         </ul>
       </div>
 
-      <!-- 槽位差异预览（快速模式） -->
-      <div v-if="!fineSelectMode" class="space-y-2 mb-4">
-        <div v-for="row in slotConflictInfo.rows" :key="row.slot" class="border border-gray-200 rounded-lg overflow-hidden">
-          <div class="flex items-center justify-between bg-gray-50 px-3 py-2">
-            <span class="font-bold text-gray-800">{{ row.label }}</span>
-            <span class="text-xs text-gray-500">{{ row.entries.length }} 处差异</span>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4" aria-label="云端与本地主要数据对比">
+        <div v-for="side in ['cloud', 'local']" :key="side" class="rounded-xl border p-4" :class="side === 'cloud' ? 'border-blue-200 bg-blue-50/50' : 'border-slate-200 bg-slate-50'">
+          <div class="flex items-baseline justify-between gap-2">
+            <strong class="text-base text-gray-900">{{ side === 'cloud' ? '云端数据' : '本地数据' }}</strong>
+            <span class="text-xs text-gray-500">{{ formatConflictTime(side === 'cloud' ? slotConflictInfo.cloudAt : slotConflictInfo.localAt) }}</span>
           </div>
-          <div class="px-3 py-2">
-            <div class="grid grid-cols-[1fr_auto_1fr] gap-2">
-              <template v-for="e in row.entries.slice(0, 2)" :key="e.key">
-                <div class="diff-cell cloud" :class="{ placeholder: e.kind === 'localOnly', active: hoverChoice === 'cloud', dim: hoverChoice === 'local' }">
-                  {{ e.cloudValue }}
-                </div>
-                <div class="diff-cell item">
-                  {{ e.recordLabel }}<span v-if="e.fieldName" class="text-gray-400"> · {{ e.fieldName }}</span>
-                </div>
-                <div class="diff-cell local" :class="{ placeholder: e.kind === 'cloudOnly', active: hoverChoice === 'local', dim: hoverChoice === 'cloud' }">
-                  {{ e.localValue }}
-                </div>
-              </template>
+          <dl class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            <div><dt class="text-xs text-gray-500">商品总件数</dt><dd class="font-semibold text-gray-900">{{ slotConflictInfo[side + 'Summary'].itemCount }} 件</dd></div>
+            <div><dt class="text-xs text-gray-500">库存件数</dt><dd class="font-semibold text-gray-900">{{ slotConflictInfo[side + 'Summary'].inventoryCount }} 件</dd></div>
+            <div><dt class="text-xs text-gray-500">库存成本合计</dt><dd class="font-semibold text-gray-900">{{ conflictMoney(slotConflictInfo[side + 'Summary'].inventoryCost) }}</dd></div>
+            <div><dt class="text-xs text-gray-500">已出售件数</dt><dd class="font-semibold text-gray-900">{{ slotConflictInfo[side + 'Summary'].soldCount }} 件</dd></div>
+          </dl>
+        </div>
+      </div>
+
+      <div v-if="!fineSelectMode" class="mb-4 rounded-xl border border-blue-100 bg-white p-3 sm:p-4">
+        <div class="grid grid-cols-2 gap-3">
+          <button type="button" class="pick-card relative rounded-xl p-3 flex flex-col items-center text-center transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+                  :class="quickChoice === 'cloud' ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-100' : 'border-gray-300 bg-gray-50 hover:bg-blue-50'"
+                  :aria-pressed="quickChoice === 'cloud'" @click="quickChoice = 'cloud'">
+            <span v-if="recommendedChoice === 'cloud'" class="absolute -top-2 right-2 rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white">推荐</span>
+            <span class="font-bold text-gray-800">用云端</span>
+            <span class="text-xs text-gray-500 mt-1">{{ relativeLabel(slotConflictInfo.cloudAt) }}</span>
+          </button>
+          <button type="button" class="pick-card relative rounded-xl p-3 flex flex-col items-center text-center transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+                  :class="quickChoice === 'local' ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-100' : 'border-gray-300 bg-gray-50 hover:bg-blue-50'"
+                  :aria-pressed="quickChoice === 'local'" @click="quickChoice = 'local'">
+            <span v-if="recommendedChoice === 'local'" class="absolute -top-2 right-2 rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white">推荐</span>
+            <span class="font-bold text-gray-800">用本地</span>
+            <span class="text-xs text-gray-500 mt-1">{{ relativeLabel(slotConflictInfo.localAt) }}</span>
+          </button>
+        </div>
+        <div class="mt-3 flex flex-col sm:flex-row gap-2">
+          <button type="button" class="btn btn-outline flex-1" @click="applyQuickChoice('both')">都留（云端另存副本）</button>
+          <button type="button" class="btn btn-primary flex-1" :disabled="!quickChoice" @click="applyQuickChoice(quickChoice)">确认使用所选数据</button>
+        </div>
+      </div>
+
+      <div class="space-y-3 mb-5">
+        <section v-for="row in slotConflictInfo.rows" :key="row.slot" class="rounded-xl border border-gray-200 bg-white overflow-hidden">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 bg-gray-50 px-4 py-3">
+            <h3 class="font-bold text-gray-900">{{ row.label }}</h3>
+            <span class="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">{{ row.entries.length ? `${row.entries.length} 处字段差异` : '差异待核对' }}</span>
+          </div>
+          <div class="px-4 py-3">
+            <div v-if="row.cloudSummary.kind === 'records'" class="grid grid-cols-2 gap-3 text-sm mb-3">
+              <div class="rounded-lg bg-blue-50 px-3 py-2"><span class="text-xs text-blue-700">云端</span><div class="font-semibold text-gray-900">{{ row.cloudSummary.count }} 条<span v-if="row.slot === 'items'" class="font-normal text-xs text-gray-600"> · 库存成本 {{ conflictMoney(slotConflictInfo.cloudSummary.inventoryCost) }}</span></div></div>
+              <div class="rounded-lg bg-slate-50 px-3 py-2"><span class="text-xs text-slate-600">本地</span><div class="font-semibold text-gray-900">{{ row.localSummary.count }} 条<span v-if="row.slot === 'items'" class="font-normal text-xs text-gray-600"> · 库存成本 {{ conflictMoney(slotConflictInfo.localSummary.inventoryCost) }}</span></div></div>
             </div>
-            <button v-if="row.entries.length > 2" class="text-xs text-blue-600 hover:text-blue-700 mt-1" @click="toggleSlotExpand(row.slot)">
-              <i class="fa-solid fa-chevron-down mr-1"></i>展开全部 {{ row.entries.length }} 处
+            <p v-if="!row.entries.length" class="text-sm text-amber-700">此模块内容不同，但无法逐字段展开；请核对备份后再选择。</p>
+            <div v-for="e in expandedSlots[row.slot] ? row.entries : row.entries.slice(0, 4)" :key="e.key" class="border-t border-gray-100 first:border-t-0 py-2">
+              <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1 text-sm">
+                <span class="font-medium text-gray-800 break-words">{{ e.recordLabel }}<span v-if="e.fieldName" class="text-gray-500"> · {{ e.fieldName }}</span></span>
+                <span v-if="e.deltaLabel" class="rounded bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">本地比云端 {{ e.deltaLabel }}</span>
+              </div>
+              <div class="grid grid-cols-2 gap-2 text-sm">
+                <div class="min-w-0 rounded-lg bg-blue-50 px-3 py-2"><span class="block text-[11px] text-blue-700">云端</span><span class="block text-gray-900 break-words whitespace-pre-wrap">{{ e.cloudValue }}</span></div>
+                <div class="min-w-0 rounded-lg bg-slate-50 px-3 py-2"><span class="block text-[11px] text-slate-600">本地</span><span class="block text-gray-900 break-words whitespace-pre-wrap">{{ e.localValue }}</span></div>
+              </div>
+            </div>
+            <button v-if="row.entries.length > 4" type="button" class="mt-2 text-sm font-medium text-blue-700 hover:text-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600" @click="toggleSlotExpand(row.slot)">
+              {{ expandedSlots[row.slot] ? '收起明细' : `展开全部 ${row.entries.length} 处差异` }}
             </button>
-            <div v-if="expandedSlots[row.slot]" class="grid grid-cols-[1fr auto_1fr] gap-2 mt-1">
-              <template v-for="e in row.entries.slice(2)" :key="e.key">
-                <div class="diff-cell cloud" :class="{ placeholder: e.kind === 'localOnly', active: hoverChoice === 'cloud', dim: hoverChoice === 'local' }">
-                  {{ e.cloudValue }}
-                </div>
-                <div class="diff-cell item">
-                  {{ e.recordLabel }}<span v-if="e.fieldName" class="text-gray-400"> · {{ e.fieldName }}</span>
-                </div>
-                <div class="diff-cell local" :class="{ placeholder: e.kind === 'cloudOnly', active: hoverChoice === 'local', dim: hoverChoice === 'cloud' }">
-                  {{ e.localValue }}
-                </div>
-              </template>
+            <div v-if="fineSelectMode" class="mt-3 grid grid-cols-3 gap-2 border-t border-gray-100 pt-3">
+              <button v-for="choice in ['cloud', 'local', 'both']" :key="choice" type="button" class="rounded-lg border px-2 py-2 text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+                      :class="slotChoice[row.slot] === choice ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50'"
+                      :aria-pressed="slotChoice[row.slot] === choice" @click="selectSlotChoice(row.slot, choice)">
+                {{ choice === 'cloud' ? '用云端' : choice === 'local' ? '用本地' : '都留' }}
+              </button>
             </div>
           </div>
-        </div>
+        </section>
       </div>
-
-      <!-- 选边卡片 -->
-      <div class="grid grid-cols-2 gap-3 mb-4">
-        <div tabindex="0" class="pick-card relative rounded-xl p-4 flex flex-col items-center text-center cursor-pointer transition-all"
-              :class="quickChoice === 'cloud' ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-100' : (hoverChoice === 'cloud' ? 'border-blue-400 bg-blue-50/50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100')"
-              @mouseenter="hoverChoice = 'cloud'" @mouseleave="hoverChoice = null"
-              @click="quickChoice = 'cloud'" @keydown.enter="quickChoice = 'cloud'">
-          <span v-if="recommendedChoice === 'cloud'" class="absolute -top-2 right-2 rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white">推荐</span>
-          <i class="fa-solid fa-cloud text-blue-500 text-2xl mb-2"></i>
-          <span class="text-lg font-bold text-gray-800">用云端</span>
-          <span class="text-xs text-gray-400 mt-1">{{ relativeLabel(slotConflictInfo.cloudAt) }}</span>
-        </div>
-        <div tabindex="0" class="pick-card local relative rounded-xl p-4 flex flex-col items-center text-center cursor-pointer transition-all"
-              :class="quickChoice === 'local' ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-100' : (hoverChoice === 'local' ? 'border-blue-400 bg-blue-50/50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100')"
-              @mouseenter="hoverChoice = 'local'" @mouseleave="hoverChoice = null"
-              @click="quickChoice = 'local'" @keydown.enter="quickChoice = 'local'">
-          <span v-if="recommendedChoice === 'local'" class="absolute -top-2 right-2 rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white">推荐</span>
-          <i class="fa-solid fa-laptop text-blue-500 text-2xl mb-2"></i>
-          <span class="text-lg font-bold text-gray-800">用本地</span>
-          <span class="text-xs text-gray-400 mt-1">{{ relativeLabel(slotConflictInfo.localAt) }}</span>
-        </div>
-      </div>
-
-
-      <!-- 快速底部按钮 -->
-      <div v-if="!fineSelectMode" class="space-y-2 mb-4">
-        <button class="btn btn-outline w-full" @click="applyQuickChoice('both')">
-          <i class="fa-solid fa-copy mr-1"></i>都留（云端存为本地副本）
-        </button>
-        <button class="btn btn-primary w-full" :disabled="!quickChoice" @click="applyQuickChoice(quickChoice)">
-          <i class="fa-solid fa-check mr-1"></i>确认合并
-        </button>
-      </div>
-
-      <!-- 精细选择模式 -->
-      <div v-if="fineSelectMode" class="space-y-3 mb-4">
-        <div v-for="row in slotConflictInfo.rows" :key="row.slot" class="border border-gray-200 rounded-xl p-3">
-          <div class="flex items-center justify-between mb-2">
-            <span class="font-bold text-gray-800">{{ row.label }}</span>
-            <span class="text-xs text-gray-500">{{ row.entries.length }} 处差异</span>
-          </div>
-          <div class="grid grid-cols-3 gap-1.5">
-            <button class="py-2 text-sm rounded-lg border transition"
-                    :class="slotChoice[row.slot] === 'cloud' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-300 text-gray-600 hover:bg-gray-100'"
-                    @click="selectSlotChoice(row.slot, 'cloud')">
-              <i class="fa-solid fa-cloud mr-1"></i>云端
-            </button>
-            <button class="py-2 text-sm rounded-lg border transition"
-                    :class="slotChoice[row.slot] === 'local' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-300 text-gray-600 hover:bg-gray-100'"
-                    @click="selectSlotChoice(row.slot, 'local')">
-              <i class="fa-solid fa-laptop mr-1"></i>本地
-            </button>
-            <button class="py-2 text-sm rounded-lg border transition"
-                    :class="slotChoice[row.slot] === 'both' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-300 text-gray-600 hover:bg-gray-100'"
-                    @click="selectSlotChoice(row.slot, 'both')">
-              <i class="fa-solid fa-copy mr-1"></i>都留
-            </button>
-          </div>
-        </div>
-        <button class="btn btn-primary w-full" :disabled="!allSlotsSelected" @click="resolveSlotConflict">
-          <i class="fa-solid fa-check mr-1"></i>确认合并
-        </button>
-      </div>
+      <button v-if="fineSelectMode" type="button" class="btn btn-primary w-full" :disabled="!allSlotsSelected" @click="resolveSlotConflict">确认合并所选模块</button>
     </GlassModal>
 
     <GlassModal v-model="overwriteWarn" panel-class="w-full max-w-md p-6 relative" :close-on-overlay="false">
@@ -1499,7 +1484,7 @@ watch(
     </Transition>
     <Transition name="fade">
       <div
-        v-if="backupNoticeVisible"
+        v-if="backupNoticeVisible && !slotConflict"
         class="fixed left-1/2 top-16 z-50 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800 shadow-lg"
       >
         <span>今日备份已生成：PhtonRing数据_{{ todayStr() }}.json</span>
@@ -1516,46 +1501,6 @@ watch(
   cursor: pointer;
   border-width: 2px;
 }
-.pick-row:hover .pick-card:not(:hover) {
-  opacity: .42;
-  filter: grayscale(.6);
-}
-.pick-row:hover .pick-card:hover {
-  transform: translateY(-2px) scale(1.015);
-  box-shadow: 0 12px 28px rgba(0,0,0,.12);
-}
-.pick-card:focus-visible {
-  outline: none;
-}
-.pick-row:has(.pick-card:focus-visible) .pick-card:not(:focus-visible) {
-  opacity: .42;
-  filter: grayscale(.6);
-}
-.pick-card:focus-visible {
-  transform: translateY(-2px) scale(1.015);
-  box-shadow: 0 12px 28px rgba(0,0,0,.12);
-}
-
-/* 卡片标题的"打勾"徽章：默认隐藏，悬停/聚焦时显示 */
-.pick-check {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.25rem;
-  height: 1.25rem;
-  border-radius: 9999px;
-  font-size: .6875rem;
-  opacity: 0;
-  transform: scale(.6) rotate(-15deg);
-  transition: opacity .18s ease, transform .18s ease;
-  margin-left: .25rem;
-}
-.pick-card:hover .pick-check,
-.pick-card:focus-visible .pick-check {
-  opacity: 1;
-  transform: scale(1) rotate(0);
-}
-
 /* 确认层 */
 .confirm-overlay {
   position: absolute;
@@ -1579,60 +1524,6 @@ watch(
   box-shadow: 0 10px 30px rgba(0,0,0,.18);
   width: 100%;
   max-width: 44rem;
-}
-
-/* 三列差异网格 */
-.diff-cell {
-  padding: 0.375rem 0.5rem;
-  border-radius: 0.5rem;
-  font-size: 0.75rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  transition: all 0.2s ease;
-  text-align: center;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.diff-cell.cloud {
-  background: #eef2ff;
-  color: #4f46e5;
-  border: 1.5px solid #c7d2fe;
-}
-.diff-cell.cloud.placeholder {
-  background: transparent;
-  color: #9ca3af;
-  border: 1.5px dashed #d1d5db;
-  font-style: italic;
-}
-.diff-cell.local {
-  background: #f3f4f6;
-  color: #4b5563;
-  border: 1.5px solid #e5e7eb;
-}
-.diff-cell.local.placeholder {
-  background: transparent;
-  color: #9ca3af;
-  border: 1.5px dashed #d1d5db;
-  font-style: italic;
-}
-.diff-cell.item {
-  background: #f9fafb;
-  color: #374151;
-  font-weight: 500;
-  padding: 0.375rem 0.25rem;
-  font-size: 0.6875rem;
-  text-align: center;
-  font-family: inherit;
-}
-
-/* 激活效果 */
-.diff-cell.active {
-  transform: scale(1.02);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-}
-.diff-cell.dim {
-  opacity: 0.5;
 }
 
 /* 确认按钮 */

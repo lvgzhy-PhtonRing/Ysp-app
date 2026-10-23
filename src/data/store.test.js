@@ -303,6 +303,52 @@ describe('computeConflictDiff', () => {
     expect(calc).toBeUndefined()
   })
 
+  it('shows financial and Owner fields when the conflict menu requests object slots', () => {
+    const { entries } = computeConflictDiff(
+      { calc: { debt: 120.5 }, ownerRegistry: { payton: { pocketBalance: -290.96 } } },
+      { calc: { debt: 100.25 }, ownerRegistry: { payton: { pocketBalance: -305.96 } } },
+      { includeObjectSlots: true },
+    )
+    expect(entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ collectionLabel: '财务结算', fieldName: '总负债', cloudValue: '¥100.25', localValue: '¥120.50' }),
+      expect.objectContaining({ collectionLabel: 'Owner 资金', fieldName: 'Payton · 零钱余额', cloudValue: '-¥305.96', localValue: '-¥290.96' }),
+    ]))
+  })
+
+  it('translates sale status and makes changed prices obvious without truncating names', () => {
+    const longName = 'AMERICAN CLASSICS 1971 PLYMOUTH GTX 限量收藏版'
+    const { entries } = computeConflictDiff(
+      { items: [{ id: 1, name: longName, status: 'sold', cost: 100.51, saleDetails: { price: 200.75 } }] },
+      { items: [{ id: 1, name: longName, status: 'inventory', cost: 90.01, saleDetails: { price: 180.25 } }] },
+    )
+    expect(entries.find((entry) => entry.fieldName === '状态')).toMatchObject({ cloudValue: '库存', localValue: '已出售' })
+    expect(entries.find((entry) => entry.fieldName === '成本')).toMatchObject({ cloudValue: '¥90.01', localValue: '¥100.51', deltaLabel: '+¥10.50' })
+    expect(entries.find((entry) => entry.fieldName === '售价')).toMatchObject({ cloudValue: '¥180.25', localValue: '¥200.75', deltaLabel: '+¥20.50' })
+    expect(entries.every((entry) => entry.recordLabel.includes(longName))).toBe(true)
+  })
+
+  it('keeps zero and numeric-string prices distinct from missing values', () => {
+    const { entries } = computeConflictDiff(
+      { items: [{ id: 1, cost: '0.00' }] },
+      { items: [{ id: 1, cost: '10.25' }] },
+    )
+    expect(entries.find((entry) => entry.fieldName === '成本')).toMatchObject({ cloudValue: '¥10.25', localValue: '¥0.00', deltaLabel: '-¥10.25' })
+  })
+
+  it('does not show missing default-zero financial fields as real differences', () => {
+    const local = { calc: { debt: 120.5, publicExp: 0, unconfirmed: 0 } }
+    const cloud = { calc: { debt: 100.25 } }
+    const { entries } = computeConflictDiff(local, cloud, { includeObjectSlots: true })
+    expect(entries.filter((entry) => entry.collectionLabel === '财务结算').map((entry) => entry.fieldName)).toEqual(['总负债'])
+  })
+
+  it('identifies a changed market price as market price instead of sale price', () => {
+    const local = { items: [{ id: 1, name: '汽车', marketPrices: [{ price: 120.5, timestamp: '2026-10-23' }] }] }
+    const cloud = { items: [{ id: 1, name: '汽车', marketPrices: [{ price: 100.25, timestamp: '2026-10-23' }] }] }
+    const { entries } = computeConflictDiff(local, cloud)
+    expect(entries).toEqual([expect.objectContaining({ fieldName: '市场价格', cloudValue: '¥100.25', localValue: '¥120.50', deltaLabel: '+¥20.25' })])
+  })
+
   it('should return empty when payloads are content-equal', () => {
     const { entries, total } = computeConflictDiff(local, local)
     expect(total).toBe(0)

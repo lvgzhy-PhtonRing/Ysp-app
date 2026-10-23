@@ -79,7 +79,7 @@ export const FIELD_LABEL_MAP = {
 // 状态值→中文映射（用于冲突差异展示）
 const STATUS_VALUE_MAP = {
   // 商品状态
-  inventory: '库存', purchase: '采购', sold: '已售', unlisted: '已下架',
+  inventory: '库存', purchase: '采购中', sold: '已出售', unlisted: '已下架',
   // 转运状态
   pending: '待转运', completed: '已转运',
   // 收支类型
@@ -915,7 +915,7 @@ function normalizePayloadForCompare(data) {
   const src = migratePayload(data)
   return {
     items: Array.isArray(src.items) ? normalizeItemBatches(src.items) : [],
-    calc: src.calc && typeof src.calc === 'object' ? src.calc : {},
+    calc: { ...DEFAULT_CALC, ...(src.calc && typeof src.calc === 'object' && !Array.isArray(src.calc) ? src.calc : {}) },
     finance: {
       records: Array.isArray(src.finance?.records) ? src.finance.records : [],
       loans: Array.isArray(src.finance?.loans) ? src.finance.loans : [],
@@ -937,7 +937,59 @@ export function isContentEqual(a, b) {
  *  entries 元素形如 { key, collectionLabel, recordLabel, kind, summary }
  *  kind: 'modified'（两边不同，summary 为字段级摘要）| 'localOnly' | 'cloudOnly'
  */
-export function computeConflictDiff(localPayload, cloudPayload) {
+const CONFLICT_MONEY_FIELDS = new Set([
+  'cost', 'totalCost', 'price', 'profit', 'amount', 'debt', 'wechat', 'publicExp',
+  'unconfirmed', 'fund', 'forwarderBalance', 'watchBalance', 'pocketBalance',
+  'investBalance', 'remaining', 'monthlyAllowance', 'transferCost', 'preTransferCost',
+  'totalRMB', 'express', 'deduction', 'fee',
+])
+
+const CONFLICT_FIELD_LABELS = {
+  papa: 'Papa', payton: 'Payton',
+  pocketBalance: '零钱余额', investBalance: '投资余额', remaining: '贷款剩余',
+  forwarderBalance: '转运公司余额', watchBalance: '皮蛋手表账户余额',
+  monthlyAllowance: '每月零花钱', profit: '销售利润', owner: 'Owner',
+  loans: '贷款', accountTransfers: '账户互转', timestamp: '记录时间',
+}
+
+function formatConflictValue(field, value) {
+  if (value === null || value === undefined || value === '') return '无'
+  if (field === 'owner') return { papa: 'Papa', payton: 'Payton' }[value] || String(value)
+  if (CONFLICT_MONEY_FIELDS.has(field) && (typeof value === 'number' || (typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value.trim())))) {
+    const amount = Number(value)
+    return `${amount < 0 ? '-' : ''}¥${Math.abs(amount).toFixed(2)}`
+  }
+  if (typeof value === 'number') {
+    return String(value)
+  }
+  if (typeof value === 'boolean') return value ? '是' : '否'
+  if (field === 'status' || field === 'type') return STATUS_VALUE_MAP[value] || String(value)
+  return String(value)
+}
+
+function conflictFieldLabel(path, includePath = false) {
+  const parts = path.split('.')
+  if (parts[0] === 'marketPrices' && parts.at(-1) === 'price') {
+    return Number(parts[1]) > 0 ? `市场价格（历史第 ${Number(parts[1]) + 1} 条）` : '市场价格'
+  }
+  const label = (part) => /^\d+$/.test(part) ? `第 ${Number(part) + 1} 条` : CONFLICT_FIELD_LABELS[part] || FIELD_LABEL_MAP[part] || part
+  return (includePath ? parts : parts.slice(-1)).map(label).join(' · ')
+}
+
+function pushConflictChange(entries, key, collectionLabel, recordLabel, field, change, includePath = false) {
+  const fieldKey = field.split('.').pop()
+  const cloudValue = formatConflictValue(fieldKey, change.before)
+  const localValue = formatConflictValue(fieldKey, change.after)
+  const numericMoney = (value) => (typeof value === 'number' || (typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value.trim())))
+  const delta = CONFLICT_MONEY_FIELDS.has(fieldKey) && numericMoney(change.before) && numericMoney(change.after)
+    ? Number(change.after) - Number(change.before)
+    : null
+  const deltaLabel = delta === null ? '' : `${delta >= 0 ? '+' : '-'}¥${Math.abs(delta).toFixed(2)}`
+  const fieldName = conflictFieldLabel(field, includePath)
+  entries.push({ key, collectionLabel, recordLabel, fieldName, kind: 'modified', cloudValue, localValue, deltaLabel, summary: `${fieldName}:${cloudValue}→${localValue}` })
+}
+
+export function computeConflictDiff(localPayload, cloudPayload, { includeObjectSlots = false } = {}) {
   const entries = []
   const local = normalizePayloadForCompare(localPayload)
   const cloud = normalizePayloadForCompare(cloudPayload)
@@ -969,22 +1021,22 @@ export function computeConflictDiff(localPayload, cloudPayload) {
         // 字段级差异，每条记录每个变更字段一条 entry
         const changes = diffRecordFields(c, l)
         for (const [field, change] of Object.entries(changes)) {
-          const fieldName = FIELD_LABEL_MAP[field.split('.').pop()] || field.split('.').pop()
-          entries.push({
-            key: `${col.label}:${id}:${field}`,
-            collectionLabel: col.label,
-            recordLabel: label,
-            fieldName: fieldName,
-            kind: 'modified',
-            cloudValue: formatValueForDisplay(field.split('.').pop(), change.before),
-            localValue: formatValueForDisplay(field.split('.').pop(), change.after),
-            summary: `${fieldName}:${formatValueForDisplay(field.split('.').pop(), change.before)}→${formatValueForDisplay(field.split('.').pop(), change.after)}`,
-          })
+          pushConflictChange(entries, `${col.label}:${id}:${field}`, col.label, label, field, change)
         }
       } else if (l) {
-        entries.push({ key: `${col.label}:${id}`, collectionLabel: col.label, recordLabel: label, fieldName: null, kind: 'localOnly', cloudValue: '无', localValue: formatValueForDisplay('name', l[col.nameField]), summary: '' })
+        entries.push({ key: `${col.label}:${id}`, collectionLabel: col.label, recordLabel: label, fieldName: null, kind: 'localOnly', cloudValue: '无', localValue: formatConflictValue('name', l[col.nameField]), deltaLabel: '', summary: '' })
       } else {
-        entries.push({ key: `${col.label}:${id}`, collectionLabel: col.label, recordLabel: label, fieldName: null, kind: 'cloudOnly', cloudValue: formatValueForDisplay('name', c[col.nameField]), localValue: '无', summary: '' })
+        entries.push({ key: `${col.label}:${id}`, collectionLabel: col.label, recordLabel: label, fieldName: null, kind: 'cloudOnly', cloudValue: formatConflictValue('name', c[col.nameField]), localValue: '无', deltaLabel: '', summary: '' })
+      }
+    }
+  }
+
+  if (includeObjectSlots) {
+    for (const [collectionLabel, localObject, cloudObject] of [
+      ['财务结算', local.calc, cloud.calc], ['Owner 资金', local.ownerRegistry, cloud.ownerRegistry],
+    ]) {
+      for (const [field, change] of Object.entries(diffRecordFields(cloudObject, localObject))) {
+        pushConflictChange(entries, `${collectionLabel}:${field}`, collectionLabel, collectionLabel, field, change, collectionLabel === 'Owner 资金')
       }
     }
   }
