@@ -33,11 +33,14 @@ create table if not exists public.ysp_state (
   owner_id uuid references auth.users(id),
   is_public boolean not null default true,
   payload jsonb not null,
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  revision bigint not null default 0
 );
 
 alter table public.ysp_state enable row level security;
 ```
+
+部署需要 `revision` 的新版客户端之前，须先在 Supabase SQL Editor 执行 [`scripts/sql/2026-10-24-ysp-main-revision.sql`](scripts/sql/2026-10-24-ysp-main-revision.sql)。触发器会拒绝旧版客户端写入 `main`，不影响 `car` 行。
 
 ### 2) RLS 策略
 

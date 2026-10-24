@@ -124,6 +124,13 @@ export function buildMerged(localPayload, cloudPayload, plan, decisions = {}) {
   const rev = {}
   for (const slot of SLOT_KEYS) {
     const action = plan?.[slot]
+    if (action === 'align' && decisions[slot] === undefined) {
+      const localRev = revOf(localPayload, slot)
+      const cloudRev = revOf(cloudPayload, slot)
+      const selected = cloudRev > localRev ? cloudPayload?._rev?.[slot] : localPayload?._rev?.[slot]
+      if (selected) rev[slot] = selected
+      continue
+    }
     let useCloud
     if (decisions[slot] === 'cloud') useCloud = true
     else if (decisions[slot] === 'local') useCloud = false

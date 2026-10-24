@@ -248,6 +248,15 @@ let _cloudUnhealthyWarned = false
 // syncing 重入锁开始时间：若锁持有时长超过阈值，视为请求挂起，强制释放避免同步永久瘫痪
 const SYNC_LOCK_TIMEOUT_MS = 120000
 let _syncingStartedAt = 0
+let writePermissionChecker = null
+
+export function registerWritePermissionChecker(checker) {
+  writePermissionChecker = typeof checker === 'function' ? checker : null
+}
+
+function mayWrite() {
+  return !writePermissionChecker || writePermissionChecker()
+}
 
 export function isCloudSyncUnhealthy() {
   const s = state.cloudSettings
@@ -397,7 +406,14 @@ function canonicalForPlan(payload) {
   }
 }
 
-async function performSyncDecision({ reason = 'auto', force = false, silent = false, pull = false, keepalive = false } = {}) {
+function localSyncRace() {
+  const error = new Error('同步期间本页数据发生变化，正在重新核对')
+  error.code = 'LOCAL_CHANGED_DURING_SYNC'
+  return error
+}
+
+async function performSyncDecision({ reason = 'auto', force = false, silent = false, pull = false, keepalive = false, retryCount = 0 } = {}) {
+  if (!mayWrite()) return null
   if (suppressCloudSync) return null
   if (!state.cloudSettings.enabled && !force) return null
   if (!hasCloudSyncConfig()) return null
@@ -415,15 +431,21 @@ async function performSyncDecision({ reason = 'auto', force = false, silent = fa
   setCloudStatusPatch({ syncing: true, lastSyncError: '' })
   try {
     // 1. 只读预检
-    const cloudResult = await cloudSyncHandler(exportData(), { reason: 'pre-check' })
+    const beforePrecheck = exportData()
+    const cloudResult = await cloudSyncHandler(beforePrecheck, { reason: 'pre-check' })
+    if (!mayWrite()) throw new Error('本页已失去编辑权，请重新加载后核对数据')
+    if (!isContentEqual(beforePrecheck, exportData()) || !hasRevEqual(beforePrecheck, exportData())) throw localSyncRace()
     const cloudPayload = cloudResult?.payload
     const cloudUpdatedAt = cloudResult?.updatedAt || ''
 
     // 2. 云端无行 → 上传本地初始化（含 _rev 印章），并在上传后建立槽位基线
     if (!cloudPayload && !cloudResult?.row) {
-      const result = await cloudSyncHandler(exportData(), { reason })
+      const initialPayload = exportData()
+      const result = await cloudSyncHandler(initialPayload, { reason, expectedRevision: null })
+      if (!mayWrite()) throw new Error('本页已失去编辑权，请重新加载后核对数据')
+      if (!isContentEqual(initialPayload, exportData())) throw localSyncRace()
       for (const slot of SLOT_KEYS) {
-        state.cloudStatus.cloudRev[slot] = revOf(exportData(), slot)
+        state.cloudStatus.cloudRev[slot] = revOf(initialPayload, slot)
       }
       setCloudStatusPatch({ syncing: false, connected: true, lastSyncAt: result?.updatedAt || new Date().toISOString(), lastSyncError: '' })
       saveUiStateToLocalStorage()
@@ -441,6 +463,10 @@ async function performSyncDecision({ reason = 'auto', force = false, silent = fa
     }
 
     const localPayload = exportData()
+    const ensureLocalUnchanged = () => {
+      if (!mayWrite()) throw new Error('本页已失去编辑权，请重新加载后核对数据')
+      if (!isContentEqual(localPayload, exportData())) throw localSyncRace()
+    }
     const plan = computeSlotPlan(
       canonicalForPlan(localPayload),
       canonicalForPlan(cloudPayload),
@@ -464,11 +490,19 @@ async function performSyncDecision({ reason = 'auto', force = false, silent = fa
     // 否则定期检测每轮都刷一条"内容一致"，且该日志又会反过来触发下一轮同步。
     const alreadyAligned = !cloudUpdatedAt || getLocalModifiedAt() === cloudUpdatedAt
     if (adoptSlots.length === 0 && conflictSlots.length === 0 && uploadSlots.length === 0) {
-      setLocalModifiedAt(cloudUpdatedAt)
-      if (!alreadyAligned) {
+      const aligned = buildMerged(localPayload, cloudPayload, plan)
+      const revChanged = !hasRevEqual(aligned, localPayload)
+      if (revChanged) {
+        const applied = await applyCloudPayload(aligned, { trackHistory: false, sourceUpdatedAt: cloudUpdatedAt })
+        if (!applied) throw new Error('修订号对齐失败，请重新加载页面后核对数据')
+      } else {
+        setLocalModifiedAt(cloudUpdatedAt)
+      }
+      if (!alreadyAligned && !revChanged) {
         saveToLocalStorage({ bumpTimestamp: false })
         addOperationLog('cloud_sync', force ? '手动同步：云端与本地一致，已对齐时间戳' : '内容一致，已对齐时间戳', { localModifiedAt: getLocalModifiedAt(), cloudUpdatedAt })
       }
+      for (const slot of SLOT_KEYS) state.cloudStatus.cloudRev[slot] = revOf(cloudPayload, slot)
       setCloudStatusPatch({ syncing: false, connected: true, lastSyncAt: cloudUpdatedAt || new Date().toISOString(), lastAutoSyncAt: Date.now(), lastSyncError: '' })
       saveUiStateToLocalStorage()
       return { updatedAt: cloudUpdatedAt, row: cloudPayload }
@@ -498,6 +532,7 @@ async function performSyncDecision({ reason = 'auto', force = false, silent = fa
         decisions = {}
       }
     }
+    ensureLocalUnchanged()
     if (pull) {
       // 拉取默认偏云端：upload 槽未显式决策时采纳云端
       for (const s of uploadSlots) if (!(s in decisions)) decisions[s] = 'cloud'
@@ -513,27 +548,12 @@ async function performSyncDecision({ reason = 'auto', force = false, silent = fa
       }
     }
 
-    // 8. 合并 + 有采纳云端内容 → 应用合并结果到本地（loadData 恢复 merged._rev）
+    // 8. 在内存中合并；云端写入成功前不改本地，以便版本抢写失败后安全重算。
     const merged = buildMerged(localPayload, cloudPayload, plan, decisions)
     const adoptToLocal = adoptSlots.some((s) => decisions[s] !== 'local') || (pull && uploadSlots.some((s) => decisions[s] === 'cloud'))
     const conflictToCloud = conflictSlots.some((s) => decisions[s] === 'cloud')
-    if (adoptToLocal || conflictToCloud) {
-      const applied = await applyCloudPayload(merged, {
-        trackHistory: force,
-        sourceUpdatedAt: cloudUpdatedAt,
-        decisionSlots: SLOT_KEYS.filter((slot) => {
-          const wantsCloud = decisions[slot] === 'cloud' || (plan[slot] === 'adopt-cloud' && decisions[slot] !== 'local')
-          return wantsCloud
-        }),
-      })
-      if (!applied) {
-        addOperationLog('cloud_sync', '云端载荷损坏/缺失，已拒绝应用，保留本地', { adoptSlots, conflictSlots, cloudUpdatedAt })
-        setCloudStatusPatch({ syncing: false, connected: false, lastSyncError: '云端数据不完整，已拒绝应用' })
-        saveUiStateToLocalStorage()
-        return { updatedAt: getLocalModifiedAt(), row: cloudPayload }
-      }
-      setCloudLoadSuccess?.(cloudUpdatedAt)
-    }
+    const decisionSlotsToAdopt = SLOT_KEYS.filter((slot) =>
+      decisions[slot] === 'cloud' || (plan[slot] === 'adopt-cloud' && decisions[slot] !== 'local'))
 
     // 9. 需上传（有本地获胜槽位，或云端缺 _rev 需印章一次性自愈；pull 已采纳云端的槽不重复上传）
     // 只要 merged 与云端内容或版本不一致就必须上传：若只看 uploadSlots 与 rev 是否相等，
@@ -544,11 +564,32 @@ async function performSyncDecision({ reason = 'auto', force = false, silent = fa
     const mustUpload = localWinUploadSlots.length > 0
       || !hasRevEqual(merged, cloudPayload)
       || !isContentEqual(merged, cloudPayload)
-    if (mustUpload) {
-      result = await cloudSyncHandler(merged, { reason: 'sync', keepalive })
-      setLocalModifiedAt(result?.updatedAt || cloudUpdatedAt)
-      saveToLocalStorage({ bumpTimestamp: false })
+    const canApply = await applyCloudPayload(merged, { validateOnly: true })
+    if (!canApply) {
+      addOperationLog('cloud_sync', '云端载荷损坏/缺失，已拒绝应用，保留本地', { adoptSlots, conflictSlots, cloudUpdatedAt })
+      setCloudStatusPatch({ syncing: false, connected: false, lastSyncError: '云端数据不完整，已拒绝应用' })
+      saveUiStateToLocalStorage()
+      return { updatedAt: getLocalModifiedAt(), row: cloudPayload }
     }
+    if (mustUpload) {
+      ensureLocalUnchanged()
+      result = await cloudSyncHandler(merged, { reason: 'sync', keepalive, expectedRevision: cloudResult?.revision })
+    } else if (decisionSlotsToAdopt.length > 0) {
+      const fresh = await cloudSyncHandler(localPayload, { reason: 'pre-check' })
+      if (fresh?.revision !== cloudResult?.revision) {
+        const error = new Error('云端数据已被其他设备更新，正在重新核对')
+        error.code = 'CLOUD_REVISION_CONFLICT'
+        throw error
+      }
+    }
+    ensureLocalUnchanged()
+    const applied = await applyCloudPayload(merged, {
+      trackHistory: force,
+      sourceUpdatedAt: result?.updatedAt || cloudUpdatedAt,
+      decisionSlots: decisionSlotsToAdopt,
+    })
+    if (!applied) throw new Error('云端已写入，但本地应用失败；请重新加载页面后核对数据')
+    if (adoptToLocal || conflictToCloud) setCloudLoadSuccess?.(cloudUpdatedAt)
 
     // 10. 更新基线 & 状态
     for (const slot of SLOT_KEYS) {
@@ -559,6 +600,14 @@ async function performSyncDecision({ reason = 'auto', force = false, silent = fa
     addOperationLog('cloud_sync', '同步完成', { reason, adoptSlots, conflictSlots, uploadSlots, copies })
     return { updatedAt: result?.updatedAt || cloudUpdatedAt, row: cloudPayload }
   } catch (err) {
+    if (err?.code === 'CLOUD_REVISION_CONFLICT' || err?.code === 'LOCAL_CHANGED_DURING_SYNC') {
+      setCloudStatusPatch({ syncing: false, connected: true, lastSyncError: '' })
+      if (retryCount < 2) {
+        addOperationLog('cloud_sync', '云端在写入前被其他设备更新，已重新核对', { reason, retryCount })
+        return performSyncDecision({ reason, force, silent, pull, keepalive, retryCount: retryCount + 1 })
+      }
+      err = new Error('云端持续被其他设备修改，本地数据已保留，请稍后重新同步')
+    }
     setCloudStatusPatch({ syncing: false, connected: false, lastSyncError: err?.message || '云端同步失败' })
     saveUiStateToLocalStorage()
     throw err
@@ -571,6 +620,7 @@ function hasRevEqual(a, b) {
 }
 
 function scheduleCloudSync() {
+  if (!mayWrite()) return
   if (suppressCloudSync) return
   if (!state.cloudSettings.enabled) return
   if (!hasCloudSyncConfig()) return
@@ -828,6 +878,7 @@ function persistData(serialized) {
 }
 
 export function saveToLocalStorage(options = {}) {
+  if (!mayWrite()) return false
   const bumpTimestamp = options.bumpTimestamp !== false
   takeDailySnapshot()
   let currentData = exportData()
@@ -1101,6 +1152,7 @@ async function applyCloudPayload(payload, options = {}) {
   if (typeof cloudApplyHandler === 'function') {
     return cloudApplyHandler(payload, options)
   }
+  if (options.validateOnly) return true
   loadData(payload)
   if (options.sourceUpdatedAt) setLocalModifiedAt(options.sourceUpdatedAt)
   saveToLocalStorage({ bumpTimestamp: false })
@@ -1436,6 +1488,7 @@ export function getSnapshotByDate(targetDate) {
 }
 
 export function saveUiStateToLocalStorage() {
+  if (!mayWrite()) return false
   setItemQuiet(UI_STORAGE_KEY, JSON.stringify(buildUiPayload()))
 }
 

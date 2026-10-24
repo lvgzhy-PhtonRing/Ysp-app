@@ -34,6 +34,7 @@ import {
   registerCloudApplyHandler,
   registerCloudConflictHandler,
   registerCloudSyncHandler,
+  registerWritePermissionChecker,
   resetCloudUnhealthyWarning,
   runCloudSyncCheck,
   runPullSync,
@@ -73,14 +74,7 @@ import {
 } from './services/cloudStore'
 import { shouldWarnBeforeOverwrite, shouldWarnBeforeUploadLocal, downloadJsonBackup } from './services/dataProtection'
 import { shouldShowGlobalOwnerSwitch } from './utils/appNavigation'
-import {
-  TAB_DISMISS_COOLDOWN_MS,
-  TAB_HEARTBEAT_MS,
-  TAB_LEASE_KEY,
-  parseTabLease,
-  shouldHoldLock,
-  shouldWarnEditorLock,
-} from './utils/tabLease'
+import { createEditorLock } from './utils/editorLock'
 
 const tabs = [
   { id: 'home', name: '数据透视' },
@@ -286,7 +280,10 @@ const tabDataUpdatedAt = ref('')
 
 function onStorageDataChange(e) {
   if (!e || e.key !== 'ysp_data') return
-  if (!e.newValue || e.newValue === JSON.stringify(exportData())) return
+  if (e.newValue === JSON.stringify(exportData())) return
+  tabLocked.value = true
+  void editorLock.release()
+  clearTimeout(periodicTimer)
   tabDataNotice.value = true
   try {
     const parsed = JSON.parse(e.newValue)
@@ -304,60 +301,24 @@ function dismissTabDataNotice() {
   tabDataNotice.value = false
 }
 
-// === 方案B：跨标签页编辑租约 ===
-// 每 TAB_HEARTBEAT_MS 写一次心跳（ysp_tab），展示最近一次用户交互时间；
-// 若读到另一 tab 的新鲜租约且其更活跃 → 提示"另一标签页正在编辑，本页只读"。
-// TTL 让崩溃/关闭的 tab 自动过期，无需手动解锁。
-const TAB_ID =
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `tab-${Date.now()}-${Math.random().toString(36).slice(2)}`
-const lastTouch = ref(Date.now())
-const otherTabEditing = ref(false)
-const tabLocked = ref(false)
-let tabLeaseTimer = null
-let tabLockDismissUntil = 0
+const editorLock = createEditorLock()
+const tabLocked = ref(true)
 
-function bumpTabTouch() {
-  lastTouch.value = Date.now()
-}
-
-function bumpTabTouchUnlessLocked() {
-  if (tabLocked.value) return
-  bumpTabTouch()
-}
-
-function tabLeaseTick() {
-  // 先读他人上一次心跳，再写自己的（共享 key 后写覆盖先写）
-  const other = parseTabLease(localStorage.getItem(TAB_LEASE_KEY))
-  const own = { id: TAB_ID, at: Date.now(), touch: lastTouch.value }
-  localStorage.setItem(TAB_LEASE_KEY, JSON.stringify(own))
-  tabLocked.value = shouldHoldLock(other, own)
-
-  if (shouldWarnEditorLock(other, own)) {
-    // 用户手动关掉提示后有静默期，避免每 2s 反复弹出
-    otherTabEditing.value = Date.now() >= tabLockDismissUntil
-  } else {
-    otherTabEditing.value = false
+async function retryEditorLock() {
+  if (!(await editorLock.acquire())) return
+  if (!localStorage.getItem('ysp_data')) {
+    window.location.reload()
+    return
   }
-}
-
-function takeoverEditing() {
-  bumpTabTouch()
+  loadUiStateFromLocalStorage()
+  loadFromLocalStorage()
+  tabDataNotice.value = false
   tabLocked.value = false
+  await startEditableSession()
 }
 
-function dismissOtherTabEditing() {
-  otherTabEditing.value = false
-  tabLockDismissUntil = Date.now() + TAB_DISMISS_COOLDOWN_MS
-}
-
-function releaseTabLease() {
-  try {
-    localStorage.setItem(TAB_LEASE_KEY, JSON.stringify({ id: TAB_ID, at: 0, touch: 0 }))
-  } catch (_) {
-    // 尽力而为
-  }
+function exportLockedPageBackup() {
+  downloadJsonBackup({ ...exportData(), operationLogs: [...store.operationLogs] }, `PhtonRing数据_锁定页_${todayStr()}.json`)
 }
 
 function todayStr() {
@@ -607,6 +568,7 @@ function applyCloudDataToStore(payload = {}, options = {}) {
   for (const [label, value, localCount] of guards) {
     if (cloudFieldMissingGuard(label, value, localCount)) return false
   }
+  if (options.validateOnly) return true
 
   // C 方案：采纳云端前落档被覆盖槽位（loadData 前抓取）
   const decisionSlots = Array.isArray(options.decisionSlots) ? options.decisionSlots : []
@@ -818,6 +780,7 @@ function getCloudLoadTimeText() {
  */
 function syncSilentlyOnHidden() {
   if (document.visibilityState !== 'hidden') return
+  if (tabLocked.value) return
   if (!store.cloudSettings.enabled) return
   if (!isCloudConfigReady(store.cloudSettings)) return
   if (store.cloudStatus.syncing) return
@@ -903,11 +866,7 @@ function handleExport() {
   addOperationLog('app_export', '导出备份', { fileName: a.download })
 }
 
-onMounted(async () => {
-  loadUiStateFromLocalStorage()
-  loadFromLocalStorage()
-  fullImportReady.value = !!latestFullImportSnapshot()
-
+async function startEditableSession() {
   const envCloudSettings = getEnvCloudSettings()
   if (!isCloudConfigReady(store.cloudSettings) && isCloudConfigReady(envCloudSettings)) {
     setCloudSettings({
@@ -920,6 +879,19 @@ onMounted(async () => {
     await tryLoadCloudConfigFromPublicFile()
   }
 
+  await loadCloudOnStartup()
+  if (store.cloudSettings.enabled && isCloudConfigReady(store.cloudSettings)) {
+    clearTimeout(periodicTimer)
+    periodicTimer = setTimeout(periodicCloudCheck, CLOUD_AUTO_SYNC_INTERVAL)
+  }
+}
+
+onMounted(async () => {
+  registerWritePermissionChecker(() => editorLock.held())
+  loadUiStateFromLocalStorage()
+  loadFromLocalStorage()
+  fullImportReady.value = !!latestFullImportSnapshot()
+
   registerCloudSyncHandler(async (payload, options = {}) => {
     const reason = options?.reason || ''
     if (reason === 'pre-check') {
@@ -930,6 +902,7 @@ onMounted(async () => {
       })
       return {
         updatedAt: result?.updatedAt,
+        revision: result?.revision,
         row: result?.row,
         payload: result?.payload,
       }
@@ -939,9 +912,11 @@ onMounted(async () => {
       onSession: (session) => setCloudSession(session),
       makePublic: store.cloudSettings.publicRead,
       keepalive: Boolean(options?.keepalive),
+      expectedRevision: options?.expectedRevision,
     })
     return {
       updatedAt: result?.updatedAt,
+      revision: result?.revision,
       row: result?.row,
       payload: result?.payload,
     }
@@ -953,22 +928,14 @@ onMounted(async () => {
   document.addEventListener('visibilitychange', syncSilentlyOnHidden)
   window.addEventListener('storage', onStorageDataChange)
   document.addEventListener('keydown', (e) => {
+    if (tabLocked.value) return
     if (e.key === 'Escape' && showConfirm.value) cancelConfirm()
   })
-  document.addEventListener('mousedown', bumpTabTouchUnlessLocked)
-  document.addEventListener('keydown', bumpTabTouchUnlessLocked)
-  tabLeaseTick()
-  tabLeaseTimer = setInterval(tabLeaseTick, TAB_HEARTBEAT_MS)
-
-  // === 新增：程序启动时自动从云端加载数据 ===
-  const cloudLoaded = await loadCloudOnStartup()
-
-
-  // === 新增：如果启用了云同步，在后台定期检测是否需要同步 ===
-  if (store.cloudSettings.enabled && isCloudConfigReady(store.cloudSettings)) {
-    // 延迟第一次检测，避免页面加载过慢
-    periodicTimer = setTimeout(periodicCloudCheck, CLOUD_AUTO_SYNC_INTERVAL)
-  }
+  if (!(await editorLock.acquire())) return
+  loadUiStateFromLocalStorage()
+  loadFromLocalStorage()
+  tabLocked.value = false
+  await startEditableSession()
 })
 
 let periodicTimer = null
@@ -979,6 +946,7 @@ let periodicTimer = null
  * - 如果云端数据比本地新，静默下载
  */
 function periodicCloudCheck() {
+  if (tabLocked.value) return
   // 重排必须先行：守卫 return 不得跳过重排，否则检测链会永久中断
   periodicTimer = setTimeout(periodicCloudCheck, CLOUD_AUTO_SYNC_INTERVAL)
 
@@ -1017,31 +985,26 @@ onBeforeUnmount(() => {
   clearTimeout(periodicTimer)
   document.removeEventListener('visibilitychange', syncSilentlyOnHidden)
   window.removeEventListener('storage', onStorageDataChange)
-  clearInterval(tabLeaseTimer)
-  releaseTabLease()
-  document.removeEventListener('mousedown', bumpTabTouchUnlessLocked)
-  document.removeEventListener('keydown', bumpTabTouchUnlessLocked)
 
   // 关闭前保底同步：页面卸载时 confirm 不可靠，不做复杂冲突提示。
   // 走引擎 silent + keepalive：有分歧槽位则整轮跳过（不盲写），冲突推迟到下次启动 loadCloudOnStartup。
   ;(async () => {
-    if (
-      !store.cloudSettings.enabled ||
-      !isCloudConfigReady(store.cloudSettings) ||
-      store.cloudStatus.syncing
-    ) return
-
-    // 仅在有未同步操作时才尝试 keepalive 同步
-    if (getUnsyncedOperations().length === 0) return
-    // 本次会话尚未成功同步过 → 不静默盲写，留给下次启动冲突检测
-    if (!store.cloudStatus.lastSyncAt) return
-
     try {
-      await unloadSync()
-      addOperationLog('cloud_sync', '关闭前 keepalive 上传保底成功', { localUpdatedAt: getLocalModifiedAt() })
+      if (
+        !editorLock.held() ||
+        !store.cloudSettings.enabled ||
+        !isCloudConfigReady(store.cloudSettings) ||
+        store.cloudStatus.syncing ||
+        getUnsyncedOperations().length === 0 ||
+        !store.cloudStatus.lastSyncAt
+      ) return
+      const result = await unloadSync()
+      if (result) addOperationLog('cloud_sync', '关闭前 keepalive 上传保底成功', { localUpdatedAt: getLocalModifiedAt() })
     } catch (err) {
       // 静默失败，下次启动 loadCloudOnStartup 会检测冲突并提示用户
       addOperationLog('cloud_sync', '关闭前 keepalive 上传失败', { error: err.message })
+    } finally {
+      await editorLock.release()
     }
   })()
 })
@@ -1057,6 +1020,7 @@ watch(
 
 <template>
   <div class="flex h-screen overflow-hidden bg-appbg text-gray-800" v-cloak>
+    <div class="contents" :inert="tabLocked">
     <input
       ref="fileInputRef"
       type="file"
@@ -1445,32 +1409,6 @@ watch(
     <DataHelpModal v-model="showDataHelp" />
     <Transition name="fade">
       <div
-        v-if="otherTabEditing"
-        class="fixed left-1/2 top-16 z-50 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 shadow-lg"
-      >
-        <i class="fa-solid fa-lock text-amber-500"></i>
-        <span>另一标签页正在编辑，本页已锁定为只读（建议只保留一个编辑页）。</span>
-        <button class="font-semibold underline text-blue-600" @click="dismissOtherTabEditing">我在此页编辑</button>
-        <button class="ml-1 text-amber-500 hover:text-amber-700" @click="dismissOtherTabEditing">✕</button>
-      </div>
-    </Transition>
-    <Transition name="fade">
-      <div
-        v-if="tabLocked"
-        class="fixed inset-0 z-40 flex items-center justify-center bg-black/30"
-        style="pointer-events: none"
-      >
-        <div class="rounded-2xl bg-white p-6 shadow-xl text-center max-w-sm"
-             style="pointer-events: auto">
-          <i class="fa-solid fa-lock text-amber-500 text-2xl mb-2"></i>
-          <p class="text-gray-800 font-medium mb-1">另一标签页正在编辑</p>
-          <p class="text-sm text-gray-500 mb-4">本页已只读。对方可能有未保存操作，接管前请确认。</p>
-          <button class="btn btn-primary" @click="takeoverEditing">接管编辑</button>
-        </div>
-      </div>
-    </Transition>
-    <Transition name="fade">
-      <div
         v-if="tabDataNotice"
         class="fixed left-1/2 top-40 z-50 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 shadow-lg"
       >
@@ -1490,6 +1428,18 @@ watch(
         <span>今日备份已生成：PhtonRing数据_{{ todayStr() }}.json</span>
         <button class="font-semibold underline" @click="downloadBackupManually">若未自动下载，点此下载</button>
         <button class="ml-1 text-emerald-500 hover:text-emerald-700" @click="dismissBackupNotice">✕</button>
+      </div>
+    </Transition>
+    </div>
+    <Transition name="fade">
+      <div v-if="tabLocked" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
+        <div class="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl" role="dialog" aria-modal="true" aria-label="本页只读">
+          <i class="fa-solid fa-lock mb-2 text-2xl text-amber-500"></i>
+          <p class="mb-1 font-semibold text-gray-900">本页暂时只读</p>
+          <p class="mb-4 text-sm text-gray-600">另一标签页可能正在编辑。关闭其他编辑页后，重新取得编辑权并读取最新数据。</p>
+          <button v-if="tabDataNotice" type="button" class="btn mr-2" @click="exportLockedPageBackup">下载本页副本</button>
+          <button type="button" class="btn btn-primary" @click="retryEditorLock">重新取得编辑权</button>
+        </div>
       </div>
     </Transition>
   </div>

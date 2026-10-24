@@ -18,6 +18,7 @@ import {
   registerCloudApplyHandler,
   registerCloudConflictHandler,
   registerCloudSyncHandler,
+  registerWritePermissionChecker,
   redoLastChange,
   runCloudSyncCheck,
   runPullSync,
@@ -77,6 +78,28 @@ describe('data store', () => {
     saveToLocalStorage()
     expect(exportData()._rev.items.rev).toBe(before)
     vi.unstubAllGlobals()
+  })
+})
+
+describe('read-only tab persistence guard', () => {
+  afterEach(() => {
+    registerWritePermissionChecker(null)
+    vi.unstubAllGlobals()
+  })
+
+  it('cannot save business data or UI state without the editor lock', async () => {
+    const values = new Map()
+    vi.stubGlobal('localStorage', {
+      getItem: (key) => values.get(key) || null,
+      setItem: (key, value) => values.set(key, value),
+      removeItem: (key) => values.delete(key),
+    })
+    registerWritePermissionChecker(() => false)
+    loadData({ items: [{ id: 'read-only' }] })
+    expect(saveToLocalStorage()).toBe(false)
+    saveUiStateToLocalStorage()
+    expect(values.size).toBe(0)
+    expect(await syncToCloudNow()).toBeNull()
   })
 })
 
@@ -408,11 +431,11 @@ describe('手动同步(force) 智能比对', () => {
 
   function makeSyncHandler(env) {
     return async (payload, options = {}) => {
-      env.calls.push({ reason: options.reason || '', payload: payload ? JSON.parse(JSON.stringify(payload)) : payload })
+      env.calls.push({ reason: options.reason || '', expectedRevision: options.expectedRevision, payload: payload ? JSON.parse(JSON.stringify(payload)) : payload })
       if ((options.reason || '') === 'pre-check') {
-        return { updatedAt: env.cloudUpdatedAt || CLOUD_UPDATED_AT, row: env.cloudRow ?? null, payload: env.cloudPayload }
+        return { updatedAt: env.cloudUpdatedAt || CLOUD_UPDATED_AT, row: env.cloudRow ?? null, payload: env.cloudPayload, revision: env.cloudRow ? (env.revision ?? 0) : null }
       }
-      return { updatedAt: env.cloudUpdatedAt || CLOUD_UPDATED_AT, row: { id: 'main' }, payload }
+      return { updatedAt: env.cloudUpdatedAt || CLOUD_UPDATED_AT, row: { id: 'main' }, payload, revision: (env.revision ?? 0) + 1 }
     }
   }
 
@@ -479,8 +502,143 @@ describe('手动同步(force) 智能比对', () => {
     await syncToCloudNow()
 
     expect(env.calls.map((c) => c.reason)).toEqual(['pre-check', 'manual'])
+    expect(env.calls[1].expectedRevision).toBeNull()
     expect(conflictCalled).toBe(false)
     expect(state.items.length).toBe(1)
+  })
+
+  it('云端抢先写入后重读并合并不同槽位，本地在抢写失败前保持原值', async () => {
+    const env = setupCloudEnv()
+    const base = {
+      ...CLOUD_PAYLOAD,
+      items: [{ id: 1, name: 'cloud-old' }],
+      finance: { records: [], loans: [] },
+      _rev: { items: { rev: 1, at: '' }, 'finance.records': { rev: 1, at: '' } },
+    }
+    const newer = {
+      ...base,
+      finance: { records: [{ id: 9, item: 'cloud-new' }], loans: [] },
+      _rev: { ...base._rev, 'finance.records': { rev: 2, at: '' } },
+    }
+    loadData({ ...base, items: [{ id: 1, name: 'local-new' }], _rev: { ...base._rev, items: { rev: 2, at: '' } } })
+    state.cloudStatus.cloudRev = { items: 1, 'finance.records': 1 }
+    let revision = 7
+    let attempts = 0
+    registerCloudSyncHandler(async (payload, options = {}) => {
+      env.calls.push({ reason: options.reason, expectedRevision: options.expectedRevision, payload })
+      if (options.reason === 'pre-check') {
+        return { row: { id: 'main' }, payload: revision === 7 ? base : newer, revision, updatedAt: CLOUD_UPDATED_AT }
+      }
+      attempts++
+      if (attempts === 1) {
+        expect(state.items[0].name).toBe('local-new')
+        revision = 8
+        const error = new Error('collision')
+        error.code = 'CLOUD_REVISION_CONFLICT'
+        throw error
+      }
+      return { row: { id: 'main' }, payload, revision: 9, updatedAt: CLOUD_UPDATED_AT }
+    })
+    registerCloudApplyHandler((payload, options) => { if (options.validateOnly) return true; loadData(payload); saveToLocalStorage({ bumpTimestamp: false }); return true })
+    const result = await runCloudSyncCheck()
+    expect(result).toBeTruthy()
+    expect(env.calls.filter((call) => call.reason === 'pre-check')).toHaveLength(2)
+    expect(env.calls.filter((call) => call.reason === 'sync').map((call) => call.expectedRevision)).toEqual([7, 8])
+    expect(env.calls.at(-1).payload.finance.records[0].item).toBe('cloud-new')
+    expect(state.items[0].name).toBe('local-new')
+    expect(state.financeRecords[0].item).toBe('cloud-new')
+  })
+
+  it('同步请求期间本页再次编辑时保留新编辑并重新核对', async () => {
+    const env = setupCloudEnv()
+    const base = { ...CLOUD_PAYLOAD, items: [{ id: 1, name: 'cloud' }], _rev: { items: { rev: 1, at: '' } } }
+    loadData({ ...base, items: [{ id: 1, name: 'first-edit' }], _rev: { items: { rev: 2, at: '' } } })
+    state.cloudStatus.cloudRev = { items: 1 }
+    let cloud = base
+    let revision = 7
+    let writes = 0
+    registerCloudSyncHandler(async (payload, options = {}) => {
+      if (options.reason === 'pre-check') return { row: { id: 'main' }, payload: cloud, revision, updatedAt: CLOUD_UPDATED_AT }
+      writes++
+      if (writes === 1) {
+        state.items[0].name = 'second-edit'
+        saveToLocalStorage()
+      }
+      cloud = JSON.parse(JSON.stringify(payload))
+      revision++
+      return { row: { id: 'main' }, payload: cloud, revision, updatedAt: CLOUD_UPDATED_AT }
+    })
+    registerCloudConflictHandler(async () => ({ decisions: { items: 'local' }, copies: [] }))
+    registerCloudApplyHandler((payload, options) => { if (options.validateOnly) return true; loadData(payload); saveToLocalStorage({ bumpTimestamp: false }); return true })
+    await runCloudSyncCheck()
+    expect(state.items[0].name).toBe('second-edit')
+    expect(cloud.items[0].name).toBe('second-edit')
+    expect(writes).toBe(2)
+  })
+
+  it('云端预检期间本页再次编辑时先重读，不按旧内容对齐', async () => {
+    const base = { ...CLOUD_PAYLOAD, items: [{ id: 1, name: 'same' }], _rev: { items: { rev: 1, at: '' } } }
+    loadData(base)
+    const env = setupCloudEnv({ cloudPayload: base })
+    state.cloudStatus.cloudRev = { items: 1 }
+    let checks = 0
+    registerCloudSyncHandler(async (payload, options = {}) => {
+      env.calls.push({ reason: options.reason, expectedRevision: options.expectedRevision, payload })
+      if (options.reason === 'pre-check') {
+        if (++checks === 1) { state.items[0].name = 'new-edit'; saveToLocalStorage() }
+        return { row: { id: 'main' }, payload: base, revision: 3, updatedAt: CLOUD_UPDATED_AT }
+      }
+      return { row: { id: 'main' }, payload, revision: 4, updatedAt: CLOUD_UPDATED_AT }
+    })
+    await runCloudSyncCheck()
+    expect(checks).toBe(2)
+    expect(env.calls.find((call) => call.reason === 'sync')?.payload.items[0].name).toBe('new-edit')
+  })
+
+  it('内容相同时将本地较低修订号对齐云端，后续本地编辑不误报双边冲突', async () => {
+    const local = { ...CLOUD_PAYLOAD, _rev: { items: { rev: 2, at: '' } } }
+    const cloud = { ...CLOUD_PAYLOAD, _rev: { items: { rev: 5, at: '' } } }
+    loadData(local)
+    const env = setupCloudEnv({ cloudPayload: cloud })
+    state.cloudStatus.cloudRev = { items: 2 }
+    await runCloudSyncCheck()
+    expect(exportData()._rev.items.rev).toBe(5)
+    expect(state.cloudStatus.cloudRev.items).toBe(5)
+    state.items[0].name = 'edit-after-align'
+    saveToLocalStorage()
+    let conflicts = 0
+    registerCloudConflictHandler(async () => { conflicts++; return null })
+    await runCloudSyncCheck()
+    expect(conflicts).toBe(0)
+    expect(env.calls.some((call) => call.reason === 'sync')).toBe(true)
+  })
+
+  it('选择采纳云端期间云端再次变化时重新展示最新差异', async () => {
+    loadData({ ...CLOUD_PAYLOAD, items: [{ id: 1, name: 'local' }], _rev: { items: { rev: 2, at: '' } } })
+    const env = setupCloudEnv()
+    state.cloudStatus.cloudRev = { items: 1 }
+    let revision = 5
+    let remoteName = 'cloud-old'
+    let choices = 0
+    registerCloudSyncHandler(async (payload, options = {}) => {
+      env.calls.push({ reason: options.reason, expectedRevision: options.expectedRevision })
+      if (options.reason === 'pre-check') {
+        return {
+          row: { id: 'main' }, revision, updatedAt: CLOUD_UPDATED_AT,
+          payload: { ...CLOUD_PAYLOAD, items: [{ id: 1, name: remoteName }], _rev: { items: { rev: revision, at: '' } } },
+        }
+      }
+      return { row: { id: 'main' }, payload, revision: revision + 1, updatedAt: CLOUD_UPDATED_AT }
+    })
+    registerCloudConflictHandler(async () => {
+      if (++choices === 1) { revision = 6; remoteName = 'cloud-new' }
+      return { decisions: { items: 'cloud' }, copies: [] }
+    })
+    registerCloudApplyHandler((payload, options) => { if (options.validateOnly) return true; loadData(payload); return true })
+    await runCloudSyncCheck()
+    expect(choices).toBe(2)
+    expect(state.items[0].name).toBe('cloud-new')
+    expect(env.calls.filter((call) => call.reason === 'sync')).toHaveLength(0)
   })
 
   it('云端较新且不同、用户选择 use-cloud 时，应用云端数据覆盖本地', async () => {

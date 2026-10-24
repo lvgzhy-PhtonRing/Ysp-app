@@ -67,6 +67,19 @@ function buildApiError(prefix, status, data) {
   return new Error(`${prefix}${suffix}`)
 }
 
+function requireCloudRevision(value) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error('云端版本信息缺失或无效，请先执行数据库版本迁移；已停止写入以保护数据')
+  }
+  return value
+}
+
+function revisionConflict() {
+  const error = new Error('云端数据已被其他设备更新，正在重新核对')
+  error.code = 'CLOUD_REVISION_CONFLICT'
+  return error
+}
+
 function mapSession(data = {}, fallbackEmail = '') {
   const expiresIn = Number(data.expires_in || 0)
   const expiresAt = Number(data.expires_at || 0) || Math.floor(Date.now() / 1000) + expiresIn
@@ -199,7 +212,7 @@ function buildStateQuery(config, { publicOnly = true } = {}) {
   if (publicOnly) {
     params.set('is_public', 'eq.true')
   }
-  params.set('select', 'id,payload,updated_at,is_public,owner_id')
+  params.set('select', 'id,payload,updated_at,is_public,owner_id,revision')
   params.set('limit', '1')
   return `${config.supabaseUrl}/rest/v1/ysp_state?${params.toString()}`
 }
@@ -224,6 +237,9 @@ export async function fetchCloudState(rawConfig = {}, options = {}) {
 
   const data = await readJsonResponse(resp)
   if (!resp.ok) {
+    if (data?.code === '42703' && String(data?.message || '').includes('revision')) {
+      throw new Error('云端缺少版本字段，请先执行数据库版本迁移；已停止同步以保护数据')
+    }
     throw buildApiError('读取云端数据失败', resp.status, data)
   }
 
@@ -233,6 +249,7 @@ export async function fetchCloudState(rawConfig = {}, options = {}) {
       row: null,
       payload: null,
       updatedAt: '',
+      revision: null,
       session: nextSession,
     }
   }
@@ -242,6 +259,7 @@ export async function fetchCloudState(rawConfig = {}, options = {}) {
     row,
     payload: row?.payload ?? null,
     updatedAt: row?.updated_at || '',
+    revision: requireCloudRevision(row?.revision),
     session: nextSession,
   }
 }
@@ -252,7 +270,8 @@ export async function saveCloudState(rawConfig = {}, payload = {}, options = {})
     throw new Error('云端配置不完整')
   }
 
-  const { session = null, onSession = null, makePublic = true, keepalive = false } = options
+  const { session = null, onSession = null, makePublic = true, keepalive = false, expectedRevision } = options
+  if (expectedRevision !== null) requireCloudRevision(expectedRevision)
   const nextSession = await ensureSession(config, session, onSession)
   if (!nextSession?.accessToken) {
     throw new Error('请先登录云端账号')
@@ -263,31 +282,25 @@ export async function saveCloudState(rawConfig = {}, payload = {}, options = {})
     Prefer: 'return=representation',
   }
 
-  const patchParams = new URLSearchParams()
-  patchParams.set('id', `eq.${config.stateId}`)
-
-  const patchResp = await fetchWithTimeout(`${config.supabaseUrl}/rest/v1/ysp_state?${patchParams.toString()}`, {
-    method: 'PATCH',
-    headers,
-    body: JSON.stringify({
-      payload,
-      is_public: Boolean(makePublic),
-      updated_at: new Date().toISOString(),
-    }),
-    keepalive,
-  }, keepalive ? null : FETCH_TIMEOUT_MS)
-
-  const patchData = await readJsonResponse(patchResp)
-  if (!patchResp.ok) {
-    throw buildApiError('写入云端数据失败', patchResp.status, patchData)
-  }
-
-  const patchedRows = Array.isArray(patchData) ? patchData : []
-  if (patchedRows.length > 0) {
+  if (expectedRevision !== null) {
+    const patchParams = new URLSearchParams()
+    patchParams.set('id', `eq.${config.stateId}`)
+    patchParams.set('revision', `eq.${expectedRevision}`)
+    const patchResp = await fetchWithTimeout(`${config.supabaseUrl}/rest/v1/ysp_state?${patchParams.toString()}`, {
+      method: 'PATCH', headers,
+      body: JSON.stringify({ payload, is_public: Boolean(makePublic), revision: expectedRevision + 1 }),
+      keepalive,
+    }, keepalive ? null : FETCH_TIMEOUT_MS)
+    const patchData = await readJsonResponse(patchResp)
+    if (!patchResp.ok) throw buildApiError('写入云端数据失败', patchResp.status, patchData)
+    const patchedRows = Array.isArray(patchData) ? patchData : []
+    if (!patchedRows.length) throw revisionConflict()
+    requireCloudRevision(patchedRows[0]?.revision)
     return {
       row: patchedRows[0],
       updatedAt: patchedRows[0]?.updated_at || '',
       payload: patchedRows[0]?.payload ?? payload,
+      revision: patchedRows[0].revision,
       session: nextSession,
     }
   }
@@ -296,6 +309,7 @@ export async function saveCloudState(rawConfig = {}, payload = {}, options = {})
     id: config.stateId,
     payload,
     is_public: Boolean(makePublic),
+    revision: 0,
   }
   if (nextSession?.user?.id) {
     insertRow.owner_id = nextSession.user.id
@@ -309,15 +323,19 @@ export async function saveCloudState(rawConfig = {}, payload = {}, options = {})
   }, keepalive ? null : FETCH_TIMEOUT_MS)
 
   const insertData = await readJsonResponse(insertResp)
+  if (insertResp.status === 409) throw revisionConflict()
   if (!insertResp.ok) {
     throw buildApiError('创建云端数据行失败', insertResp.status, insertData)
   }
 
   const insertedRows = Array.isArray(insertData) ? insertData : []
+  if (!insertedRows.length) throw new Error('云端初始化未返回数据，已停止同步')
+  requireCloudRevision(insertedRows[0]?.revision)
   return {
     row: insertedRows[0] || null,
     updatedAt: insertedRows[0]?.updated_at || '',
     payload: insertedRows[0]?.payload ?? payload,
+    revision: insertedRows[0].revision,
     session: nextSession,
   }
 }

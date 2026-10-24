@@ -85,6 +85,20 @@ describe('computeSlotPlan', () => {
 })
 
 describe('buildMerged', () => {
+  it('same-content slots retain the higher revision when another slot is uploaded', () => {
+    const local = p([{ id: 1, name: 'same' }], { debt: 2 }, {
+      items: { rev: 2, at: 'local' }, calc: { rev: 2, at: 'local' },
+    })
+    const cloud = p([{ id: 1, name: 'same' }], { debt: 1 }, {
+      items: { rev: 5, at: 'cloud' }, calc: { rev: 1, at: 'cloud' },
+    })
+    const plan = computeSlotPlan(local, cloud, { items: 2, calc: 1 }, ser)
+    const merged = buildMerged(local, cloud, plan)
+    expect(merged.items).toEqual(local.items)
+    expect(merged._rev.items.rev).toBe(5)
+    expect(merged.calc).toEqual(local.calc)
+  })
+
   it('upload 槽取本地、adopt 槽取云端、conflict 按决策取', () => {
     const L = p([{ id: 1, n: 'A' }], { debt: 0 }, { items: { rev: 2, at: '' }, calc: { rev: 1, at: '' }, transfers: { rev: 1, at: '' } })
     const C = p([{ id: 1, n: 'C' }], { debt: 0 }, { items: { rev: 5, at: '' }, calc: { rev: 1, at: '' }, transfers: { rev: 5, at: '' } })
