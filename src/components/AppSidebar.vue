@@ -22,9 +22,13 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  taxReminderCount: {
+    type: Number,
+    default: 0,
+  },
 })
 
-const emit = defineEmits(['select', 'import', 'export', 'cloud', 'logs', 'help'])
+const emit = defineEmits(['select', 'import', 'export', 'cloud', 'logs', 'help', 'reminders'])
 
 const dataOpsOpen = ref(false)
 const currentDateTime = ref(formatDateTime())
@@ -125,6 +129,14 @@ function getGroupTabs(group) {
     </div>
 
     <div class="border-t border-gray-100 p-4 space-y-2">
+      <button
+        class="flex w-full items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-left text-sm font-semibold text-amber-800 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+        @click="emit('reminders')"
+      >
+        <i class="fa-solid fa-bell" />
+        <span class="flex-1">申报提醒</span>
+        <span v-if="taxReminderCount" class="min-w-6 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-xs font-bold text-white">{{ taxReminderCount }}</span>
+      </button>
       <button
         class="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer flex items-center gap-2"
         @click="toggleDataOps"

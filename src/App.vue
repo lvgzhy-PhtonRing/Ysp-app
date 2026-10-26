@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AppSidebar from './components/AppSidebar.vue'
 import GlassModal from './components/GlassModal.vue'
 import DataHelpModal from './components/DataHelpModal.vue'
+import TaxReminderModal from './components/TaxReminderModal.vue'
 import HomeModule from './modules/home/HomeModule.vue'
 import InventoryModule from './modules/inventory/InventoryModule.vue'
 import InventoryAgingModule from './modules/inventory/InventoryAgingModule.vue'
@@ -75,6 +76,7 @@ import {
 import { shouldWarnBeforeOverwrite, shouldWarnBeforeUploadLocal, downloadJsonBackup } from './services/dataProtection'
 import { shouldShowGlobalOwnerSwitch } from './utils/appNavigation'
 import { createEditorLock } from './utils/editorLock'
+import { collectTaxReminderHits, listTaxFilingItems, markTaxFilingCompleted, TAX_REMINDER_STORAGE_KEY } from './data/taxReminders'
 
 const tabs = [
   { id: 'home', name: '数据透视' },
@@ -93,6 +95,34 @@ const currentTab = ref('home')
 const fileInputRef = ref(null)
 const showLogsModal = ref(false)
 const showDataHelp = ref(false)
+const showTaxReminderModal = ref(false)
+const taxReminderNow = ref(new Date())
+const taxReminderHits = ref([])
+const taxReminderItems = computed(() => listTaxFilingItems(taxReminderNow.value))
+const taxReminderCount = computed(() => taxReminderItems.value.filter(item => !item.completed).length)
+const highlightedTaxReminderIds = computed(() => taxReminderHits.value.map(item => item.id))
+let taxReminderTimer = null
+
+function refreshTaxReminders(allowPopup = false) {
+  taxReminderNow.value = new Date()
+  const hits = collectTaxReminderHits(taxReminderNow.value)
+  if (hits.length) {
+    taxReminderHits.value = hits
+    if (allowPopup) showTaxReminderModal.value = true
+  }
+  return hits
+}
+
+function openTaxReminders() {
+  if (!refreshTaxReminders().length) taxReminderHits.value = []
+  showTaxReminderModal.value = true
+}
+
+function setTaxFilingCompleted(id, completed) {
+  markTaxFilingCompleted(id, completed)
+  taxReminderNow.value = new Date()
+  taxReminderHits.value = taxReminderHits.value.filter(item => item.id !== id)
+}
 var expandedLogId = ref(null)
 var rawExpanded = ref(null)
 function toggleExpand(log) {
@@ -279,6 +309,10 @@ const tabDataNotice = ref(false)
 const tabDataUpdatedAt = ref('')
 
 function onStorageDataChange(e) {
+  if (e?.key === TAX_REMINDER_STORAGE_KEY) {
+    taxReminderNow.value = new Date()
+    return
+  }
   if (!e || e.key !== 'ysp_data') return
   if (e.newValue === JSON.stringify(exportData())) return
   tabLocked.value = true
@@ -779,7 +813,10 @@ function getCloudLoadTimeText() {
  * 尽力而为、不阻塞、不提示；有未同步操作且云同步可用时才触发。
  */
 function syncSilentlyOnHidden() {
-  if (document.visibilityState !== 'hidden') return
+  if (document.visibilityState !== 'hidden') {
+    refreshTaxReminders(true)
+    return
+  }
   if (tabLocked.value) return
   if (!store.cloudSettings.enabled) return
   if (!isCloudConfigReady(store.cloudSettings)) return
@@ -936,6 +973,8 @@ onMounted(async () => {
   loadFromLocalStorage()
   tabLocked.value = false
   await startEditableSession()
+  refreshTaxReminders(true)
+  taxReminderTimer = window.setInterval(() => refreshTaxReminders(true), 60_000)
 })
 
 let periodicTimer = null
@@ -983,6 +1022,7 @@ function periodicCloudCheck() {
 
 onBeforeUnmount(() => {
   clearTimeout(periodicTimer)
+  if (taxReminderTimer) window.clearInterval(taxReminderTimer)
   document.removeEventListener('visibilitychange', syncSilentlyOnHidden)
   window.removeEventListener('storage', onStorageDataChange)
 
@@ -1035,12 +1075,14 @@ watch(
       :current-owner="store.currentOwner"
       :version="store.version"
       :cloud-unhealthy="cloudUnhealthy"
+      :tax-reminder-count="taxReminderCount"
       @select="currentTab = $event"
       @import="triggerImport"
       @export="handleExport"
       @cloud="openCloudSettings"
       @logs="showLogsModal = true"
       @help="showDataHelp = true"
+      @reminders="openTaxReminders"
     />
 
     <main :class="['relative flex-1 overflow-y-auto p-5 md:p-6', currentTab === 'inventory-aging' ? 'bg-sky-50/60' : '']">
@@ -1431,6 +1473,13 @@ watch(
       </div>
     </Transition>
     </div>
+    <TaxReminderModal
+      :open="showTaxReminderModal"
+      :items="taxReminderItems"
+      :highlighted-ids="highlightedTaxReminderIds"
+      @close="showTaxReminderModal = false"
+      @complete="setTaxFilingCompleted"
+    />
     <Transition name="fade">
       <div v-if="tabLocked" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
         <div class="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl" role="dialog" aria-modal="true" aria-label="本页只读">
