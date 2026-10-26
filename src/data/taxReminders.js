@@ -27,17 +27,11 @@ const bChecklist = [
   '以自然人电子税务局预填信息和本人资料逐项核对',
 ]
 
-const yearlyCalendarSource = '国家税务总局办公厅税总办征科函〔2025〕64号（2026年度申报期限）'
+const firstFilingSource = '按店铺于2026-10-15成立及大王陛下确认的首次申报日期设置；以税务系统显示为准'
 const annualSettlementSource = '个人所得税经营所得在取得所得次年3月31日前汇算清缴'
 const filingItems = [
-  { form: VAT_FORM, type: 'vat', period: '2025年第4季度', dueDate: '2026-01-20', deadlineSource: yearlyCalendarSource, deadlineSourceUrl: 'https://fgk.chinatax.gov.cn/zcfgk/c102424/c5245729/content.html', portal: '企业电子税务局', url: 'https://etax.shanghai.chinatax.gov.cn:8443/', checklist: vatChecklist },
-  { form: A_FORM, type: 'pit-a', period: '2025年第4季度', dueDate: '2026-01-20', deadlineSource: yearlyCalendarSource, deadlineSourceUrl: 'https://fgk.chinatax.gov.cn/zcfgk/c102424/c5245729/content.html', portal: '自然人电子税务局', url: 'https://etax.chinatax.gov.cn/', checklist: aChecklist },
-  { form: VAT_FORM, type: 'vat', period: '2026年第1季度', dueDate: '2026-04-20', deadlineSource: yearlyCalendarSource, deadlineSourceUrl: 'https://fgk.chinatax.gov.cn/zcfgk/c102424/c5245729/content.html', portal: '企业电子税务局', url: 'https://etax.shanghai.chinatax.gov.cn:8443/', checklist: vatChecklist },
-  { form: A_FORM, type: 'pit-a', period: '2026年第1季度', dueDate: '2026-04-20', deadlineSource: yearlyCalendarSource, deadlineSourceUrl: 'https://fgk.chinatax.gov.cn/zcfgk/c102424/c5245729/content.html', portal: '自然人电子税务局', url: 'https://etax.chinatax.gov.cn/', checklist: aChecklist },
-  { form: VAT_FORM, type: 'vat', period: '2026年第2季度', dueDate: '2026-07-15', deadlineSource: yearlyCalendarSource, deadlineSourceUrl: 'https://fgk.chinatax.gov.cn/zcfgk/c102424/c5245729/content.html', portal: '企业电子税务局', url: 'https://etax.shanghai.chinatax.gov.cn:8443/', checklist: vatChecklist },
-  { form: A_FORM, type: 'pit-a', period: '2026年第2季度', dueDate: '2026-07-15', deadlineSource: yearlyCalendarSource, deadlineSourceUrl: 'https://fgk.chinatax.gov.cn/zcfgk/c102424/c5245729/content.html', portal: '自然人电子税务局', url: 'https://etax.chinatax.gov.cn/', checklist: aChecklist },
-  { form: VAT_FORM, type: 'vat', period: '2026年第3季度', dueDate: '2026-10-26', deadlineSource: yearlyCalendarSource, deadlineSourceUrl: 'https://fgk.chinatax.gov.cn/zcfgk/c102424/c5245729/content.html', portal: '企业电子税务局', url: 'https://etax.shanghai.chinatax.gov.cn:8443/', checklist: vatChecklist },
-  { form: A_FORM, type: 'pit-a', period: '2026年第3季度', dueDate: '2026-10-26', deadlineSource: yearlyCalendarSource, deadlineSourceUrl: 'https://fgk.chinatax.gov.cn/zcfgk/c102424/c5245729/content.html', portal: '自然人电子税务局', url: 'https://etax.chinatax.gov.cn/', checklist: aChecklist },
+  { form: VAT_FORM, type: 'vat', period: '2026年第4季度', dueDate: '2027-01-20', deadlineSource: firstFilingSource, portal: '企业电子税务局', url: 'https://etax.shanghai.chinatax.gov.cn:8443/', checklist: vatChecklist },
+  { form: A_FORM, type: 'pit-a', period: '2026年第4季度', dueDate: '2027-01-20', deadlineSource: firstFilingSource, portal: '自然人电子税务局', url: 'https://etax.chinatax.gov.cn/', checklist: aChecklist },
   { form: B_FORM, type: 'pit-b', period: '2026年度', dueDate: '2027-03-31', deadlineSource: annualSettlementSource, deadlineSourceUrl: 'https://shanghai.chinatax.gov.cn/tax/zcfw/rdwd/202602/t479416.html', portal: '自然人电子税务局', url: 'https://etax.chinatax.gov.cn/', checklist: bChecklist },
 ].map(item => ({ ...item, id: `${item.type}:${item.period}` }))
 

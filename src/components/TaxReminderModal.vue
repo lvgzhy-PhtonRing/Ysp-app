@@ -88,7 +88,7 @@ function dueTone(item) {
             </a>
             <div class="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">
               期限依据：{{ selectedItem.deadlineSource }}
-              <a class="ml-1 font-semibold text-blue-700 underline underline-offset-2 hover:text-blue-900" :href="selectedItem.deadlineSourceUrl" target="_blank" rel="noopener noreferrer">查看官方来源</a>
+              <a v-if="selectedItem.deadlineSourceUrl" class="ml-1 font-semibold text-blue-700 underline underline-offset-2 hover:text-blue-900" :href="selectedItem.deadlineSourceUrl" target="_blank" rel="noopener noreferrer">查看官方来源</a>
             </div>
           </div>
 
