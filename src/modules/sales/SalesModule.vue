@@ -247,6 +247,10 @@ function submitEditSale() {
   showEditModal.value = false
 }
 
+function confirmSale(itemId) {
+  setSaleConfirmation(itemId, true)
+}
+
 function rollbackSale(itemId) {
   const result = rollbackSaleRecord(itemId)
   if (result.status !== 'requires-restore-confirmation') return
@@ -425,7 +429,7 @@ watch(
             <thead class="bg-white text-xs text-gray-500">
               <tr>
               <th class="w-28">下单日期</th>
-              <th class="w-28">到账状态 / 入账日期</th>
+              <th class="w-20">到账状态</th>
               <th class="w-28">销售渠道</th>
               <th class="w-72">SID / 名称</th>
               <th class="w-40">品牌 / 批次</th>
@@ -439,10 +443,7 @@ watch(
             <tbody>
               <tr v-for="item in group.items" :key="item.id">
                 <td class="whitespace-nowrap">{{ item.saleDetails?.date || '未记录' }}</td>
-                <td class="whitespace-nowrap">
-                  <span class="mr-1 rounded-full px-2 py-0.5 text-xs" :class="item.saleDetails?.isConfirmed === false ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'">{{ item.saleDetails?.isConfirmed === false ? '待确认' : '已确认到账' }}</span>
-                  <span class="text-xs text-gray-500">{{ item.saleDetails?.isConfirmed === false ? '—' : (item.saleDetails?.entryDate || '待补入账日') }}</span>
-                </td>
+                <td class="whitespace-nowrap"><span class="rounded-full px-2 py-0.5 text-xs" :class="item.saleDetails?.isConfirmed === false ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'">{{ item.saleDetails?.isConfirmed === false ? '待确认' : '已确认' }}</span></td>
                 <td class="whitespace-nowrap">{{ item.saleDetails?.shop || DEFAULT_SALES_CHANNEL }}</td>
                 <td class="align-middle"><div class="flex items-center gap-2"><span class="font-medium truncate">{{ item.name }}</span><span v-if="ownerScope === 'all'" class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold" :class="item.owner === 'payton' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'">{{ item.owner === 'payton' ? 'PAYTON' : 'PAPA' }}</span></div><div class="text-xs text-gray-400 font-mono">{{ item.sid }}</div></td>
                 <td class="whitespace-nowrap">{{ item.brand }}<br><span class="text-xs text-gray-500">{{ item.batch }}</span></td>
@@ -451,6 +452,7 @@ watch(
                 <td class="text-gray-500 text-right whitespace-nowrap">{{ fmtMoney(item.cost) }}</td>
                 <td class="text-right whitespace-nowrap" :class="Number(item.saleDetails?.profit || 0) >= 0 ? 'text-success font-bold' : 'text-danger font-bold'">{{ fmtProfit(item.saleDetails?.profit) }}</td>
                 <td class="flex gap-2">
+                  <button v-if="item.saleDetails?.isConfirmed === false" class="btn btn-primary" style="font-size:10px; padding:2px 6px; line-height:1.25;" aria-label="确认到账" @click="confirmSale(item.id)">确认</button>
                   <button class="btn btn-outline" style="font-size:10px; padding:2px 6px; line-height:1.25;" @click="openEditSale(item)"><i class="fa-solid fa-pen"></i></button>
                   <button class="btn btn-danger text-white" style="font-size:10px; padding:2px 7px; line-height:1.25;" @click="rollbackSale(item.id)">回滚</button>
                 </td>
