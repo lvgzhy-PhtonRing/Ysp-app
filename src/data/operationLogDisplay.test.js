@@ -41,6 +41,7 @@ describe('getLogBrief', () => {
         '编辑库存：车模A（成本 ¥100→¥200）',
       ],
       [{ type: 'sales_submit', detail: { name: '车模A', qty: 1 } }, '记录销售：车模A ×1'],
+      [{ type: 'sales_confirmation', detail: { name: '车模A', after: { isConfirmed: true, entryDate: '2026-10-29' } } }, '确认到账：车模A（2026-10-29）'],
       [
         { type: 'finance_delete_record', detail: { item: '买保护壳', amount: 50 } },
         '删除收支：买保护壳（¥50）',

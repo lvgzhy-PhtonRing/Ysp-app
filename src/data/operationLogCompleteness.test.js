@@ -9,7 +9,7 @@ import {
 } from '../modules/finance/useFinance'
 import { deleteItem, editItem, submitManualAdd } from '../modules/inventory/useInventory'
 import { addPurchaseItem, deletePurchaseItem, moveToInventory, submitTransfer } from '../modules/purchase/usePurchase'
-import { editSaleRecord, submitSell, unlistItem } from '../modules/sales/useSales'
+import { editSaleRecord, setSaleConfirmation, submitSell, unlistItem } from '../modules/sales/useSales'
 import { appendAdoptBefore } from './adoptLog'
 import { addOperationLog, clearOperationLogs, clone, loadData, state as store } from './store'
 import {
@@ -122,6 +122,7 @@ describe('operation log detail contract', () => {
     moveToInventory(a.id)
     editItem(a.id, { cost: 1234 })
     submitSell(a.id, { price: 2500, express: 50, date: '2026-09-01' })
+    setSaleConfirmation(a.id, true, '2026-09-02')
     editSaleRecord(a.id, { price: 2600 })
     unlistItem(a.id, { reason: '测试下架' })
 

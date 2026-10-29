@@ -22,6 +22,7 @@ export const LOG_REPLAY_CAPABILITY = {
   inventory_long_term: CAP.PARTIAL,
   inventory_sales_sync: CAP.FULL,
   sales_submit: CAP.FULL,
+  sales_confirmation: CAP.FULL,
   sales_unlist: CAP.FULL,
   sales_rollback: CAP.FULL,
   sales_edit: CAP.FULL,
@@ -69,6 +70,7 @@ export const LOG_DETAIL_CONTRACT = {
   inventory_long_term: ['itemIds', 'itemNames'],
   inventory_sales_sync: ['sid', 'itemIds'],
   sales_submit: ['itemId', 'name', 'before'],
+  sales_confirmation: ['itemId', 'before', 'after'],
   sales_unlist: ['itemId', 'name', 'before'],
   sales_rollback: ['itemId', 'name', 'before'],
   sales_edit: ['itemId', 'changes'],
@@ -165,8 +167,14 @@ function revertToPurchase(item) {
 // 销售记录回退：恢复库存态，清除销售明细
 function revertSale(item) {
   if (!item) return
-  item.status = 'inventory'
-  item.stock = 1
+  const before = item.saleDetails?.beforeSaleState
+  if (before && typeof before.status === 'string' && Number.isFinite(Number(before.stock))) {
+    item.status = before.status
+    item.stock = Number(before.stock)
+  } else {
+    item.status = 'inventory'
+    item.stock = 1
+  }
   delete item.saleDetails
 }
 
@@ -228,6 +236,15 @@ const INVERSE_HANDLERS = {
       item.stock = d.before.stock
     }
     delete item.saleDetails
+  },
+
+  sales_confirmation: (state, d) => {
+    const item = findItem(state.items, d.itemId)
+    if (!item?.saleDetails || !d.before || typeof d.before !== 'object') return
+    for (const key of ['isConfirmed', 'entryDate']) {
+      if (Object.prototype.hasOwnProperty.call(d.before, key)) item.saleDetails[key] = clone(d.before[key])
+      else delete item.saleDetails[key]
+    }
   },
 
   sales_unlist: (state, d) => {

@@ -3,7 +3,7 @@ import sampleData from '../../__tests__/fixtures/sampleData.json'
 import { loadData, state as store } from '../../data/store'
 import { calcAlipayBalance } from '../../utils/calc'
 import { getSaleNetProceeds, getSalePendingAmount } from './saleAccounting'
-import { editSaleRecord, getOwnerInventory, getSalesChannelStats, getSalesStats, submitSell } from './useSales'
+import { editSaleRecord, getOwnerInventory, getSalesChannelStats, getSalesStats, rollbackSale, setSaleConfirmation, submitSell } from './useSales'
 import { DEFAULT_SALES_CHANNEL, filterSalesByOwner, filterSalesByShop, SALES_CHANNELS } from './salesChannels'
 
 describe('useSales logic', () => {
@@ -158,6 +158,57 @@ describe('useSales logic', () => {
     expect(store.ownerRegistry.payton.investBalance).toBeCloseTo(91, 2)
     expect(pendingAmount).toBeCloseTo(99, 2)
     expect(netProceeds - pendingAmount).toBeCloseTo(-8, 2)
+  })
+
+  it('confirms a Payton sale using local today without changing its balance', () => {
+    loadData({ items: [{ id: 'confirm-payton', owner: 'payton', status: 'inventory', cost: 20, isLongTerm: false }] })
+    const item = store.items[0]
+    submitSell(item.id, { price: 100, date: '2026-10-20' })
+    const balanceBefore = store.ownerRegistry.payton.investBalance
+    const now = new Date()
+    const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+
+    expect(setSaleConfirmation(item.id, true)).toBe(true)
+
+    expect(item.saleDetails).toMatchObject({ isConfirmed: true, entryDate: localToday })
+    expect(store.ownerRegistry.payton.investBalance).toBe(balanceBefore)
+  })
+
+  it('unconfirms a sale by clearing entry date without changing its balance', () => {
+    loadData({ items: [{ id: 'unconfirm-payton', owner: 'payton', status: 'inventory', cost: 20, isLongTerm: false }] })
+    const item = store.items[0]
+    submitSell(item.id, { price: 100, date: '2026-10-20' })
+    setSaleConfirmation(item.id, true, '2026-10-29')
+    const balanceBefore = store.ownerRegistry.payton.investBalance
+
+    expect(setSaleConfirmation(item.id, false)).toBe(true)
+
+    expect(item.saleDetails).toMatchObject({ isConfirmed: false, entryDate: '' })
+    expect(store.ownerRegistry.payton.investBalance).toBe(balanceBefore)
+  })
+
+  it('rolls back a Payton sale to its saved stock state and reverses net proceeds once', () => {
+    loadData({ items: [{ id: 'rollback-payton', owner: 'payton', status: 'inventory', stock: 3, cost: 20, isLongTerm: false }] })
+    const item = store.items[0]
+    submitSell(item.id, { price: 100, express: 8, feeRate: 0.01, date: '2026-10-20' })
+    expect(store.ownerRegistry.payton.investBalance).toBeCloseTo(91, 2)
+
+    expect(rollbackSale(item.id)).toEqual({ status: 'rolled-back' })
+    expect(item).toMatchObject({ status: 'inventory', stock: 3 })
+    expect(item.saleDetails).toBeUndefined()
+    expect(store.ownerRegistry.payton.investBalance).toBe(0)
+  })
+
+  it('requires explicit restore state for a legacy sale without a snapshot or before log', () => {
+    loadData({ items: [{ id: 'legacy-rollback', owner: 'payton', status: 'sold', stock: 0, cost: 20, isLongTerm: false, saleDetails: { price: 100 } }] })
+    const item = store.items[0]
+
+    expect(rollbackSale(item.id)).toEqual({ status: 'requires-restore-confirmation' })
+    expect(item.status).toBe('sold')
+    expect(item.saleDetails).toBeTruthy()
+
+    expect(rollbackSale(item.id, { status: 'inventory', stock: 2 })).toEqual({ status: 'rolled-back' })
+    expect(item).toMatchObject({ status: 'inventory', stock: 2 })
   })
 
   it('records the cutoff BMW sale into Payton pocket and reproduces the accepted merged balance', () => {

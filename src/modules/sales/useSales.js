@@ -26,6 +26,23 @@ function toPositiveTimestamp(value, fallback = nextOrderedTimestamp()) {
   return nextOrderedTimestamp()
 }
 
+function isValidDateOnly(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+}
+
+function localToday() {
+  const today = new Date()
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+}
+
+function normalizeRestoreState(value) {
+  const stock = Number(value?.stock)
+  if (!value || typeof value.status !== 'string' || !Number.isFinite(stock) || stock < 0) return null
+  return { status: value.status, stock }
+}
+
 function valueForCompare(value) {
   if (value === undefined) return '__ysp_undefined__'
   try {
@@ -49,7 +66,7 @@ export function submitSell(itemId, saleData = {}, options = {}) {
 
   const profit = calcProfit(price, express, feeRate, deduction, toNumber(item.cost))
   const beforeStatus = item.status
-  const beforeStock = item.stock
+  const beforeStock = item.stock == null || !Number.isFinite(Number(item.stock)) ? 1 : Number(item.stock)
 
   item.status = 'sold'
   item.stock = 0
@@ -62,6 +79,9 @@ export function submitSell(itemId, saleData = {}, options = {}) {
     shop,
     soldAt,
     profit,
+    isConfirmed: false,
+    entryDate: '',
+    beforeSaleState: { status: beforeStatus, stock: beforeStock },
   }
   const paytonAccount = getPaytonAccountForItem(item)
   if (paytonAccount) adjustPaytonBalance(paytonAccount, getSaleNetProceeds(item.saleDetails))
@@ -87,6 +107,64 @@ export function submitSell(itemId, saleData = {}, options = {}) {
     })
   }
   return item
+}
+
+export function setSaleConfirmation(itemId, confirmed, entryDate = '') {
+  const item = store.items.find((x) => x.id === itemId)
+  if (!item || item.status !== 'sold' || !item.saleDetails) return false
+
+  const before = {
+    isConfirmed: item.saleDetails.isConfirmed === true,
+    entryDate: item.saleDetails.entryDate || '',
+  }
+  const after = confirmed
+    ? { isConfirmed: true, entryDate: isValidDateOnly(entryDate) ? entryDate : localToday() }
+    : { isConfirmed: false, entryDate: '' }
+
+  item.saleDetails.isConfirmed = after.isConfirmed
+  item.saleDetails.entryDate = after.entryDate
+  saveToLocalStorage()
+  addOperationLog('sales_confirmation', `${after.isConfirmed ? '确认到账' : '取消确认'}: ${item.name}`, {
+    itemId: item.id,
+    name: item.name,
+    sid: item.sid,
+    before,
+    after,
+  })
+  return true
+}
+
+export function rollbackSale(itemId, restoreState = null) {
+  const item = store.items.find((x) => x.id === itemId)
+  if (!item || item.status !== 'sold' || !item.saleDetails) return { status: 'requires-restore-confirmation' }
+
+  const savedState = normalizeRestoreState(item.saleDetails.beforeSaleState)
+  const loggedState = store.operationLogs
+    .filter((log) => log?.type === 'sales_submit' && log?.detail?.itemId === itemId)
+    .map((log) => normalizeRestoreState(log.detail.before))
+    .find(Boolean)
+  const nextState = savedState || loggedState || normalizeRestoreState(restoreState)
+  if (!nextState) return { status: 'requires-restore-confirmation' }
+
+  const before = {
+    status: item.status,
+    stock: item.stock,
+    saleDetails: JSON.parse(JSON.stringify(item.saleDetails)),
+  }
+  const account = getPaytonAccountForItem(item)
+  if (account) adjustPaytonBalance(account, -getSaleNetProceeds(item.saleDetails))
+  item.status = nextState.status
+  item.stock = nextState.stock
+  delete item.saleDetails
+
+  saveToLocalStorage()
+  addOperationLog('sales_rollback', `回滚销售: ${item.name}`, {
+    itemId: item.id,
+    name: item.name,
+    sid: item.sid,
+    before,
+  })
+  return { status: 'rolled-back' }
 }
 
 export function unlistItem(itemId, unlistData = {}) {

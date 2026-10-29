@@ -35,6 +35,7 @@ export const LOG_TYPE_META = {
   inventory_long_term: { label: '库存长线', color: 'text-purple-600', icon: 'fa-solid fa-infinity', pillClass: 'bg-purple-100 text-purple-700' },
   inventory_sales_sync: { label: '库存销售同步', color: 'text-green-600', icon: 'fa-solid fa-arrows-rotate', pillClass: 'bg-green-100 text-green-700' },
   sales_submit: { label: '销售新增', color: 'text-green-600', icon: 'fa-solid fa-cash-register', pillClass: 'bg-green-100 text-green-700' },
+  sales_confirmation: { label: '到账确认', color: 'text-emerald-600', icon: 'fa-solid fa-circle-check', pillClass: 'bg-emerald-100 text-emerald-700' },
   sales_edit: { label: '销售编辑', color: 'text-blue-600', icon: 'fa-solid fa-pen', pillClass: 'bg-blue-100 text-blue-700' },
   sales_rollback: { label: '销售回滚', color: 'text-red-600', icon: 'fa-solid fa-rotate-left', pillClass: 'bg-red-100 text-red-700' },
   sales_unlist: { label: '销售下架', color: 'text-amber-600', icon: 'fa-solid fa-arrow-down', pillClass: 'bg-amber-100 text-amber-700' },
@@ -162,6 +163,9 @@ const BRIEF_BUILDERS = {
   inventory_long_term: (d) => '标记长线库存：' + (d.category || '-') + '/' + (d.batch || '-'),
   inventory_sales_sync: (d) => '同步销售记录：' + (d.name || d.sid || '-') + ' ×' + (d.qty || 0),
   sales_submit: (d) => '记录销售：' + (d.name || '-') + ' ×' + (d.qty || 1),
+  sales_confirmation: (d) => d.after?.isConfirmed
+    ? withSuffix('确认到账：' + (d.name || '-'), d.after.entryDate)
+    : '取消确认：' + (d.name || '-'),
   sales_edit: (d) => withSuffix('编辑销售：' + (d.name || '-'), changesBrief(d.changes)),
   sales_rollback: (d) => '回滚销售：' + (d.name || '-'),
   sales_unlist: (d) => '下架商品：' + (d.name || '-'),

@@ -130,6 +130,9 @@ Expected: both suites pass, including existing net proceeds tests.
 - Modify: `src/modules/sales/useSales.js`
 - Modify: `src/modules/sales/useSales.test.js`
 - Modify: `src/data/logReplay.js`
+- Modify: `src/data/operationLogDisplay.js`
+- Modify: `src/data/operationLogDisplay.test.js`
+- Modify: `src/data/operationLogCompleteness.test.js`
 - Create: `src/data/logReplay.test.js`
 
 **Interfaces:**
@@ -142,29 +145,30 @@ Expected: both suites pass, including existing net proceeds tests.
 - `submitSell` always initializes new `saleDetails.isConfirmed = false` and `saleDetails.entryDate = ''`; confirmation happens only through `setSaleConfirmation` after sale creation.
 - `revertSale` replay prefers `saleDetails.beforeSaleState`; legacy logs without it retain existing replay behavior.
 
-- [ ] **Step 1: Write failing tests for state changes**
+- [x] **Step 1: Write failing tests for state changes**
   - `confirmationUsesLocalTodayAndDoesNotChangePaytonBalance`.
   - `unconfirmClearsEntryDateAndDoesNotChangePaytonBalance`.
   - `rollbackRestoresSavedStockAndReversesPaytonNetProceedsOnce`.
   - `legacyRollbackRequiresExplicitRestoreStateWhenNoBeforeSnapshotExists`.
   - Add log replay tests for snapshot-based restore and legacy log fallback.
-- [ ] **Step 2: Run targeted tests and verify they fail**
+  - Add readable operation-log display and completeness coverage for confirmation transitions.
+- [x] **Step 2: Run targeted tests and verify they fail**
 
-Run: `npm test -- src/modules/sales/useSales.test.js src/data/logReplay.test.js`
+Run: `npm test -- src/modules/sales/useSales.test.js src/data/logReplay.test.js src/data/operationLogDisplay.test.js src/data/operationLogCompleteness.test.js`
 
 Expected: FAIL because confirmation and centralized rollback functions are not implemented.
 
-- [ ] **Step 3: Implement the transitions and preserve operation-log reversibility**
+- [x] **Step 3: Implement the transitions and preserve operation-log reversibility**
   - Use `saleDetails.isConfirmed`/`entryDate` as the only confirmation source.
   - Preserve `beforeSaleState` through edits and backup serialization.
   - Do not make rollback silently restore one unit for a legacy sale without a snapshot.
-- [ ] **Step 4: Run targeted tests**
+- [x] **Step 4: Run targeted tests**
 
-Run: `npm test -- src/modules/sales/useSales.test.js src/data/logReplay.test.js`
+Run: `npm test -- src/modules/sales/useSales.test.js src/data/logReplay.test.js src/data/operationLogDisplay.test.js src/data/operationLogCompleteness.test.js`
 
 Expected: both suites pass; existing edit operations still adjust only the net-proceeds delta.
 
-- [ ] **Step 5: Commit Task 3**
+- [x] **Step 5: Commit Task 3**
 
 ### Task 4: Surface confirmation controls and safe rollback in the sales UI
 
