@@ -70,6 +70,7 @@ describe('SalesModule owner scope', () => {
     expect(html).not.toContain('已确认到账')
     expect(html).toContain('2026-10-20')
     expect(html).not.toContain('2026-10-22')
-    expect(html).toContain('aria-label=\"确认到账\"')
+    expect(html).toMatch(/<button[^>]*aria-label=\"确认到账\"[^>]*>待确认<\/button>/)
+    expect(html).not.toMatch(/<button[^>]*>确认<\/button>/)
   })
 })
