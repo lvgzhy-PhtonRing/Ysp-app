@@ -188,6 +188,15 @@ describe('useSales logic', () => {
     expect(item.saleDetails).toMatchObject({ isConfirmed: true, entryDate: '' })
   })
 
+  it('allows an explicitly blank entry date when confirming a sale', () => {
+    loadData({ items: [{ id: 'confirm-without-date', owner: 'papa', status: 'sold', saleDetails: { price: 100, isConfirmed: false, entryDate: '' } }] })
+    const item = store.items[0]
+
+    expect(setSaleConfirmation(item.id, true, '')).toBe(true)
+
+    expect(item.saleDetails).toMatchObject({ isConfirmed: true, entryDate: '' })
+  })
+
   it('unconfirms a sale by clearing entry date without changing its balance', () => {
     loadData({ items: [{ id: 'unconfirm-payton', owner: 'payton', status: 'inventory', cost: 20, isLongTerm: false }] })
     const item = store.items[0]

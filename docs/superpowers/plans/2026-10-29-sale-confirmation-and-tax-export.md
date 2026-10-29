@@ -137,7 +137,7 @@ Expected: both suites pass, including existing net proceeds tests.
 
 **Interfaces:**
 - `setSaleConfirmation(itemId, confirmed, entryDate) -> boolean`.
-  - On a transition from pending to `confirmed === true`, set `isConfirmed = true`; preserve an explicitly supplied valid date or use today's local calendar date (not UTC date). When already confirmed, preserve its date if omitted and allow an explicitly blank date to remain blank. No account mutation.
+  - On a transition from pending to `confirmed === true`, set `isConfirmed = true`; preserve an explicitly supplied valid date, leave an explicitly blank date blank, or use today's local calendar date (not UTC date) only when no date was supplied. When already confirmed, preserve its date if omitted and allow an explicitly blank date to remain blank. No account mutation.
   - On `confirmed === false`, set `isConfirmed = false`, clear `entryDate`, and do not mutate account balances.
 - `rollbackSale(itemId, restoreState = null) -> { status: 'rolled-back' | 'requires-restore-confirmation' }`.
   - Resolve restore state in this order: `saleDetails.beforeSaleState`, matching `sales_submit` log's `details.before`, explicit user-confirmed `restoreState`. If none exists return `requires-restore-confirmation` without mutation. On success reverse Payton's previously posted `getSaleNetProceeds(saleDetails)` once, restore state, remove `saleDetails`, and log full before/after state.

@@ -124,7 +124,9 @@ export function setSaleConfirmation(itemId, confirmed, entryDate) {
           ? entryDate
           : before.isConfirmed
             ? (entryDate === undefined ? before.entryDate : '')
-            : localToday(),
+            : entryDate === undefined
+              ? localToday()
+              : '',
       }
     : { isConfirmed: false, entryDate: '' }
 
