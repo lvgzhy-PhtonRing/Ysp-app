@@ -258,39 +258,41 @@ Expected: both suites pass; no calculator path uses the stale hand-entered amoun
 - `buildTaxWorkbookData(payload, { startDate, endDate, taxpayer, owners }) -> { sheets, issues }` returns plain row arrays before XLSX serialization.
 - `writeTaxWorkbook(workbookData, filename) -> void` creates and downloads the `.xlsx` entirely in the browser.
 - Include only confirmed sales with valid `entryDate` within the inclusive selected period; do not include `saleDetails.date` (order date) in workbook output.
-- Include separately: gross sale, each item cost, platform fee amount, express, signed adjustment and reference profit. Reference profit uses `price - cost - platformFee - express - deduction`; display the agreed 41 example only when deduction is zero.
+- Include separately: gross sale, each item cost, platform fee amount, express, signed adjustment and reference profit; signed adjustments also get their own detail sheet. Reference profit uses `price - cost - platformFee - express - deduction`; display the agreed 41 example only when deduction is zero.
 - Missing/invalid entry dates and unconfirmed sales appear in “待确认事项”, not silently in period totals.
 - The workbook contains the existing design's “阅读说明、申报步骤清单、增值税核对、A表经营数据、销售明细、收支明细、待确认事项” sheets; missing tax classifications and taxpayer mapping remain visibly marked for manual review.
 
-- [ ] **Step 1: Add failing workbook builder tests**
+- [x] **Step 1: Add failing workbook builder tests**
   - `filtersConfirmedSalesByInclusiveEntryDate`.
   - `excludesUnconfirmedRowsAndListsThemAsIssues`.
   - `listsMissingEntryDateWithoutGuessing`.
   - `listsInvalidEntryDateWithoutGuessing`.
   - `keepsPerItemCostsAndSeparatesSignedAdjustments`.
   - `aggregatesOwnerAndPeriodTotalsWithoutOrderDateColumn`.
-- [ ] **Step 2: Run workbook builder tests and verify they fail**
+  - Verify XLSX sheet serialization and the local file-writer call.
+- [x] **Step 2: Run workbook builder tests and verify they fail**
 
 Run: `npm test -- src/modules/tax-export/buildTaxWorkbook.test.js`
 
 Expected: FAIL because the exporter does not exist.
 
-- [ ] **Step 3: Implement the plain-data workbook builder**
+- [x] **Step 3: Implement the plain-data workbook builder**
   - Keep data extraction separate from XLSX serialization so financial rules remain testable without a browser download.
   - Use the chosen browser XLSX writer only for workbook serialization; do not introduce server-side export.
-- [ ] **Step 4: Implement export modal and route it from Data Operations**
+  - Use the official SheetJS 0.20.3 distribution because npm registry 0.18.5 is stale and flagged by audit.
+- [x] **Step 4: Implement export modal and route it from Data Operations**
   - Select inclusive period, taxpayer label, and Owner set; preview row counts, totals, and issues before download.
   - Do not imply that Owner identity automatically maps to a tax entity.
-- [ ] **Step 5: Update tax-export design documentation**
+- [x] **Step 5: Update tax-export design documentation**
   - Change the sales period field from `saleDetails.date` to `saleDetails.entryDate`.
   - State that order date is omitted and that timing/expense/profit outputs are preparation references subject to manual tax review.
-- [ ] **Step 6: Run targeted export tests**
+- [x] **Step 6: Run targeted export tests**
 
 Run: `npm test -- src/modules/tax-export/buildTaxWorkbook.test.js src/modules/tax-export/TaxExportModal.test.js src/components/AppSidebar.test.js`
 
 Expected: the builder and UI suites pass; export downloads locally and no upload/network call is made.
 
-- [ ] **Step 7: Commit Task 6**
+- [x] **Step 7: Commit Task 6**
 
 ### Task 7: End-to-end regression and backup compatibility
 

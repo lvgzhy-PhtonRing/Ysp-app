@@ -4,6 +4,7 @@ import AppSidebar from './components/AppSidebar.vue'
 import GlassModal from './components/GlassModal.vue'
 import DataHelpModal from './components/DataHelpModal.vue'
 import TaxReminderModal from './components/TaxReminderModal.vue'
+import TaxExportModal from './modules/tax-export/TaxExportModal.vue'
 import HomeModule from './modules/home/HomeModule.vue'
 import InventoryModule from './modules/inventory/InventoryModule.vue'
 import InventoryAgingModule from './modules/inventory/InventoryAgingModule.vue'
@@ -96,6 +97,8 @@ const fileInputRef = ref(null)
 const showLogsModal = ref(false)
 const showDataHelp = ref(false)
 const showTaxReminderModal = ref(false)
+const showTaxExport = ref(false)
+const taxExportPayload = computed(() => showTaxExport.value ? exportData() : {})
 const taxReminderNow = ref(new Date())
 const taxReminderHits = ref([])
 const taxReminderItems = computed(() => listTaxFilingItems(taxReminderNow.value))
@@ -1079,6 +1082,7 @@ watch(
       @select="currentTab = $event"
       @import="triggerImport"
       @export="handleExport"
+      @tax-export="showTaxExport = true"
       @cloud="openCloudSettings"
       @logs="showLogsModal = true"
       @help="showDataHelp = true"
@@ -1449,6 +1453,7 @@ watch(
       </div>
     </GlassModal>
     <DataHelpModal v-model="showDataHelp" />
+    <TaxExportModal v-model="showTaxExport" :payload="taxExportPayload" />
     <Transition name="fade">
       <div
         v-if="tabDataNotice"

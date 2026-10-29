@@ -15,7 +15,8 @@
     "chart.js": "^4.5.1",
     "chartjs-plugin-annotation": "^3.1.0",
     "fuse.js": "^7.2.0",
-    "vue": "^3.5.30"
+    "vue": "^3.5.30",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@playwright/mcp": "^0.0.75",

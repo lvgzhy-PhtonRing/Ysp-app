@@ -28,7 +28,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['select', 'import', 'export', 'cloud', 'logs', 'help', 'reminders'])
+const emit = defineEmits(['select', 'import', 'export', 'tax-export', 'cloud', 'logs', 'help', 'reminders'])
 
 const dataOpsOpen = ref(false)
 const currentDateTime = ref(formatDateTime())
@@ -157,6 +157,12 @@ function getGroupTabs(group) {
           @click="dataOpsOpen = false; emit('export')"
         >
           <i class="fa-solid fa-download mr-2" />导出备份
+        </button>
+        <button
+          class="w-full text-left px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer"
+          @click="dataOpsOpen = false; emit('tax-export')"
+        >
+          <i class="fa-solid fa-file-excel mr-2" />报税工作簿
         </button>
         <button
           class="w-full text-left px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer"
