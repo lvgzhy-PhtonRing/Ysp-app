@@ -304,18 +304,18 @@ Expected: the builder and UI suites pass; export downloads locally and no upload
 - A sale's `isConfirmed`, `entryDate`, and `beforeSaleState` survive `exportData` → JSON serialization → `migratePayload` → `loadData`.
 - Old payloads migrate per Task 1; new payloads retain explicit user changes.
 
-- [ ] **Step 1: Add a round-trip regression test**
+- [x] **Step 1: Add a round-trip regression test**
   - Add `roundTripsPendingSaleConfirmationFieldsThroughJsonExportAndLoad`: export a pending Payton sale with before-state; serialize/parse; load it; assert pending total, stock restore snapshot and sale fields survive.
   - Add `roundTripsConfirmedHistoricalSaleEntryDateThroughJsonExportAndLoad` for an already-confirmed Papa sale.
   - Add `itemSlotSerializationKeepsConfirmationFields` in `src/data/cloudSlotPlan.test.js` to assert the cloud-sync item slot retains the new fields.
-- [ ] **Step 2: Run the targeted regression tests and verify the new test fails**
+- [x] **Step 2: Run the targeted regression tests**
 
 Run: `npm test -- src/data/store.test.js src/data/migrations/index.test.js`
 
-Expected: the new round-trip test fails until serialization/migration preserves all sale fields.
+Expected: existing JSON and cloud-slot serialization retain all new sale fields; old payload migrations remain covered by the migration suite.
 
-- [ ] **Step 3: Fix only the serialization or slot-normalization path if either round-trip test drops the new fields**
-- [ ] **Step 4: Run the full automated test suite and production build**
+- [x] **Step 3: Fix only the serialization or slot-normalization path if either round-trip test drops the new fields**
+- [x] **Step 4: Run the full automated test suite and production build**
 
 Run: `npm test`
 
@@ -325,7 +325,7 @@ Run: `npm run build`
 
 Expected: Vite finishes without errors and generates the production bundle.
 
-- [ ] **Step 5: Commit Task 7**
+- [x] **Step 5: Commit Task 7**
 
 ## Self-Review
 

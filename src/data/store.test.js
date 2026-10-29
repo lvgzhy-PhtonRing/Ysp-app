@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import sampleData from '../__tests__/fixtures/sampleData.json'
 import { ADOPT_STORAGE_KEY } from './adoptLog'
+import { getUnconfirmedSalesTotal } from '../modules/sales/saleAccounting'
 import {
   addOperationLog,
   clearOperationLogs,
@@ -149,6 +150,34 @@ describe('Owner snapshots and local UI preference', () => {
     const snapshot = state.snapshots.find((entry) => entry.date === '2026-10-22')
     expect(snapshot.calc.unconfirmed).toBe(149)
     expect(snapshot.merged.alipayBalance).toBe(-149)
+  })
+
+  it('round-trips pending confirmation and pre-sale state through JSON export and load', () => {
+    const pendingSale = {
+      id: 'pending-payton', owner: 'payton', status: 'sold', stock: 0, cost: 20,
+      saleDetails: { price: 100, express: 8, feeRate: 0.01, deduction: 0, shop: 'PhtonRIng', isConfirmed: false, entryDate: '', beforeSaleState: { status: 'inventory', stock: 3 } },
+    }
+    loadData({ items: [pendingSale], ownerRegistry: { papa: {}, payton: { pocketBalance: 0, investBalance: 91, loans: [] } } })
+    const jsonBackup = JSON.parse(JSON.stringify(exportData()))
+    loadData(jsonBackup)
+
+    expect(state.items[0].saleDetails).toEqual(pendingSale.saleDetails)
+    expect(state.items[0].saleDetails.beforeSaleState).toEqual({ status: 'inventory', stock: 3 })
+    expect(getUnconfirmedSalesTotal(state.items)).toBe(99)
+  })
+
+  it('round-trips confirmed Papa entry date without replacing it with the order date', () => {
+    const confirmedSale = {
+      id: 'confirmed-papa', owner: 'papa', status: 'sold', cost: 50,
+      saleDetails: { date: '2026-09-30', entryDate: '2026-10-15', isConfirmed: true, price: 100 },
+    }
+    loadData({ items: [confirmedSale] })
+    const jsonBackup = JSON.parse(JSON.stringify(exportData()))
+    loadData(jsonBackup)
+
+    expect(state.items[0].saleDetails.isConfirmed).toBe(true)
+    expect(state.items[0].saleDetails.entryDate).toBe('2026-10-15')
+    expect(getUnconfirmedSalesTotal(state.items)).toBe(0)
   })
 
   it('reconciles the pending BMW sale into its existing snapshot row without duplication', () => {

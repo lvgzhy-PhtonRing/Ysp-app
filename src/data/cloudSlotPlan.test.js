@@ -25,6 +25,14 @@ describe('SLOT_KEYS / slotValue / setSlotValue', () => {
     expect(slotValue(pay, 'items')).toEqual([{ id: 1 }])
     expect(pay.finance.records).toEqual([{ id: 9 }])
   })
+  it('item slot serialization retains sale confirmation and rollback fields', () => {
+    const items = [{
+      id: 'payton-sale', owner: 'payton', status: 'sold', stock: 0,
+      saleDetails: { isConfirmed: false, entryDate: '', beforeSaleState: { status: 'inventory', stock: 2 } },
+    }]
+    const cloudPayload = JSON.parse(JSON.stringify(p(items)))
+    expect(slotValue(cloudPayload, 'items')[0].saleDetails).toEqual(items[0].saleDetails)
+  })
   it('ownerRegistry 是对象槽，可写回、比较并合并', () => {
     const local = p()
     const cloud = p()
