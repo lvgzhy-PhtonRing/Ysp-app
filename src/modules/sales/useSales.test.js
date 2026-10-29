@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import sampleData from '../../__tests__/fixtures/sampleData.json'
 import { loadData, state as store } from '../../data/store'
 import { calcAlipayBalance } from '../../utils/calc'
+import { getSaleNetProceeds, getSalePendingAmount } from './saleAccounting'
 import { editSaleRecord, getOwnerInventory, getSalesChannelStats, getSalesStats, submitSell } from './useSales'
 import { DEFAULT_SALES_CHANNEL, filterSalesByOwner, filterSalesByShop, SALES_CHANNELS } from './salesChannels'
 
@@ -141,6 +142,22 @@ describe('useSales logic', () => {
     expect(store.ownerRegistry.payton.investBalance).toBe(83)
     editSaleRecord(item.id, { price: 120 })
     expect(store.ownerRegistry.payton.investBalance).toBe(101)
+  })
+
+  it('reconciles an unconfirmed Payton sale while preserving freight already spent', () => {
+    loadData({ items: [{ id: 'payton-reconcile', owner: 'payton', status: 'inventory', cost: 50, isLongTerm: false }] })
+    const item = store.items[0]
+    submitSell(item.id, { price: 100, express: 8, feeRate: 0.01, deduction: 0, date: '2026-10-19' })
+
+    const netProceeds = getSaleNetProceeds(item.saleDetails)
+    const pendingAmount = getSalePendingAmount({
+      ...item,
+      saleDetails: { ...item.saleDetails, isConfirmed: false },
+    })
+
+    expect(store.ownerRegistry.payton.investBalance).toBeCloseTo(91, 2)
+    expect(pendingAmount).toBeCloseTo(99, 2)
+    expect(netProceeds - pendingAmount).toBeCloseTo(-8, 2)
   })
 
   it('records the cutoff BMW sale into Payton pocket and reproduces the accepted merged balance', () => {

@@ -3,6 +3,7 @@
 import { calcProfit } from '../../utils/calc'
 import { addOperationLog, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
 import { adjustPaytonBalance, getPaytonAccountForItem } from '../payton-finance/usePaytonFinance'
+import { getSaleNetProceeds } from './saleAccounting'
 import { DEFAULT_SALES_CHANNEL, inferLegacySalesChannel, isSalesChannel, SALES_CHANNELS } from './salesChannels'
 
 function toNumber(value, fallback = 0) {
@@ -34,11 +35,6 @@ function valueForCompare(value) {
   }
 }
 
-function netProceeds(details = {}) {
-  const price = toNumber(details.price)
-  return price - toNumber(details.express) - price * toNumber(details.feeRate) - toNumber(details.deduction)
-}
-
 export function submitSell(itemId, saleData = {}, options = {}) {
   const item = store.items.find((x) => x.id === itemId)
   if (!item) return false
@@ -68,7 +64,7 @@ export function submitSell(itemId, saleData = {}, options = {}) {
     profit,
   }
   const paytonAccount = getPaytonAccountForItem(item)
-  if (paytonAccount) adjustPaytonBalance(paytonAccount, netProceeds(item.saleDetails))
+  if (paytonAccount) adjustPaytonBalance(paytonAccount, getSaleNetProceeds(item.saleDetails))
 
   saveToLocalStorage()
   if (!options?.skipLog) {
@@ -99,7 +95,7 @@ export function unlistItem(itemId, unlistData = {}) {
 
   if (item.status === 'sold') {
     const account = getPaytonAccountForItem(item)
-    if (account) adjustPaytonBalance(account, -netProceeds(item.saleDetails))
+    if (account) adjustPaytonBalance(account, -getSaleNetProceeds(item.saleDetails))
   }
   item.status = 'unlisted'
   item.unlistDetails = {
@@ -139,7 +135,7 @@ export function editSaleRecord(itemId, newSaleData = {}) {
     ...(item.saleDetails || {}),
   }
   const account = getPaytonAccountForItem(item)
-  if (account) adjustPaytonBalance(account, -netProceeds(previous))
+  if (account) adjustPaytonBalance(account, -getSaleNetProceeds(previous))
 
   item.saleDetails = {
     ...merged,
@@ -151,7 +147,7 @@ export function editSaleRecord(itemId, newSaleData = {}) {
     soldAt,
     profit: calcProfit(price, express, feeRate, deduction, toNumber(item.cost)),
   }
-  if (account) adjustPaytonBalance(account, netProceeds(item.saleDetails))
+  if (account) adjustPaytonBalance(account, getSaleNetProceeds(item.saleDetails))
 
   const changes = {}
   Object.keys(item.saleDetails).forEach((key) => {
