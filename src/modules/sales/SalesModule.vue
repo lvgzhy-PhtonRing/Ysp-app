@@ -1,12 +1,13 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { calcProfit } from '../../utils/calc'
-import { addOperationLog, saveToLocalStorage, state as store } from '../../data/store'
-import { editSaleRecord, getOwnerInventory, getSalesChannelStats, getSalesStats, submitSell } from './useSales'
+import { state as store } from '../../data/store'
+import { editSaleRecord, getOwnerInventory, getSalesChannelStats, getSalesStats, rollbackSale as rollbackSaleRecord, setSaleConfirmation, submitSell } from './useSales'
 import { DEFAULT_SALES_CHANNEL, filterSalesByOwner, filterSalesByShop, SALES_CHANNELS } from './salesChannels'
 
 const showAddModal = ref(false)
 const showEditModal = ref(false)
+const showRollbackRestoreModal = ref(false)
 const collapsedSalesGroups = reactive({})
 const salesCollapseStorageKey = 'ysp_ui_sales_collapse'
 const salesFiltersStorageKey = 'ysp_ui_sales_filters'
@@ -36,7 +37,11 @@ const editForm = reactive({
   deduction: 0,
   shop: DEFAULT_SALES_CHANNEL,
   date: '',
+  isConfirmed: false,
+  entryDate: '',
 })
+
+const rollbackForm = reactive({ itemId: null, status: 'inventory', stock: 1 })
 
 const allSoldItems = computed(() => store.items.filter((item) => item?.status === 'sold' && item?.saleDetails))
 const soldItems = computed(() => filterSalesByOwner(
@@ -208,7 +213,19 @@ function openEditSale(item) {
   editForm.deduction = Number(item.saleDetails?.deduction || 0)
   editForm.shop = item.saleDetails?.shop || DEFAULT_SALES_CHANNEL
   editForm.date = item.saleDetails?.date || ''
+  editForm.isConfirmed = item.saleDetails?.isConfirmed !== false
+  editForm.entryDate = item.saleDetails?.entryDate || ''
   showEditModal.value = true
+}
+
+function localToday() {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+
+function onConfirmationChange() {
+  if (editForm.isConfirmed && !editForm.entryDate) editForm.entryDate = localToday()
+  if (!editForm.isConfirmed) editForm.entryDate = ''
 }
 
 function submitEditSale() {
@@ -221,24 +238,26 @@ function submitEditSale() {
     shop: editForm.shop,
     date: editForm.date,
   })
+  setSaleConfirmation(editForm.itemId, editForm.isConfirmed, editForm.entryDate)
   showEditModal.value = false
 }
 
 function rollbackSale(itemId) {
-  const idx = store.items.findIndex((x) => x.id === itemId)
-  if (idx < 0) return
-  const item = store.items[idx]
-  // 回滚会清空售卖信息，先捕获完整 before（回溯时用于还原被回滚的销售）
-  const before = {
-    status: item.status,
-    stock: item.stock,
-    saleDetails: item.saleDetails ? JSON.parse(JSON.stringify(item.saleDetails)) : null,
-  }
-  item.status = 'inventory'
-  item.stock = 1
-  delete item.saleDetails
-  saveToLocalStorage()
-  addOperationLog('sales_rollback', `回滚销售: ${item?.name || itemId}`, { name: item?.name, sid: item?.sid, itemId, before })
+  const result = rollbackSaleRecord(itemId)
+  if (result.status !== 'requires-restore-confirmation') return
+  rollbackForm.itemId = itemId
+  rollbackForm.status = 'inventory'
+  rollbackForm.stock = 1
+  showRollbackRestoreModal.value = true
+}
+
+function confirmLegacyRollback() {
+  if (rollbackForm.itemId == null) return
+  const result = rollbackSaleRecord(rollbackForm.itemId, {
+    status: rollbackForm.status,
+    stock: Number(rollbackForm.stock),
+  })
+  if (result.status === 'rolled-back') showRollbackRestoreModal.value = false
 }
 
 function toggleSalesGroup(key) {
@@ -400,7 +419,8 @@ watch(
           <table class="apple-table min-w-full text-sm">
             <thead class="bg-white text-xs text-gray-500">
               <tr>
-              <th class="w-28">成交日期</th>
+              <th class="w-28">下单日期</th>
+              <th class="w-28">到账状态 / 入账日期</th>
               <th class="w-28">销售渠道</th>
               <th class="w-72">SID / 名称</th>
               <th class="w-40">品牌 / 批次</th>
@@ -413,7 +433,11 @@ watch(
             </thead>
             <tbody>
               <tr v-for="item in group.items" :key="item.id">
-                <td class="whitespace-nowrap">{{ item.saleDetails?.date }}</td>
+                <td class="whitespace-nowrap">{{ item.saleDetails?.date || '未记录' }}</td>
+                <td class="whitespace-nowrap">
+                  <span class="mr-1 rounded-full px-2 py-0.5 text-xs" :class="item.saleDetails?.isConfirmed === false ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'">{{ item.saleDetails?.isConfirmed === false ? '待确认' : '已确认到账' }}</span>
+                  <span class="text-xs text-gray-500">{{ item.saleDetails?.isConfirmed === false ? '—' : (item.saleDetails?.entryDate || '待补入账日') }}</span>
+                </td>
                 <td class="whitespace-nowrap">{{ item.saleDetails?.shop || DEFAULT_SALES_CHANNEL }}</td>
                 <td class="align-middle"><div class="flex items-center gap-2"><span class="font-medium truncate">{{ item.name }}</span><span v-if="ownerScope === 'all'" class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold" :class="item.owner === 'payton' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'">{{ item.owner === 'payton' ? 'PAYTON' : 'PAPA' }}</span></div><div class="text-xs text-gray-400 font-mono">{{ item.sid }}</div></td>
                 <td class="whitespace-nowrap">{{ item.brand }}<br><span class="text-xs text-gray-500">{{ item.batch }}</span></td>
@@ -477,12 +501,28 @@ watch(
             <div><label class="block text-sm mb-1 text-gray-600">扣减</label><input v-model.number="editForm.deduction" type="number" class="apple-input" /></div>
           </div>
           <div><label class="block text-sm mb-1 text-gray-600">销售渠道</label><select v-model="editForm.shop" class="apple-select" required><option v-for="shop in SALES_CHANNELS" :key="shop" :value="shop">{{ shop }}</option></select></div>
-          <div><label class="block text-sm mb-1 text-gray-600">日期</label><input v-model="editForm.date" type="date" class="apple-input" /></div>
+          <div><label class="block text-sm mb-1 text-gray-600">下单日期</label><input v-model="editForm.date" type="date" class="apple-input" /></div>
+          <div class="rounded-xl bg-gray-50 p-3 space-y-3">
+            <label class="flex items-center gap-2 text-sm font-medium text-gray-700"><input v-model="editForm.isConfirmed" type="checkbox" @change="onConfirmationChange" />买家已确认到账</label>
+            <div><label class="block text-xs mb-1 text-gray-500">入账日期（税务归期）</label><input v-model="editForm.entryDate" type="date" class="apple-input" :disabled="!editForm.isConfirmed" /></div>
+          </div>
         </div>
         <div class="mt-6 flex justify-end gap-3">
           <button class="btn btn-outline" @click="showEditModal = false">取消</button>
           <button class="btn btn-primary" @click="submitEditSale">保存</button>
         </div>
+      </div>
+    </div>
+
+    <div v-if="showRollbackRestoreModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 glass-modal" role="dialog" aria-label="确认恢复销售前库存状态">
+      <div class="apple-card w-full max-w-md">
+        <h3 class="text-lg font-bold mb-2">确认恢复销售前状态</h3>
+        <p class="text-sm text-gray-500 mb-4">这条旧销售没有保存售前状态，请确认回滚后商品应恢复为哪种状态和数量。</p>
+        <div class="space-y-3">
+          <div><label class="block text-sm mb-1 text-gray-600">恢复状态</label><select v-model="rollbackForm.status" class="apple-select"><option value="inventory">库存中</option><option value="unlisted">已下架</option></select></div>
+          <div><label class="block text-sm mb-1 text-gray-600">恢复数量</label><input v-model.number="rollbackForm.stock" type="number" min="0" class="apple-input" /></div>
+        </div>
+        <div class="mt-5 flex justify-end gap-3"><button class="btn btn-outline" @click="showRollbackRestoreModal = false">取消</button><button class="btn btn-danger text-white" @click="confirmLegacyRollback">确认恢复并回滚</button></div>
       </div>
     </div>
   </div>

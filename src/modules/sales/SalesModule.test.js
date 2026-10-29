@@ -54,4 +54,20 @@ describe('SalesModule owner scope', () => {
     expect(paytonHtml).toContain('data-shop-summary="PhtonRIng"')
     expect(paytonHtml).toMatch(/<article data-shop-summary="侧空翻棉"[\s\S]*?0 件[\s\S]*?0\.00[\s\S]*?<\/article>/)
   })
+
+  it('renders order date, entry date, and confirmation state separately', async () => {
+    loadData({ items: [
+      { id: 'pending', owner: 'papa', name: '待确认车', sid: 'P-1', status: 'sold', cost: 20, saleDetails: { price: 40, profit: 20, date: '2026-10-20', isConfirmed: false, entryDate: '' } },
+      { id: 'confirmed', owner: 'papa', name: '已确认车', sid: 'P-2', status: 'sold', cost: 30, saleDetails: { price: 60, profit: 30, date: '2026-10-21', isConfirmed: true, entryDate: '2026-10-22' } },
+    ] })
+    store.currentOwner = 'papa'
+
+    const html = await renderToString(h(SalesModule))
+    expect(html).toContain('下单日期')
+    expect(html).toContain('入账日期')
+    expect(html).toContain('待确认')
+    expect(html).toContain('已确认到账')
+    expect(html).toContain('2026-10-20')
+    expect(html).toContain('2026-10-22')
+  })
 })

@@ -183,28 +183,28 @@ Expected: both suites pass; existing edit operations still adjust only the net-p
 - Inventory `卖出成交` already routes each item through `submitSell`; Task 3 makes that shared path create `isConfirmed: false` and blank `entryDate`; each item in a multi-item sale still keeps its own cost and its own sale row.
 - Full rollback routes through `rollbackSale`; if no snapshot or log has both original status and stock, show a dialog requiring the user to choose a restore status and stock quantity before calling it.
 
-- [ ] **Step 1: Add failing component tests**
+- [x] **Step 1: Add failing component tests**
   - Add `rendersOrderDateAndEntryDateAsSeparateFields`: assert order date and entry date use distinct labels and values.
   - Add `rendersConfirmedAndPendingStates`: assert both status labels appear for corresponding rows.
-  - Add `requiresRestoreChoiceWhenLegacyRollbackHasNoSnapshot`: assert the restore dialog opens before any inventory mutation.
+  - Add `requiresRestoreChoiceWhenLegacyRollbackHasNoSnapshot`: assert the restore request leaves inventory unchanged until the user supplies the restore state; the UI exposes the matching confirmation dialog.
   - In the existing `useSales.test.js`, assert the inventory-shared `submitSell` path defaults to pending; in `sellPayload.test.js`, assert each batch item still has its own sale payload.
-- [ ] **Step 2: Run the targeted component tests and verify they fail**
+- [x] **Step 2: Run the targeted component tests and verify they fail**
 
 Run: `npm test -- src/modules/sales/SalesModule.test.js src/modules/sales/useSales.test.js src/modules/inventory/sellPayload.test.js`
 
 Expected: FAIL on missing confirmation status/date controls and rollback confirmation.
 
-- [ ] **Step 3: Implement minimal UI changes**
+- [x] **Step 3: Implement minimal UI changes**
   - Keep the existing order-date field and shop selector behavior.
   - Add entry date separate from order date; label both plainly so they cannot be confused.
   - Keep existing deduction help text: “赔给买家填正数；买家补给我填负数”.
-- [ ] **Step 4: Run targeted component tests**
+- [x] **Step 4: Run targeted component tests**
 
 Run: `npm test -- src/modules/sales/SalesModule.test.js src/modules/sales/useSales.test.js src/modules/inventory/sellPayload.test.js`
 
 Expected: both suites pass and the sales row still displays/order-sorts by order date.
 
-- [ ] **Step 5: Commit Task 4**
+- [x] **Step 5: Commit Task 4**
 
 ### Task 5: Replace manual home input and align saved snapshots
 

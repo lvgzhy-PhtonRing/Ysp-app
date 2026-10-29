@@ -35,6 +35,8 @@ describe('useSales logic', () => {
 
     expect(item.status).toBe('sold')
     expect(item.saleDetails.shop).toBe('PhtonRIng')
+    expect(item.saleDetails.isConfirmed).toBe(false)
+    expect(item.saleDetails.entryDate).toBe('')
     const expected = 500 - 10 - 500 * 0.05 - 0 - Number(item.cost)
     expect(Number(item.saleDetails.profit)).toBeCloseTo(expected, 2)
   })
