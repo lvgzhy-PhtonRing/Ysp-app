@@ -109,7 +109,7 @@ export function submitSell(itemId, saleData = {}, options = {}) {
   return item
 }
 
-export function setSaleConfirmation(itemId, confirmed, entryDate = '') {
+export function setSaleConfirmation(itemId, confirmed, entryDate) {
   const item = store.items.find((x) => x.id === itemId)
   if (!item || item.status !== 'sold' || !item.saleDetails) return false
 
@@ -118,7 +118,14 @@ export function setSaleConfirmation(itemId, confirmed, entryDate = '') {
     entryDate: item.saleDetails.entryDate || '',
   }
   const after = confirmed
-    ? { isConfirmed: true, entryDate: isValidDateOnly(entryDate) ? entryDate : localToday() }
+    ? {
+        isConfirmed: true,
+        entryDate: isValidDateOnly(entryDate)
+          ? entryDate
+          : before.isConfirmed
+            ? (entryDate === undefined ? before.entryDate : '')
+            : localToday(),
+      }
     : { isConfirmed: false, entryDate: '' }
 
   item.saleDetails.isConfirmed = after.isConfirmed

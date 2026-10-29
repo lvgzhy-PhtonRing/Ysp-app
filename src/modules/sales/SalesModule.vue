@@ -230,6 +230,9 @@ function onConfirmationChange() {
 
 function submitEditSale() {
   if (!editForm.itemId) return
+  const existingSale = store.items.find((item) => item.id === editForm.itemId)?.saleDetails
+  const wasConfirmed = existingSale?.isConfirmed !== false
+  const previousEntryDate = existingSale?.entryDate || ''
   editSaleRecord(editForm.itemId, {
     price: Number(editForm.price || 0),
     express: Number(editForm.express || 0),
@@ -238,7 +241,9 @@ function submitEditSale() {
     shop: editForm.shop,
     date: editForm.date,
   })
-  setSaleConfirmation(editForm.itemId, editForm.isConfirmed, editForm.entryDate)
+  if (wasConfirmed !== editForm.isConfirmed || previousEntryDate !== editForm.entryDate) {
+    setSaleConfirmation(editForm.itemId, editForm.isConfirmed, editForm.entryDate)
+  }
   showEditModal.value = false
 }
 

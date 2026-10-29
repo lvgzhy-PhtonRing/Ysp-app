@@ -176,6 +176,18 @@ describe('useSales logic', () => {
     expect(store.ownerRegistry.payton.investBalance).toBe(balanceBefore)
   })
 
+  it('does not invent today as entry date for an already-confirmed legacy sale with no date', () => {
+    loadData({ items: [{
+      id: 'confirmed-without-date', owner: 'papa', status: 'sold', cost: 20,
+      saleDetails: { price: 100, isConfirmed: true, entryDate: '' },
+    }] })
+    const item = store.items[0]
+
+    expect(setSaleConfirmation(item.id, true, '')).toBe(true)
+
+    expect(item.saleDetails).toMatchObject({ isConfirmed: true, entryDate: '' })
+  })
+
   it('unconfirms a sale by clearing entry date without changing its balance', () => {
     loadData({ items: [{ id: 'unconfirm-payton', owner: 'payton', status: 'inventory', cost: 20, isLongTerm: false }] })
     const item = store.items[0]

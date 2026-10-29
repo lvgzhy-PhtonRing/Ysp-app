@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- 新销售默认未确认；确认时入账日默认为当天，允许编辑。
+- 新销售默认未确认；从未确认切为确认时入账日默认为当天，允许编辑或清空。历史已确认且缺少入账日的记录在保存其他字段时继续留空，不推测日期。
 - 待确认金额为 `成交价 − 平台手续费 − 扣减`，不扣快递费。
 - 销售登记即时更新现有销售/Payton 资金；确认开关只改变待确认扣减与税务入账日，不再次记账。
 - Papa 与 Payton 的未确认销售都纳入首页待确认总额；旧版手工 `calc.unconfirmed` 迁移为 0。
@@ -64,28 +64,28 @@
 - Sales that already have explicit confirmation fields retain them.
 - Ensure `data.calc` is an object and normalize `data.calc.unconfirmed` to `0` during this migration.
 
-- [ ] **Step 1: Write failing migration tests**
+- [x] **Step 1: Write failing migration tests**
   - Add `migratesLegacySalesAsConfirmedWithOrderDateAsEntryDate` for dated sold rows.
   - Add `keepsExplicitConfirmationAndEntryDate` for already migrated rows.
   - Add `doesNotInventEntryDateForUndatedLegacySales`.
   - Add `doesNotCopyInvalidOrderDateToEntryDate` for malformed calendar dates.
   - Add `resetsLegacyManualUnconfirmedTotalToZero`.
-- [ ] **Step 2: Run only the new migration tests and verify they fail**
+- [x] **Step 2: Run only the new migration tests and verify they fail**
 
 Run: `npm test -- src/data/migrations/index.test.js`
 
 Expected: the new assertions fail because migration does not currently populate these fields or reset the manual total.
 
-- [ ] **Step 3: Implement the migration in `src/data/migrations/index.js`**
+- [x] **Step 3: Implement the migration in `src/data/migrations/index.js`**
   - Modify only `saleDetails` on sold items and `data.calc.unconfirmed`.
   - Do not assign an entry date when source sale date is missing or invalid.
-- [ ] **Step 4: Run migration tests**
+- [x] **Step 4: Run migration tests**
 
 Run: `npm test -- src/data/migrations/index.test.js`
 
 Expected: all tests in the migration suite pass.
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Commit Task 1**
 
 ### Task 2: Centralize sales and pending amount calculations
 
@@ -101,28 +101,28 @@ Expected: all tests in the migration suite pass.
 - `getUnconfirmedSalesTotal(items) -> number`: sum pending amount over all Owners, independent of current UI filters.
 - `useSales.js` imports `getSaleNetProceeds` instead of maintaining a private duplicate formula.
 
-- [ ] **Step 1: Write failing tests for calculation helpers**
+- [x] **Step 1: Write failing tests for calculation helpers**
   - Add `pendingAmountExcludesFreightButIncludesFeeAndSignedDeduction` with 100 price, 8 freight, 1% fee, +10 deduction => pending `89`; with −10 deduction => `109`.
   - Add `unconfirmedTotalCombinesOwnersAndSkipsConfirmedRows` for Papa + Payton while ignoring confirmed and non-sold items.
   - Add `zeroAndInvalidNumericValuesAreSafe`.
-- [ ] **Step 2: Run helper tests and verify they fail**
+- [x] **Step 2: Run helper tests and verify they fail**
 
 Run: `npm test -- src/modules/sales/saleAccounting.test.js`
 
 Expected: FAIL because the module does not exist.
 
-- [ ] **Step 3: Implement the three pure helpers**
+- [x] **Step 3: Implement the three pure helpers**
   - Treat non-finite/missing amounts as zero, matching `useSales.js` numeric handling.
   - For a pending row, retain the signed deduction in the exact formula; do not subtract freight.
-- [ ] **Step 4: Add a regression assertion for the calculator reconciliation**
+- [x] **Step 4: Add a regression assertion for the calculator reconciliation**
   - In `src/modules/sales/useSales.test.js`, assert that a Payton sale with price 100, freight 8, fee 1, deduction 0 produces account/fund delta 91 and pending amount 99; pending-adjusted delta is −8.
-- [ ] **Step 5: Run the targeted sale calculation tests**
+- [x] **Step 5: Run the targeted sale calculation tests**
 
 Run: `npm test -- src/modules/sales/saleAccounting.test.js src/modules/sales/useSales.test.js`
 
 Expected: both suites pass, including existing net proceeds tests.
 
-- [ ] **Step 6: Commit Task 2**
+- [x] **Step 6: Commit Task 2**
 
 ### Task 3: Confirmation transitions, inventory snapshot and full rollback
 
@@ -136,8 +136,8 @@ Expected: both suites pass, including existing net proceeds tests.
 - Create: `src/data/logReplay.test.js`
 
 **Interfaces:**
-- `setSaleConfirmation(itemId, confirmed, entryDate = '') -> boolean`.
-  - On `confirmed === true`, set `isConfirmed = true`; preserve an explicitly supplied valid date or use today's local calendar date (not UTC date). No account mutation.
+- `setSaleConfirmation(itemId, confirmed, entryDate) -> boolean`.
+  - On a transition from pending to `confirmed === true`, set `isConfirmed = true`; preserve an explicitly supplied valid date or use today's local calendar date (not UTC date). When already confirmed, preserve its date if omitted and allow an explicitly blank date to remain blank. No account mutation.
   - On `confirmed === false`, set `isConfirmed = false`, clear `entryDate`, and do not mutate account balances.
 - `rollbackSale(itemId, restoreState = null) -> { status: 'rolled-back' | 'requires-restore-confirmation' }`.
   - Resolve restore state in this order: `saleDetails.beforeSaleState`, matching `sales_submit` log's `details.before`, explicit user-confirmed `restoreState`. If none exists return `requires-restore-confirmation` without mutation. On success reverse Payton's previously posted `getSaleNetProceeds(saleDetails)` once, restore state, remove `saleDetails`, and log full before/after state.
