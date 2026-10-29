@@ -55,7 +55,7 @@ describe('SalesModule owner scope', () => {
     expect(paytonHtml).toMatch(/<article data-shop-summary="侧空翻棉"[\s\S]*?0 件[\s\S]*?0\.00[\s\S]*?<\/article>/)
   })
 
-  it('keeps the sales list compact and offers direct confirmation for pending sales', async () => {
+  it('keeps the sales list compact and toggles confirmation from the status pill', async () => {
     loadData({ items: [
       { id: 'pending', owner: 'papa', name: '待确认车', sid: 'P-1', status: 'sold', cost: 20, saleDetails: { price: 40, profit: 20, date: '2026-10-20', isConfirmed: false, entryDate: '' } },
       { id: 'confirmed', owner: 'papa', name: '已确认车', sid: 'P-2', status: 'sold', cost: 30, saleDetails: { price: 60, profit: 30, date: '2026-10-21', isConfirmed: true, entryDate: '2026-10-22' } },
@@ -71,6 +71,6 @@ describe('SalesModule owner scope', () => {
     expect(html).toContain('2026-10-20')
     expect(html).not.toContain('2026-10-22')
     expect(html).toMatch(/<button[^>]*aria-label=\"确认到账\"[^>]*>待确认<\/button>/)
-    expect(html).not.toMatch(/<button[^>]*>确认<\/button>/)
+    expect(html).toMatch(/<button[^>]*aria-label=\"取消确认到账\"[^>]*>已确认<\/button>/)
   })
 })

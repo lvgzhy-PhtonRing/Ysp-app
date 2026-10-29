@@ -247,8 +247,8 @@ function submitEditSale() {
   showEditModal.value = false
 }
 
-function confirmSale(itemId) {
-  setSaleConfirmation(itemId, true)
+function toggleSaleConfirmation(item) {
+  setSaleConfirmation(item.id, item.saleDetails?.isConfirmed === false)
 }
 
 function rollbackSale(itemId) {
@@ -444,8 +444,7 @@ watch(
               <tr v-for="item in group.items" :key="item.id">
                 <td class="whitespace-nowrap">{{ item.saleDetails?.date || '未记录' }}</td>
                 <td class="whitespace-nowrap">
-                  <button v-if="item.saleDetails?.isConfirmed === false" class="rounded-full border-0 bg-amber-100 px-2 py-0.5 text-xs text-amber-800 cursor-pointer hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500" aria-label="确认到账" @click="confirmSale(item.id)">待确认</button>
-                  <span v-else class="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800">已确认</span>
+                  <button class="rounded-full border-0 px-2 py-0.5 text-xs cursor-pointer hover:brightness-95 focus-visible:outline focus-visible:outline-2" :class="item.saleDetails?.isConfirmed === false ? 'bg-amber-100 text-amber-800 focus-visible:outline-amber-500' : 'bg-green-100 text-green-800 focus-visible:outline-green-500'" :aria-label="item.saleDetails?.isConfirmed === false ? '确认到账' : '取消确认到账'" @click="toggleSaleConfirmation(item)">{{ item.saleDetails?.isConfirmed === false ? '待确认' : '已确认' }}</button>
                 </td>
                 <td class="whitespace-nowrap">{{ item.saleDetails?.shop || DEFAULT_SALES_CHANNEL }}</td>
                 <td class="align-middle"><div class="flex items-center gap-2"><span class="font-medium truncate">{{ item.name }}</span><span v-if="ownerScope === 'all'" class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold" :class="item.owner === 'payton' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'">{{ item.owner === 'payton' ? 'PAYTON' : 'PAPA' }}</span></div><div class="text-xs text-gray-400 font-mono">{{ item.sid }}</div></td>
