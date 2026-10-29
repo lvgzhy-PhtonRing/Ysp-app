@@ -220,25 +220,25 @@ Expected: both suites pass and the sales row still displays/order-sorts by order
 - `takeDailySnapshot` records the derived total so cash-flow history agrees with the live calculator.
 - Existing `calc.unconfirmed` remains in the persisted schema for backward compatibility but is initialized to zero by migration and is not used as the live source.
 
-- [ ] **Step 1: Add failing tests for live calculator and snapshot totals**
+- [x] **Step 1: Add failing tests for live calculator and snapshot totals**
   - Home with one Papa pending 99 and one Payton pending 50 shows total 149 even when `currentOwner` is either Papa or Payton.
   - Marking one sale confirmed reduces the total by exactly its pending amount.
   - Snapshot records the same calculated total as the live home view.
-- [ ] **Step 2: Run targeted tests and verify they fail**
+- [x] **Step 2: Run targeted tests and verify they fail**
 
 Run: `npm test -- src/modules/home/HomeModule.test.js src/data/store.test.js`
 
 Expected: FAIL because home and snapshot still read the manual field.
 
-- [ ] **Step 3: Use the shared helper in home and snapshot calculations**
+- [x] **Step 3: Use the shared helper in home and snapshot calculations**
   - Import only the pure accounting helper from `saleAccounting.js`; avoid importing `useSales.js` into `store.js`.
-- [ ] **Step 4: Run targeted tests**
+- [x] **Step 4: Run targeted tests**
 
 Run: `npm test -- src/modules/home/HomeModule.test.js src/data/store.test.js`
 
 Expected: both suites pass; no calculator path uses the stale hand-entered amount.
 
-- [ ] **Step 5: Commit Task 5**
+- [x] **Step 5: Commit Task 5**
 
 ### Task 6: Generate and download the tax workbook by entry date
 

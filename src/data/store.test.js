@@ -135,6 +135,22 @@ describe('Owner snapshots and local UI preference', () => {
     })
   })
 
+  it('records the calculated pending sales total instead of stale manual input', () => {
+    loadData({
+      items: [
+        { id: 'papa-pending', owner: 'papa', status: 'sold', saleDetails: { price: 100, feeRate: 0.01, isConfirmed: false } },
+        { id: 'payton-pending', owner: 'payton', status: 'sold', saleDetails: { price: 50, isConfirmed: false } },
+        { id: 'confirmed', owner: 'papa', status: 'sold', saleDetails: { price: 500, isConfirmed: true } },
+      ],
+      calc: { unconfirmed: 999 },
+    })
+    saveToLocalStorage()
+
+    const snapshot = state.snapshots.find((entry) => entry.date === '2026-10-22')
+    expect(snapshot.calc.unconfirmed).toBe(149)
+    expect(snapshot.merged.alipayBalance).toBe(-149)
+  })
+
   it('reconciles the pending BMW sale into its existing snapshot row without duplication', () => {
     loadData({
       items: [{ id: 'bmw', sid: '55aeffc4-b720-483f-b85e-1d85067f0189', owner: 'payton', status: 'sold', cost: 10, saleDetails: { date: '2026-10-19', price: 15, profit: 5 } }],

@@ -6,6 +6,7 @@ import { SLOT_KEYS, slotValue, normalizeRev, computeSlotPlan, buildMerged, revOf
 
 import { evictOldestAdoptBefore } from './adoptLog'
 import { migratePayload } from './migrations'
+import { getUnconfirmedSalesTotal } from '../modules/sales/saleAccounting'
 
 import {
   downloadJsonBackup,
@@ -751,12 +752,13 @@ function takeDailySnapshot() {
   const loanRemaining = paytonLoans.reduce((sum, loan) => sum + (loan?.status === 'active' ? Number(loan.remaining || 0) : 0), 0)
   const carItems = paytonItems.filter((item) => item?.status === 'inventory')
   const carValue = carItems.reduce((sum, item) => sum + Number(item?.cost || 0), 0)
+  const unconfirmedTotal = getUnconfirmedSalesTotal(state.items)
   const paytonFund = Number(state.ownerRegistry.payton?.pocketBalance || 0) + Number(state.ownerRegistry.payton?.investBalance || 0) - loanRemaining
 
   const snapshot = {
     date: today,
     createdAt: new Date().toISOString(),
-    calc: { ...state.calc },
+    calc: { ...state.calc, unconfirmed: unconfirmedTotal },
     finance: { loanBalance, publicExpense },
     profit: {
       // 净实盈利润：已售利润 - 公共支出净额
@@ -782,7 +784,7 @@ function takeDailySnapshot() {
     merged: {
       inventoryValue: inventoryItems.reduce((sum, item) => sum + Number(item?.cost || 0), 0),
       carValue,
-      alipayBalance: Number(state.calc.debt || 0) + loanBalance + soldItems.reduce((sum, item) => sum + Number(item?.saleDetails?.profit || 0), 0) - publicExpense - inventoryItems.reduce((sum, item) => sum + Number(item?.cost || 0), 0) - Number(state.calc.unconfirmed || 0) + paytonFund - purchaseItems.reduce((sum, item) => sum + Number(item?.cost || 0), 0),
+      alipayBalance: Number(state.calc.debt || 0) + loanBalance + soldItems.reduce((sum, item) => sum + Number(item?.saleDetails?.profit || 0), 0) - publicExpense - inventoryItems.reduce((sum, item) => sum + Number(item?.cost || 0), 0) - unconfirmedTotal + paytonFund - purchaseItems.reduce((sum, item) => sum + Number(item?.cost || 0), 0),
     },
   }
 

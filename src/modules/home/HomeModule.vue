@@ -11,8 +11,9 @@ import {
 } from './useHomeInsights'
 import CashflowMonitor from './CashflowMonitor.vue'
 import { getPublicExpense } from '../finance/useFinance'
-import { buildAlipayBreakdown } from '../../utils/calc'
+import { buildAlipayBreakdown, calcAlipayBalance } from '../../utils/calc'
 import { getPaytonFund } from '../payton-finance/usePaytonFinance'
+import { getUnconfirmedSalesTotal } from '../sales/saleAccounting'
 
 const emit = defineEmits(['update-owner'])
 
@@ -43,6 +44,7 @@ const papaLoanBalance = computed(() => store.loanRecords.filter((loan) => !loan?
   return sum + (loan?.type === 'borrow' ? Number(loan?.amount || 0) : -Number(loan?.amount || 0))
 }, 0))
 const carFundBalance = computed(() => getPaytonFund())
+const unconfirmedTotal = computed(() => getUnconfirmedSalesTotal(store.items))
 
 const totalSalesProfit = computed(() =>
   soldItems.value.reduce((s, i) => s + Number(i?.saleDetails?.profit || 0), 0),
@@ -64,15 +66,14 @@ const financeLoanBalance = computed(() => store.currentOwner === 'payton'
 const actualBalance = computed(() => alipayBalance.value - (store.calc.forwarderBalance || 0) - (store.calc.watchBalance || 0))
 
 const alipayBalance = computed(() => {
-  return (
-    Number(store.calc.debt || 0) +
-    papaLoanBalance.value +
-    papaItems.value.filter((item) => item.status === 'sold').reduce((sum, item) => sum + Number(item.saleDetails?.profit || 0), 0) -
-    papaPublicExpense.value -
-    papaItems.value.filter((item) => item.status === 'inventory').reduce((sum, item) => sum + Number(item.cost || 0), 0) -
-    Number(store.calc.unconfirmed || 0) +
-    carFundBalance.value -
-    getPurchaseStatus(papaItems.value).totalCost
+  return calcAlipayBalance(
+    store.calc.debt,
+    papaLoanBalance.value,
+    papaItems.value.filter((item) => item.status === 'sold').reduce((sum, item) => sum + Number(item.saleDetails?.profit || 0), 0) - papaPublicExpense.value,
+    papaItems.value.filter((item) => item.status === 'inventory').reduce((sum, item) => sum + Number(item.cost || 0), 0),
+    unconfirmedTotal.value,
+    carFundBalance.value,
+    getPurchaseStatus(papaItems.value).totalCost,
   )
 })
 
@@ -83,7 +84,7 @@ const alipayBreakdown = computed(() =>
     papaItems.value.filter((item) => item.status === 'sold').reduce((sum, item) => sum + Number(item.saleDetails?.profit || 0), 0),
     papaPublicExpense.value,
     papaItems.value.filter((item) => item.status === 'inventory').reduce((sum, item) => sum + Number(item.cost || 0), 0),
-    store.calc.unconfirmed,
+    unconfirmedTotal.value,
     carFundBalance.value,
     getPurchaseStatus(papaItems.value).totalCost,
   ),
@@ -173,7 +174,7 @@ function statusText(status) {
         <div><label class="text-xs text-gray-500">挖财总负债</label><input type="number" v-model.number="store.calc.debt" class="apple-input mt-1" @focus="onCalcFocus('debt')" @change="persistCalc('debt')" /></div>
         <div><label class="text-xs text-gray-500">借贷余额</label><div class="mt-2 text-lg font-bold text-gray-700">{{ fmtMoney(papaLoanBalance) }}</div></div>
         <div><label class="text-xs text-gray-500">公共支出</label><div class="mt-2 text-lg font-bold text-gray-700">{{ fmtMoney(papaPublicExpense) }}</div></div>
-        <div><label class="text-xs text-gray-500">未确认交易</label><input type="number" v-model.number="store.calc.unconfirmed" class="apple-input mt-1" @focus="onCalcFocus('unconfirmed')" @change="persistCalc('unconfirmed')" /></div>
+        <div><label class="text-xs text-gray-500">未确认交易</label><div class="mt-2 text-lg font-bold text-gray-700">{{ fmtMoney(unconfirmedTotal) }}</div><div class="text-[10px] text-gray-400">自动汇总 Papa 与 Payton</div></div>
         <div><label class="text-xs text-gray-500">Payton's基金</label><div class="mt-2 text-lg font-bold text-gray-600">{{ fmtMoney(carFundBalance) }}</div><div class="text-[10px] text-gray-400 mt-0.5">零钱 {{ fmtMoney(paytonPocketBalance) }} · 投资 {{ fmtMoney(paytonInvestBalance) }} · 贷款 {{ fmtMoney(paytonLoanRemaining) }}</div></div>
       </div>
       <div class="bg-white p-4 rounded-xl shadow-sm border border-blue-50">

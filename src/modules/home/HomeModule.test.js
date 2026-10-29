@@ -41,6 +41,26 @@ describe('HomeModule owner layout and balance display', () => {
     expect(store.ownerRegistry.payton.loans).toHaveLength(2)
   })
 
+  it('shows a computed pending total across both Owners, independent of the selected Owner', async () => {
+    loadData({ items: [
+      { id: 'papa-pending', owner: 'papa', status: 'sold', saleDetails: { price: 100, feeRate: 0.01, deduction: 0, isConfirmed: false } },
+      { id: 'payton-pending', owner: 'payton', status: 'sold', saleDetails: { price: 50, feeRate: 0, deduction: 0, isConfirmed: false } },
+      { id: 'confirmed', owner: 'papa', status: 'sold', saleDetails: { price: 500, isConfirmed: true } },
+    ], calc: { unconfirmed: 999 } })
+
+    const renderTotal = async (owner) => {
+      store.currentOwner = owner
+      const html = await renderToString(h(HomeModule))
+      const match = html.match(/未确认交易<\/label><div[^>]*>([^<]+)/)
+      return match?.[1]
+    }
+    expect(await renderTotal('papa')).toBe('149.00')
+    expect(await renderTotal('payton')).toBe('149.00')
+
+    store.items.find((item) => item.id === 'papa-pending').saleDetails.isConfirmed = true
+    expect(await renderTotal('payton')).toBe('50.00')
+  })
+
   it('keeps the Alipay loan and public expense inputs on Papa values when the selected owner changes', async () => {
     loadData({
       finance: { loans: [
