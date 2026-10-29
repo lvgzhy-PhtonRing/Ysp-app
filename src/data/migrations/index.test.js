@@ -47,4 +47,54 @@ describe('migratePayload', () => {
       '其它', 'PhtonRIng', 'PhtonRIng', '其它', '侧空翻棉', undefined,
     ])
   })
+
+  it('migrates legacy sales as confirmed with the order date as entry date', () => {
+    const output = migratePayload({
+      items: [{ id: 'legacy-sale', status: 'sold', saleDetails: { date: '2026-10-20' } }],
+    })
+
+    expect(output.items[0].saleDetails).toMatchObject({ isConfirmed: true, entryDate: '2026-10-20' })
+  })
+
+  it('keeps explicit confirmation state and entry date', () => {
+    const output = migratePayload({
+      items: [{ id: 'current-sale', status: 'sold', saleDetails: {
+        date: '2026-10-20', isConfirmed: false, entryDate: '',
+      } }],
+    })
+
+    expect(output.items[0].saleDetails).toMatchObject({ isConfirmed: false, entryDate: '' })
+  })
+
+  it('does not infer an entry date for an explicitly pending sale', () => {
+    const output = migratePayload({
+      items: [{ id: 'pending-sale', status: 'sold', saleDetails: { date: '2026-10-20', isConfirmed: false } }],
+    })
+
+    expect(output.items[0].saleDetails.entryDate).toBe('')
+  })
+
+  it('does not invent an entry date for legacy sales without an order date', () => {
+    const output = migratePayload({
+      items: [{ id: 'undated-sale', status: 'sold', saleDetails: {} }],
+    })
+
+    expect(output.items[0].saleDetails.isConfirmed).toBe(true)
+    expect(output.items[0].saleDetails.entryDate).toBe('')
+  })
+
+  it('does not copy an invalid order date to entry date', () => {
+    const output = migratePayload({
+      items: [{ id: 'invalid-date-sale', status: 'sold', saleDetails: { date: '2026-02-30' } }],
+    })
+
+    expect(output.items[0].saleDetails.isConfirmed).toBe(true)
+    expect(output.items[0].saleDetails.entryDate).toBe('')
+  })
+
+  it('resets the legacy manual unconfirmed total to zero', () => {
+    const output = migratePayload({ calc: { debt: 10, unconfirmed: 388 } })
+
+    expect(output.calc).toMatchObject({ debt: 10, unconfirmed: 0 })
+  })
 })
