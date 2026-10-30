@@ -14,7 +14,8 @@ describe('TaxExportModal', () => {
     }))
 
     expect(html).toContain('报税工作簿导出')
-    expect(html).toContain('纳税主体（请人工填写确认）')
+    expect(html).toContain('纳税主体名称')
+    expect(html).toContain('纳税人识别号')
     expect(html).toContain('导出前筛选销售')
     expect(html).toContain('PhtonRIng')
     expect(html).toContain('侧空翻棉')

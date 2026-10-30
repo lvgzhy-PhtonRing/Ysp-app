@@ -18,13 +18,15 @@ const now = new Date()
 const quarterMonth = Math.floor(now.getMonth() / 3) * 3
 const startDate = ref(localDate(new Date(now.getFullYear(), quarterMonth, 1)))
 const endDate = ref(localDate(new Date(now.getFullYear(), quarterMonth + 3, 0)))
-const taxpayer = ref('')
+const taxpayerName = ref('')
+const taxpayerId = ref('')
 const channels = ref(['PhtonRIng'])
 const downloadError = ref('')
 const workbookData = computed(() => buildTaxWorkbookData(props.payload, {
   startDate: startDate.value,
   endDate: endDate.value,
-  taxpayer: taxpayer.value,
+  taxpayerName: taxpayerName.value,
+  taxpayerId: taxpayerId.value,
   channels: channels.value,
 }))
 const previewIssues = computed(() => workbookData.value.issues.slice(0, 8))
@@ -35,7 +37,7 @@ function close() {
 
 async function download() {
   downloadError.value = ''
-  const safeTaxpayer = (taxpayer.value.trim() || '主体待确认').replace(/[\\/:*?"<>|]/g, '_')
+  const safeTaxpayer = (taxpayerName.value.trim() || '主体待确认').replace(/[\\/:*?"<>|]/g, '_')
   const filename = `YSP报税工作簿_${safeTaxpayer}_${startDate.value}_${endDate.value}_${localDate()}.xlsx`
   try {
     await writeTaxWorkbook(workbookData.value, filename)
@@ -57,7 +59,8 @@ async function download() {
     </div>
 
     <div class="mt-5 grid gap-4 md:grid-cols-2">
-      <label class="text-sm text-gray-600">纳税主体（请人工填写确认）<input v-model="taxpayer" class="apple-input mt-1" placeholder="例如：营业执照主体名称" /></label>
+      <label class="text-sm text-gray-600">纳税主体名称<input v-model="taxpayerName" class="apple-input mt-1" placeholder="例如：营业执照主体名称" /></label>
+      <label class="text-sm text-gray-600">纳税人识别号<input v-model="taxpayerId" class="apple-input mt-1" placeholder="请填写统一社会信用代码或税号" /></label>
       <div class="grid grid-cols-2 gap-3">
         <label class="text-sm text-gray-600">期间开始<input v-model="startDate" type="date" class="apple-input mt-1" /></label>
         <label class="text-sm text-gray-600">期间结束<input v-model="endDate" type="date" class="apple-input mt-1" /></label>

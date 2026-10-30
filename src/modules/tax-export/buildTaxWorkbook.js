@@ -30,9 +30,12 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
   const selectedChannels = Array.isArray(options.channels)
     ? new Set(options.channels.filter(isSalesChannel))
     : new Set([DEFAULT_SALES_CHANNEL])
+  const taxpayerName = String(options.taxpayerName || '').trim()
+  const taxpayerId = String(options.taxpayerId || '').trim()
   const issues = []
   if (!periodValid) issues.push({ id: 'period', issue: '申报期间为空、格式无效或开始日期晚于结束日期，请先修正期间。' })
-  if (!String(options.taxpayer || '').trim()) issues.push({ id: 'taxpayer', issue: '纳税主体尚未确认，请人工核实。' })
+  if (!taxpayerName) issues.push({ id: 'taxpayer-name', issue: '纳税主体名称尚未填写，请人工核实。' })
+  if (!taxpayerId) issues.push({ id: 'taxpayer-id', issue: '纳税人识别号尚未填写，请人工核实。' })
 
   const allSales = (Array.isArray(payload.items) ? payload.items : []).filter((item) => item?.status === 'sold' && item?.saleDetails && selectedChannels.has(salesChannelOf(item.saleDetails)))
   const sales = []
@@ -93,7 +96,8 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
   }), { revenue: 0, cost: 0, platformFee: 0, express: 0, adjustment: 0, referenceProfit: 0 })
   const createdAt = new Date().toISOString()
   const readingRows = [
-    { field: '纳税主体（人工填写/确认）', value: options.taxpayer || '待确认' },
+    { field: '纳税主体名称', value: taxpayerName || '待填写' },
+    { field: '纳税人识别号', value: taxpayerId || '待填写' },
     { field: '申报期间（起止日均包含）', value: periodValid ? `${startDate} 至 ${endDate}` : '期间无效' },
     { field: '生成时间', value: createdAt },
     { field: '用途', value: '仅用于申报准备与人工复核；不自动判断税额、不提交、不缴税。' },
@@ -132,7 +136,7 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
 
   return {
     issues,
-    period: { startDate, endDate, taxpayer: options.taxpayer || '' },
+    period: { startDate, endDate, taxpayerName, taxpayerId },
     totals: { ...totals, salesCount: sales.length, expenseRows: financeRecords.length },
     sheets: [
       sheet('阅读说明', ['项目', '内容'], readingRows),

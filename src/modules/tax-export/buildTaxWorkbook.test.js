@@ -4,7 +4,7 @@ import { buildTaxWorkbookData, createTaxWorkbook, writeTaxWorkbook } from './bui
 
 vi.mock('xlsx', async (importOriginal) => ({ ...(await importOriginal()), writeFile: vi.fn() }))
 
-const period = { startDate: '2026-10-01', endDate: '2026-12-31', taxpayer: 'Papa 个体户', channels: ['PhtonRIng', '侧空翻棉', '其它'] }
+const period = { startDate: '2026-10-01', endDate: '2026-12-31', taxpayerName: 'Papa 个体户', taxpayerId: '91310000TEST001', channels: ['PhtonRIng', '侧空翻棉', '其它'] }
 
 describe('buildTaxWorkbookData', () => {
   const payload = {
@@ -57,10 +57,11 @@ describe('buildTaxWorkbookData', () => {
   })
 
   it('includes selected period expenses and flags missing taxpayer and unclassified data', () => {
-    const result = buildTaxWorkbookData(payload, { ...period, taxpayer: '' })
+    const result = buildTaxWorkbookData(payload, { ...period, taxpayerName: '', taxpayerId: '' })
     expect(result.sheets.find((sheet) => sheet.name === '收支明细').rows).toHaveLength(1)
     const issues = result.sheets.find((sheet) => sheet.name === '待确认事项').rows
-    expect(issues.some((row) => row.issue.includes('纳税主体'))).toBe(true)
+    expect(issues.some((row) => row.issue.includes('纳税主体名称'))).toBe(true)
+    expect(issues.some((row) => row.issue.includes('纳税人识别号'))).toBe(true)
     expect(issues.some((row) => row.issue.includes('税务分类'))).toBe(true)
     expect(issues.some((row) => row.id === 'no-date')).toBe(true)
   })
@@ -101,5 +102,12 @@ describe('buildTaxWorkbookData', () => {
     expect(result.sheets.every((sheet) => !sheet.headers.includes('销售渠道'))).toBe(true)
     expect(result.sheets.find((sheet) => sheet.name === '销售明细').rows.every((row) => !('shop' in row) && !('owner' in row))).toBe(true)
     expect(result.sheets.find((sheet) => sheet.name === '阅读说明').rows.some((row) => /Owner|销售渠道|PhtonRIng|侧空翻棉|其它/.test(`${row.field} ${row.value}`))).toBe(false)
+  })
+
+  it('exports taxpayer name and tax ID as separate reading fields', () => {
+    const result = buildTaxWorkbookData(payload, period)
+    const notes = result.sheets.find((sheet) => sheet.name === '阅读说明').rows
+    expect(notes).toContainEqual({ field: '纳税主体名称', value: 'Papa 个体户' })
+    expect(notes).toContainEqual({ field: '纳税人识别号', value: '91310000TEST001' })
   })
 })
