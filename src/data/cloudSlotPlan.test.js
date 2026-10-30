@@ -11,8 +11,8 @@ function p(items = [], calc = { debt: 0 }, rev = {}) {
 }
 
 describe('SLOT_KEYS / slotValue / setSlotValue', () => {
-  it('共 10 槽位且值默认空', () => {
-    expect(SLOT_KEYS).toHaveLength(10)
+  it('共 11 槽位且值默认空', () => {
+    expect(SLOT_KEYS).toHaveLength(11)
     const pay = p()
     for (const s of SLOT_KEYS) {
       expect(Array.isArray(slotValue(pay, s)) || typeof slotValue(pay, s) === 'object').toBe(true)
@@ -24,6 +24,14 @@ describe('SLOT_KEYS / slotValue / setSlotValue', () => {
     setSlotValue(pay, 'finance.records', [{ id: 9 }])
     expect(slotValue(pay, 'items')).toEqual([{ id: 1 }])
     expect(pay.finance.records).toEqual([{ id: 9 }])
+  })
+  it('纳税主体映射作为独立数组槽位参与云端合并', () => {
+    const local = p(); const cloud = p()
+    local.taxpayerProfiles = [{ name: '主体甲', taxId: 'A' }]
+    cloud.taxpayerProfiles = [{ name: '主体乙', taxId: 'B' }]
+    const plan = computeSlotPlan(local, cloud, { taxpayerProfiles: 1 }, ser)
+    expect(plan.taxpayerProfiles).toBe('conflict')
+    expect(buildMerged(local, cloud, plan, { taxpayerProfiles: 'cloud' }).taxpayerProfiles).toEqual(cloud.taxpayerProfiles)
   })
   it('item slot serialization retains sale confirmation and rollback fields', () => {
     const items = [{
@@ -86,7 +94,7 @@ describe('computeSlotPlan', () => {
   it('rev 皆未越基线但内容不同 → 保守 conflict', () => {
     expect(computeSlotPlan(L, p([{ id: 1, name: 'cloud' }], { debt: 0 }, { items: { rev: 2, at: '' } }), { items: 2 }, ser).items).toBe('conflict')
   })
-  it('10 槽位全部产出', () => {
+  it('11 槽位全部产出', () => {
     const plan = computeSlotPlan(L, C, { items: 1 }, ser)
     for (const s of SLOT_KEYS) expect(plan[s]).toBeDefined()
   })

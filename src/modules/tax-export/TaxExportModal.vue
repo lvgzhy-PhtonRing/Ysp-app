@@ -1,14 +1,15 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import GlassModal from '../../components/GlassModal.vue'
 import { buildTaxWorkbookData, writeTaxWorkbook } from './buildTaxWorkbook'
 import { SALES_CHANNELS } from '../sales/salesChannels'
+import { findTaxpayerProfileConflict, normalizeTaxpayerId, normalizeTaxpayerName } from '../../data/taxpayerProfiles'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   payload: { type: Object, default: () => ({}) },
 })
-const emit = defineEmits(['update:modelValue', 'downloaded'])
+const emit = defineEmits(['update:modelValue', 'downloaded', 'remember-taxpayer'])
 
 function localDate(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -20,6 +21,8 @@ const startDate = ref(localDate(new Date(now.getFullYear(), quarterMonth, 1)))
 const endDate = ref(localDate(new Date(now.getFullYear(), quarterMonth + 3, 0)))
 const taxpayerName = ref('')
 const taxpayerId = ref('')
+const taxpayerProfiles = computed(() => Array.isArray(props.payload?.taxpayerProfiles) ? props.payload.taxpayerProfiles : [])
+const taxpayerConflict = computed(() => findTaxpayerProfileConflict(taxpayerProfiles.value, taxpayerName.value, taxpayerId.value))
 const channels = ref(['PhtonRIng'])
 const downloadError = ref('')
 const workbookData = computed(() => buildTaxWorkbookData(props.payload, {
@@ -31,14 +34,41 @@ const workbookData = computed(() => buildTaxWorkbookData(props.payload, {
 }))
 const previewIssues = computed(() => workbookData.value.issues.slice(0, 8))
 
+watch(taxpayerName, (value) => {
+  const name = normalizeTaxpayerName(value)
+  const match = taxpayerProfiles.value.find((profile) => normalizeTaxpayerName(profile.name) === name)
+  if (match && !taxpayerId.value) taxpayerId.value = match.taxId
+})
+watch(taxpayerId, (value) => {
+  const taxId = normalizeTaxpayerId(value)
+  const match = taxpayerProfiles.value.find((profile) => normalizeTaxpayerId(profile.taxId) === taxId)
+  if (match && !taxpayerName.value) taxpayerName.value = match.name
+})
+
+function rememberTaxpayer() {
+  const name = normalizeTaxpayerName(taxpayerName.value)
+  const taxId = normalizeTaxpayerId(taxpayerId.value)
+  if (!name || !taxId || taxpayerConflict.value) return
+  taxpayerName.value = name
+  taxpayerId.value = taxId
+  emit('remember-taxpayer', { name, taxId })
+}
+
 function close() {
   emit('update:modelValue', false)
 }
 
 async function download() {
   downloadError.value = ''
+  if (taxpayerConflict.value) {
+    downloadError.value = taxpayerConflict.value.field === 'name'
+      ? `“${taxpayerName.value.trim()}”已对应税号 ${taxpayerConflict.value.existing.taxId}，请使用已保存的配对。`
+      : `税号“${normalizeTaxpayerId(taxpayerId.value)}”已对应纳税主体“${taxpayerConflict.value.existing.name}”，请使用已保存的配对。`
+    return
+  }
+  rememberTaxpayer()
   const safeTaxpayer = (taxpayerName.value.trim() || '主体待确认').replace(/[\\/:*?"<>|]/g, '_')
-  const filename = `YSP报税工作簿_${safeTaxpayer}_${startDate.value}_${endDate.value}_${localDate()}.xlsx`
+  const filename = `YSP报税导出_${safeTaxpayer}_${startDate.value}_${endDate.value}_${localDate()}.xlsx`
   try {
     await writeTaxWorkbook(workbookData.value, filename)
     emit('downloaded', filename)
@@ -52,15 +82,16 @@ async function download() {
   <GlassModal :model-value="modelValue" panel-class="w-full max-w-4xl relative max-h-[88vh] overflow-y-auto p-5" :close-on-overlay="false" @update:model-value="emit('update:modelValue', $event)">
     <div class="flex items-start justify-between gap-4">
       <div>
-        <h2 class="text-xl font-bold text-gray-900">报税工作簿导出</h2>
+        <h2 class="text-xl font-bold text-gray-900">报税导出</h2>
         <p class="mt-1 text-sm text-gray-500">按已确认销售的入账日整理；不会展示下单日期，也不会上传数据。</p>
       </div>
       <button class="text-gray-400 hover:text-gray-800" aria-label="关闭" @click="close">✕</button>
     </div>
 
     <div class="mt-5 grid gap-4 md:grid-cols-2">
-      <label class="text-sm text-gray-600">纳税主体名称<input v-model="taxpayerName" class="apple-input mt-1" placeholder="例如：营业执照主体名称" /></label>
-      <label class="text-sm text-gray-600">纳税人识别号<input v-model="taxpayerId" class="apple-input mt-1" placeholder="请填写统一社会信用代码或税号" /></label>
+      <label class="text-sm text-gray-600">纳税主体名称<input v-model="taxpayerName" list="taxpayer-name-suggestions" class="apple-input mt-1" placeholder="输入或选择已记住的主体名称" @change="rememberTaxpayer" @blur="rememberTaxpayer" /><datalist id="taxpayer-name-suggestions"><option v-for="profile in taxpayerProfiles" :key="profile.name" :value="profile.name">{{ profile.taxId }}</option></datalist></label>
+      <label class="text-sm text-gray-600">纳税人识别号<input v-model="taxpayerId" list="taxpayer-id-suggestions" class="apple-input mt-1" placeholder="输入或选择对应的税号" @change="rememberTaxpayer" @blur="rememberTaxpayer" /><datalist id="taxpayer-id-suggestions"><option v-for="profile in taxpayerProfiles" :key="profile.taxId" :value="profile.taxId">{{ profile.name }}</option></datalist></label>
+      <p v-if="taxpayerConflict" class="md:col-span-2 -mt-2 text-xs text-red-700" role="alert">配对冲突：{{ taxpayerConflict.field === 'name' ? `“${taxpayerName.trim()}”已对应税号 ${taxpayerConflict.existing.taxId}` : `税号“${normalizeTaxpayerId(taxpayerId)}”已对应主体“${taxpayerConflict.existing.name}”` }}。请选择已有配对，不会覆盖已记忆的信息。</p>
       <div class="grid grid-cols-2 gap-3">
         <label class="text-sm text-gray-600">期间开始<input v-model="startDate" type="date" class="apple-input mt-1" /></label>
         <label class="text-sm text-gray-600">期间结束<input v-model="endDate" type="date" class="apple-input mt-1" /></label>

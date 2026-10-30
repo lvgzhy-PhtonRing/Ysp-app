@@ -24,6 +24,7 @@ import {
   runCloudSyncCheck,
   runPullSync,
   saveToLocalStorage,
+  saveTaxpayerProfile,
   saveUiStateToLocalStorage,
   stableSerialize,
   state,
@@ -1313,5 +1314,24 @@ describe('syncing 重入锁卡死防护', () => {
     expect(state.cloudStatus.syncing).toBe(true)
     const preChecks = env.calls.filter((r) => r === 'pre-check').length
     expect(preChecks).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('taxpayer profile persistence', () => {
+  it('imports and exports normalized pairs, persists additions, and rejects reassignment', () => {
+    const values = new Map()
+    vi.stubGlobal('localStorage', {
+      getItem: (key) => values.get(key) || null,
+      setItem: (key, value) => values.set(key, String(value)),
+      removeItem: (key) => values.delete(key),
+    })
+    loadData({ taxpayerProfiles: [{ name: ' 主体甲 ', taxId: ' ab123 ' }] })
+    expect(exportData().taxpayerProfiles).toEqual([{ name: '主体甲', taxId: 'AB123' }])
+    expect(saveTaxpayerProfile('主体甲', 'XY999').conflict.field).toBe('name')
+    expect(saveTaxpayerProfile('主体乙', 'AB123').conflict.field).toBe('taxId')
+    expect(saveTaxpayerProfile('主体乙', 'XY999').saved).toBe(true)
+    expect(exportData().taxpayerProfiles).toHaveLength(2)
+    expect(JSON.parse(values.get('ysp_data')).taxpayerProfiles).toHaveLength(2)
+    vi.unstubAllGlobals()
   })
 })

@@ -77,8 +77,8 @@ describe('buildTaxWorkbookData', () => {
 
   it('downloads the generated workbook locally with the selected filename', async () => {
     const result = buildTaxWorkbookData(payload, period)
-    await writeTaxWorkbook(result, 'YSP报税工作簿_2026Q4.xlsx')
-    expect(XLSX.writeFile).toHaveBeenCalledWith(expect.objectContaining({ SheetNames: expect.any(Array) }), 'YSP报税工作簿_2026Q4.xlsx')
+    await writeTaxWorkbook(result, 'YSP报税导出_2026Q4.xlsx')
+    expect(XLSX.writeFile).toHaveBeenCalledWith(expect.objectContaining({ SheetNames: expect.any(Array) }), 'YSP报税导出_2026Q4.xlsx')
   })
 
   it('filters sales by shop across all owners and does not export Owner fields', () => {

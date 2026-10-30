@@ -1,13 +1,13 @@
-// 云同步槽位版本化纯函数：10 个数据集合的取值/版本/合并，与 DOM 与同步协议解耦
+// 云同步槽位版本化纯函数：11 个数据集合的取值/版本/合并，与 DOM 与同步协议解耦
 export const SLOT_KEYS = [
   'items', 'calc', 'finance.records', 'finance.loans', 'transfers',
-  'rushcar.entries', 'rushcar.forwarderInfos', 'rushcar.mattelSiteInfos', 'rushcar.paymentCards', 'ownerRegistry',
+  'rushcar.entries', 'rushcar.forwarderInfos', 'rushcar.mattelSiteInfos', 'rushcar.paymentCards', 'ownerRegistry', 'taxpayerProfiles',
 ]
 
 export const SLOT_LABELS = {
   items: '商品', calc: '财务结算', 'finance.records': '收支记录', 'finance.loans': '借贷记录',
   transfers: '转运记录', 'rushcar.entries': '美淘记录', 'rushcar.forwarderInfos': '转运公司',
-  'rushcar.mattelSiteInfos': '美泰站点', 'rushcar.paymentCards': '支付卡', ownerRegistry: 'Owner 资金',
+  'rushcar.mattelSiteInfos': '美泰站点', 'rushcar.paymentCards': '支付卡', ownerRegistry: 'Owner 资金', taxpayerProfiles: '纳税主体',
 }
 
 const SLOT_PATHS = {
@@ -15,7 +15,7 @@ const SLOT_PATHS = {
   transfers: ['transfers'], 'rushcar.entries': ['rushcar', 'entries'],
   'rushcar.forwarderInfos': ['rushcar', 'forwarderInfos'],
   'rushcar.mattelSiteInfos': ['rushcar', 'mattelSiteInfos'], 'rushcar.paymentCards': ['rushcar', 'paymentCards'],
-  ownerRegistry: ['ownerRegistry'],
+  ownerRegistry: ['ownerRegistry'], taxpayerProfiles: ['taxpayerProfiles'],
 }
 
 function emptyFor(slot) {

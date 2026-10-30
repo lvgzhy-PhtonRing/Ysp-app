@@ -6,6 +6,7 @@ import { SLOT_KEYS, slotValue, normalizeRev, computeSlotPlan, buildMerged, revOf
 
 import { evictOldestAdoptBefore } from './adoptLog'
 import { migratePayload } from './migrations'
+import { normalizeTaxpayerProfiles, upsertTaxpayerProfile } from './taxpayerProfiles'
 import { getUnconfirmedSalesTotal } from '../modules/sales/saleAccounting'
 
 import {
@@ -199,6 +200,7 @@ export const state = reactive({
   // 字段名与持久化 JSON（localStorage / 云端 payload）对应映射后的 store 结构保持一致
   items: [],
   ownerRegistry: {},
+  taxpayerProfiles: [],
   currentOwner: 'papa',
   calc: { ...DEFAULT_CALC },
   financeRecords: [],
@@ -640,6 +642,7 @@ export function loadData(jsonObject = {}) {
 
   replaceArray(state.items, normalizeItemBatches(data.items))
   replaceObject(state.ownerRegistry, data.ownerRegistry)
+  replaceArray(state.taxpayerProfiles, normalizeTaxpayerProfiles(data.taxpayerProfiles))
   // calc 字段：优先使用 JSON 中已存在值，仅在缺失时使用默认值
   const incomingCalc = data.calc && typeof data.calc === 'object' ? data.calc : {}
   const nextCalc = {
@@ -699,6 +702,7 @@ export function exportData() {
   return {
     items: clone(state.items),
     ownerRegistry: clone(state.ownerRegistry),
+    taxpayerProfiles: clone(state.taxpayerProfiles),
     calc: clone(state.calc),
     finance: {
       records: clone(state.financeRecords),
@@ -711,6 +715,17 @@ export function exportData() {
     updatedAt: localLastModifiedAt,
     _rev: clone(currentPayloadRev),
   }
+}
+
+export function saveTaxpayerProfile(name, taxId) {
+  if (!mayWrite()) return { saved: false, conflict: null }
+  const result = upsertTaxpayerProfile(state.taxpayerProfiles, name, taxId)
+  if (result.conflict) return { saved: false, conflict: result.conflict }
+  if (stableSerialize(result.profiles) !== stableSerialize(state.taxpayerProfiles)) {
+    replaceArray(state.taxpayerProfiles, result.profiles)
+    saveToLocalStorage()
+  }
+  return { saved: true, conflict: null }
 }
 
 function todayDateStr() {

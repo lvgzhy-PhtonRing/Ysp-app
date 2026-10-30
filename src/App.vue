@@ -42,6 +42,7 @@ import {
   runPullSync,
   runStartupSync,
   saveToLocalStorage,
+  saveTaxpayerProfile,
   saveUiStateToLocalStorage,
   setCloudLoadError,
   setCloudLoadSuccess,
@@ -99,6 +100,9 @@ const showDataHelp = ref(false)
 const showTaxReminderModal = ref(false)
 const showTaxExport = ref(false)
 const taxExportPayload = computed(() => showTaxExport.value ? exportData() : {})
+function rememberTaxpayerProfile(profile) {
+  saveTaxpayerProfile(profile.name, profile.taxId)
+}
 const taxReminderNow = ref(new Date())
 const taxReminderHits = ref([])
 const taxReminderItems = computed(() => listTaxFilingItems(taxReminderNow.value))
@@ -1453,7 +1457,7 @@ watch(
       </div>
     </GlassModal>
     <DataHelpModal v-model="showDataHelp" />
-    <TaxExportModal v-model="showTaxExport" :payload="taxExportPayload" />
+    <TaxExportModal v-model="showTaxExport" :payload="taxExportPayload" @remember-taxpayer="rememberTaxpayerProfile" />
     <Transition name="fade">
       <div
         v-if="tabDataNotice"

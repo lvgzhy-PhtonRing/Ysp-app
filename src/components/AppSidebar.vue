@@ -142,7 +142,7 @@ function getGroupTabs(group) {
           class="w-full rounded-lg px-4 py-2 text-left text-sm text-gray-600 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
           @click="emit('tax-export')"
         >
-          <i class="fa-solid fa-file-excel mr-2" />报税工作簿
+          <i class="fa-solid fa-file-excel mr-2" />报税导出
         </button>
       </div>
       <button
