@@ -492,6 +492,9 @@ const APP = {
   salesViewMode: 'month',     // all/month/category/batch/brand
   salesFilters: { category: '全部', batch: '全部', keyword: '' },
   purchaseTab: '日淘',        // 日淘/美淘/国内
+  purchaseBatchFilter: '全部',
+  purchaseKeyword: '',
+  purchaseExpandedGroups: {},
   purchaseTransferTab: 'purchase', // purchase/transfer
   transferCat: '日淘',
   collapsedGroups: {},        // key -> bool
@@ -1323,6 +1326,19 @@ function buildPurchaseGroups(categoryItems) {
   return batches;
 }
 
+function getVisiblePurchaseGroups() {
+  const categoryItems = filterOwnerItems(APP.data.items).filter(i=>i.status==='purchase'&&i.category===APP.purchaseTab);
+  const groups = buildPurchaseGroups(categoryItems).flatMap(bg => bg.purchaseGroups.map(pg => ({bg, pg, key:'pur_pg_'+bg.key+'_'+pg.key})));
+  const batchFiltered = groups.filter(({bg}) => APP.purchaseBatchFilter==='全部' || bg.batch===APP.purchaseBatchFilter);
+  const keyword = String(APP.purchaseKeyword||'').trim().toLocaleLowerCase();
+  const visible = batchFiltered.filter(({bg,pg}) => !keyword || [bg.batch,pg.paymentBatch,pg.date,pg.website,pg.websiteAccount,pg.paymentAccount,...pg.items.flatMap(i=>[i.sid,i.name,i.brand])].some(v=>String(v||'').toLocaleLowerCase().includes(keyword)));
+  return visible.sort((a,b)=>String(b.pg.date||'').localeCompare(String(a.pg.date||'')) || String(b.pg.key).localeCompare(String(a.pg.key)));
+}
+
+function isPurchaseGroupExpanded(key, isLatest) {
+  return Object.prototype.hasOwnProperty.call(APP.purchaseExpandedGroups,key) ? APP.purchaseExpandedGroups[key] : isLatest;
+}
+
 function buildTransferList(category) {
   const transfers = APP.data.transfers.filter(t => {
     if (category === '全部') return true;
@@ -1407,51 +1423,34 @@ function renderPurchase() {
       </div>
     </div>`;
 
-    // Build purchase groups
-    const categoryItems = filterOwnerItems(APP.data.items).filter(i=>i.status==='purchase'&&i.category===tab);
-    const batches = buildPurchaseGroups(categoryItems);
+    const allGroups = buildPurchaseGroups(filterOwnerItems(APP.data.items).filter(i=>i.status==='purchase'&&i.category===tab));
+    const batches = [...new Set(allGroups.map(bg=>bg.batch))];
+    if (!batches.includes(APP.purchaseBatchFilter)) APP.purchaseBatchFilter='全部';
+    html += `<div class="filter-bar" aria-label="按采购批次筛选">`;
+    ['全部',...batches].forEach(batch=>{ html += `<button class="filter-chip small ${APP.purchaseBatchFilter===batch?'active':''}" aria-pressed="${APP.purchaseBatchFilter===batch}" onclick="setPurchaseBatchFilter('${esc(batch)}')">${esc(batch)}</button>`; });
+    html += `</div>
+      <div class="search-wrap"><input id="purchase-keyword" class="search-input" type="search" placeholder="搜索商品名称、SID、品牌或采购组" value="${esc(APP.purchaseKeyword)}" oninput="setPurchaseKeyword(this.value)" aria-label="搜索采购商品"></div>`;
 
-    if (batches.length === 0) {
+    const visibleGroups = getVisiblePurchaseGroups();
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:2px 16px 4px;font-size:12px;color:#8e8e93">
+      <span>共 ${visibleGroups.length} 个采购组 · 按日期从新到旧</span>
+      <span style="display:flex;gap:12px"><button style="color:#007aff" onclick="setVisiblePurchaseGroupsExpanded(true)">全部展开</button><button style="color:#007aff" onclick="setVisiblePurchaseGroupsExpanded(false)">全部收起</button></span>
+    </div>`;
+
+    if (visibleGroups.length === 0) {
       html += `<div class="empty-state">暂无采购数据</div>`;
     } else {
-      batches.forEach(bg => {
-        const bgKey = 'pur_batch_' + bg.key;
-        const bgExpanded = APP.collapsedGroups[bgKey] === true;
-
-        html += `<div class="group-section">
-          <div class="group-header ${bgExpanded?'expanded':''}" onclick="togglePurGroup('${esc(bgKey)}')">
-            <div>
-              <div class="group-name">${esc(bg.batch)}</div>
-              <div class="group-meta">${bg.count} 件 · ¥${fmtMoney(bg.totalAmount)} · 采购¥${fmtMoney(bg.purchase)} · 转运¥${fmtMoney(bg.transfer)}</div>
-            </div>
-            <div class="group-badge">
-              <span class="chevron ${bgExpanded?'open':''}">▶</span>
-            </div>
-          </div>`;
-
-        if (bgExpanded) {
-          html += `<div class="item-list" style="border-radius:0 0 10px 10px">`;
-          bg.purchaseGroups.forEach(pg => {
-            const pgKey = 'pur_pg_' + bg.key + '_' + pg.key;
-            const pgExpanded = APP.collapsedGroups[pgKey] === true;
-
-            // Purchase group header (level 2)
-            html += `<div class="sub-group">
-              <div class="sub-group-header" onclick="togglePurGroup('${esc(pgKey)}')">
-                <div>
-                  <div class="sub-group-name">
-                    ${esc(pg.paymentBatch||pg.purchaseGroupId||'未知组')}
-                    ${pg.date?`<span style="color:#8e8e93;font-size:11px;margin-left:6px">${esc(pg.date)}</span>`:''}
-                  </div>
-                  <div class="sub-group-meta">
-                    ${pg.website?esc(pg.website):''}${pg.websiteAccount?' · '+esc(pg.websiteAccount):''}
-                    ${pg.paymentAccount?' · '+esc(pg.paymentAccount):''}
-                    ${pg.discount?' · 折扣'+esc(pg.discount):''}
-                  </div>
-                  <div class="sub-group-meta">
-                    ${pg.count} 件 · ¥${fmtMoney(pg.totalAmount)}
-                    ${pg.totalRMB>0?' · 总RMB¥'+fmtMoney(pg.totalRMB):''}
-                  </div>
+      visibleGroups.forEach(({bg,pg,key}, index) => {
+            const pgExpanded = isPurchaseGroupExpanded(key,index===0);
+            const title = pg.paymentBatch || [pg.date,pg.website].filter(Boolean).join(' · ') || '未填付款批次';
+            const preview = pg.mergedItems.slice(0,3).map(i=>`${i.name}${i.qty>1?' ×'+i.qty:''}`).join('、');
+            html += `<div class="sub-group" style="margin:6px 16px 0;background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.07);overflow:hidden">
+              <div class="sub-group-header" role="button" tabindex="0" aria-expanded="${pgExpanded}" onclick="togglePurchaseGroup('${esc(key)}',${index===0})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();togglePurchaseGroup('${esc(key)}',${index===0})}">
+                <div style="min-width:0;flex:1">
+                  <div class="sub-group-name">${esc(title)}</div>
+                  <div class="sub-group-meta">${esc(bg.batch)} · ${pg.date?esc(pg.date):'日期未记录'}${pg.website?' · '+esc(pg.website):''}${pg.websiteAccount?' · '+esc(pg.websiteAccount):''}${pg.paymentAccount?' · '+esc(pg.paymentAccount):''}</div>
+                  <div class="sub-group-meta">${pg.count} 件 · 总成本 ¥${fmtMoney(pg.totalAmount)} · 采购 ¥${fmtMoney(pg.purchase)} · 转运 ¥${fmtMoney(pg.transfer)}</div>
+                  ${!pgExpanded&&preview?`<div class="sub-group-meta" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(preview)}</div>`:''}
                 </div>
                 <span class="chevron ${pgExpanded?'open':''}">▶</span>
               </div>`;
@@ -1487,11 +1486,7 @@ function renderPurchase() {
               });
               html += `</div>`;
             }
-            html += `</div>`; // sub-group
-          });
-          html += `</div>`; // item-list
-        }
-        html += `</div>`; // group-section
+            html += `</div>`; // purchase group
       });
     }
 
@@ -1563,6 +1558,19 @@ function renderPurchase() {
 }
 
 function setPurchaseTab(v) { APP.purchaseTab=v; renderPurchase(); }
+function setPurchaseBatchFilter(v) { APP.purchaseBatchFilter=v; renderPurchase(); }
+function setPurchaseKeyword(v) {
+  const input=document.getElementById('purchase-keyword');
+  const start=input?.selectionStart, end=input?.selectionEnd;
+  APP.purchaseKeyword=v; renderPurchase();
+  const next=document.getElementById('purchase-keyword');
+  if(next){next.focus(); if(start!==null&&start!==undefined) next.setSelectionRange(start,end);}
+}
+function togglePurchaseGroup(key,isLatest) { APP.purchaseExpandedGroups[key]=!isPurchaseGroupExpanded(key,isLatest); renderPurchase(); }
+function setVisiblePurchaseGroupsExpanded(expanded) {
+  getVisiblePurchaseGroups().forEach(({key})=>{APP.purchaseExpandedGroups[key]=expanded;});
+  renderPurchase();
+}
 function setPurchaseSubTab(v) { APP.purchaseTransferTab=v; renderPurchase(); }
 function setTransferCat(v) { APP.transferCat=v; renderPurchase(); }
 function togglePurGroup(key) {
