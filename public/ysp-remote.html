@@ -250,6 +250,18 @@ input, select { font-family: inherit; }
 }
 .load-error { color: #ff3b30; font-size: 13px; }
 .load-success { color: #34c759; font-size: 13px; }
+.load-form { width:100%; max-width:320px; display:grid; gap:10px; }
+.load-form input { width:100%; padding:12px 14px; border:1px solid #e5e5ea; border-radius:10px; font-size:15px; background:#fff; }
+.load-form input:focus { outline:2px solid rgba(0,122,255,.18); border-color:#007aff; }
+.cloud-toolbar { flex-shrink:0; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 12px; background:#fff; border-bottom:1px solid #e5e5ea; font-size:12px; }
+.cloud-toolbar label { display:flex; align-items:center; gap:6px; color:#636366; }
+.cloud-toolbar select { max-width:130px; border:1px solid #d1d1d6; border-radius:8px; background:#f8f8fa; padding:6px 8px; color:#1c1c1e; font-size:13px; }
+.cloud-toolbar button { flex-shrink:0; padding:7px 10px; border-radius:8px; background:#e3f0ff; color:#007aff; font-size:12px; font-weight:600; }
+.cloud-toolbar button:disabled { opacity:.5; }
+.cloud-meta { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#8e8e93; }
+.owner-badge { display:inline-block; margin-left:5px; padding:1px 6px; border-radius:999px; background:#eef2ff; color:#4f46e5; font-size:10px; vertical-align:1px; white-space:nowrap; }
+.owner-badge.payton { background:#f3e8ff; color:#9333ea; }
+
 
 /* ===== Misc ===== */
 .empty-state {
@@ -376,12 +388,27 @@ input, select { font-family: inherit; }
     <h1>PhtonRing在哪儿查询</h1>
     <p id="load-status">正在连接云端...</p>
     <div id="load-spinner" class="spinner" style="width:36px;height:36px;border-width:4px"></div>
+    <form id="login-form" class="load-form" style="display:none" onsubmit="event.preventDefault();signInMobile()">
+      <input id="login-email" type="email" autocomplete="username" placeholder="云端账号邮箱" aria-label="云端账号邮箱" required>
+      <input id="login-password" type="password" autocomplete="current-password" placeholder="云端密码" aria-label="云端密码" required>
+      <button id="login-btn" class="load-btn primary" type="submit">登录并读取主数据</button>
+    </form>
     <button id="retry-btn" class="load-btn primary" style="display:none;margin-top:12px" onclick="loadFromCloud()">🔄 重试</button>
     <div id="load-msg"></div>
   </div>
 
   <!-- Main App (hidden until data loaded) -->
   <div id="main-app" style="display:none;flex-direction:column;height:100%;height:100dvh">
+    <div id="cloud-toolbar" class="cloud-toolbar" style="display:none">
+      <label for="owner-filter">查看
+        <select id="owner-filter" onchange="setOwnerFilter(this.value)">
+          <option value="papa">Papa</option><option value="payton">Payton</option>
+        </select>
+      </label>
+      <span id="cloud-meta" class="cloud-meta">尚未刷新</span>
+      <button id="refresh-main-btn" type="button" onclick="refreshMainData()">刷新</button>
+      <button id="logout-btn" type="button" onclick="signOutMobile()">退出</button>
+    </div>
     <div id="main-content">
       <!-- Page: 数据透视 -->
       <div class="page active" id="page-home">
@@ -422,7 +449,7 @@ input, select { font-family: inherit; }
       <!-- Page: 财务 -->
       <div class="page" id="page-finance">
         <div class="page-header">
-          <div class="page-title">收支</div>
+          <div class="page-title" id="finance-page-title">公共收支</div>
           <div class="page-subtitle" id="finance-subtitle"></div>
         </div>
         <div id="finance-content"></div>
@@ -444,7 +471,7 @@ input, select { font-family: inherit; }
         <span class="nav-icon">🛒</span><span>采购</span>
       </button>
       <button class="nav-item" onclick="switchPage('finance',this)">
-        <span class="nav-icon">🏦</span><span>财务</span>
+        <span class="nav-icon">🏦</span><span id="finance-nav-label">收支</span>
       </button>
     </nav>
   </div>
@@ -454,6 +481,8 @@ input, select { font-family: inherit; }
 // ===== Global State =====
 const APP = {
   data: null,       // raw JSON data
+  session: null, cloudConfig: null, lastUpdatedAt: "", mainRevision: null,
+  ownerFilter: "papa", salesOwnerScope: "current", shopFilter: "全部",
   calc: {},         // editable calc fields (debt, unconfirmed, forwarderBalance, watchBalance)
   // UI state
   currentPage: 'home',
@@ -464,12 +493,12 @@ const APP = {
   salesFilters: { category: '全部', batch: '全部', keyword: '' },
   purchaseTab: '日淘',        // 日淘/美淘/国内
   purchaseTransferTab: 'purchase', // purchase/transfer
+  transferCat: '日淘',
   collapsedGroups: {},        // key -> bool
   financeTab: 'records',      // records/loans
+  paytonFinanceTab: 'records',
   searchKeyword: '',
   batchStatsCollapsed: true,
-  carFundBalance: 0,          // Payton's基金余额（云端读取）
-  carFundUpdatedAt: '',       // 基金余额更新时间
 };
 
 // ===== Utility =====
@@ -487,122 +516,113 @@ function esc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function toNum(v, fb=0) { const n=Number(v); return isFinite(n)?n:fb; }
+function itemOwner(item) { return item && item.owner === 'payton' ? 'payton' : 'papa'; }
+function ownerLabel(item) { return itemOwner(item) === 'payton' ? 'Payton' : 'Papa'; }
+function ownerBadgeHtml(item) { const payton = itemOwner(item) === 'payton'; return '<span class="owner-badge'+(payton?' payton':'')+'">'+ownerLabel(item)+'</span>'; }
+function filterOwnerItems(items=[], owner=APP.ownerFilter) { return owner === 'all' ? items : items.filter(item => itemOwner(item) === owner); }
+function filterOwnerRecords(rows=[], owner=APP.ownerFilter) { return owner === 'all' ? rows : rows.filter(row => (row && row.owner || 'papa') === owner); }
+function getSalesChannel(item) { return SALES_CHANNELS.includes(item && item.saleDetails && item.saleDetails.shop) ? item.saleDetails.shop : inferMobileShop(item && item.saleDetails && item.saleDetails.date); }
+function saleStatusTags(sd={}) { let html='<span class="tag">'+(SALES_CHANNELS.includes(sd.shop)?sd.shop:inferMobileShop(sd.date))+'</span>'; if(Object.prototype.hasOwnProperty.call(sd,'isConfirmed')) html+='<span class="tag '+(sd.isConfirmed===false?'pending':'completed')+'">'+(sd.isConfirmed===false?'待确认':'已确认')+'</span>'; if(sd.entryDate) html+='<span class="tag">入账 '+esc(sd.entryDate)+'</span>'; return html; }
+function setOwnerFilter(value) { APP.ownerFilter=value==='payton'?'payton':'papa'; const select=document.getElementById('owner-filter'); if(select)select.value=APP.ownerFilter; renderAll(); }
+function setSalesOwnerScope(value) { APP.salesOwnerScope=value==='all'?'all':'current'; renderSales(); }
+function setShopFilter(value) { APP.shopFilter=SALES_CHANNELS.includes(value)?value:'全部'; renderSales(); }
 
 // ===== Data Load =====
-function getPublicCloudConfigUrl() {
-  const pathname = String(location.pathname || '/');
-  const basePath = pathname.endsWith('/') ? pathname : pathname.slice(0, pathname.lastIndexOf('/') + 1);
-  return `${location.origin}${basePath}cloud-config.json`;
-}
+const MOBILE_SESSION_KEY = 'ysp_remote_session_v1'
+const SALES_CHANNELS = ['PhtonRIng', '侧空翻棉', '其它']
+const APP_BASE_PATH = location.pathname.endsWith('/') ? location.pathname : location.pathname.slice(0, location.pathname.lastIndexOf('/') + 1)
 
-function appendNoCache(url) {
-  const sep = String(url).includes('?') ? '&' : '?';
-  return `${url}${sep}t=${Date.now()}`;
-}
-
+function getPublicCloudConfigUrl() { return `${location.origin}${APP_BASE_PATH}cloud-config.json` }
+function appendNoCache(url) { return `${url}${String(url).includes('?') ? "&" : "?"}t=${Date.now()}` }
 function normalizeCloudConfig(raw) {
-  return {
-    supabaseUrl: String(raw?.supabaseUrl || raw?.url || '').trim().replace(/\/+$/, ''),
-    supabaseAnonKey: String(raw?.supabaseAnonKey || raw?.anonKey || '').trim(),
-    stateId: String(raw?.stateId || 'main').trim() || 'main',
-    enabled: Boolean(raw?.enabled),
-    publicRead: raw?.publicRead !== false,
-  };
+  return { supabaseUrl:String(raw?.supabaseUrl||raw?.url||'').trim().replace(/\/+$/,''), supabaseAnonKey:String(raw?.supabaseAnonKey||raw?.anonKey||'').trim(), stateId:String(raw?.stateId||'main').trim()||'main', enabled:Boolean(raw?.enabled), publicRead:raw?.publicRead!==false }
 }
-
-function isCloudConfigReady(config) {
-  return Boolean(config?.supabaseUrl && config?.supabaseAnonKey && config?.stateId);
-}
-
+function isCloudConfigReady(c) { return Boolean(c?.supabaseUrl&&c?.supabaseAnonKey&&c?.stateId) }
 async function readCloudConfigFromPublic() {
-  const target = appendNoCache(getPublicCloudConfigUrl());
-  const resp = await fetch(target, { cache: 'no-store' });
-  if (!resp.ok) return null;
-  const json = await resp.json();
-  const config = normalizeCloudConfig(json);
-  return isCloudConfigReady(config) ? config : null;
+  const resp=await fetch(appendNoCache(getPublicCloudConfigUrl()),{cache:'no-store'});if(!resp.ok)throw new Error('无法读取云端配置，请稍后重试')
+  const config=normalizeCloudConfig(await resp.json());if(!isCloudConfigReady(config))throw new Error('云端配置不完整');if(config.stateId!=='main')throw new Error('手机查询页只读取主程序数据（main）');return config
 }
-
-async function loadFromCloudConfig(config) {
-  if (!isCloudConfigReady(config)) throw new Error('云端配置不完整');
-
-  const params = new URLSearchParams();
-  params.set('id', `eq.${config.stateId}`);
-  params.set('is_public', 'eq.true');
-  params.set('select', 'payload,updated_at');
-  params.set('limit', '1');
-  const target = `${config.supabaseUrl}/rest/v1/ysp_state?${params.toString()}`;
-
-  const resp = await fetch(target, {
-    method: 'GET',
-    headers: {
-      apikey: config.supabaseAnonKey,
-      Authorization: `Bearer ${config.supabaseAnonKey}`,
-    },
-    cache: 'no-store',
-  });
-
-  if (!resp.ok) throw new Error('云端读取失败: HTTP ' + resp.status);
-  const rows = await resp.json();
-  if (!Array.isArray(rows) || rows.length === 0 || !rows[0]?.payload) {
-    throw new Error('云端暂无可用数据');
-  }
-
-  initApp(rows[0].payload);
-  const updatedAt = rows[0].updated_at ? new Date(rows[0].updated_at).toLocaleString() : '';
-  showLoadMsg(updatedAt ? `云端加载成功（${updatedAt}）` : '云端加载成功', true);
+function readStoredSession() { try { return JSON.parse(sessionStorage.getItem(MOBILE_SESSION_KEY)||'null') } catch (_) { return null } }
+function saveSession(session) { APP.session=session; if(session)sessionStorage.setItem(MOBILE_SESSION_KEY,JSON.stringify(session));else sessionStorage.removeItem(MOBILE_SESSION_KEY) }
+function cloudHeaders(token='') { return { apikey:APP.cloudConfig.supabaseAnonKey, Authorization:`Bearer ${token||APP.cloudConfig.supabaseAnonKey}`, 'Content-Type':'application/json' } }
+async function readCloudResponse(resp,label) { const text=await resp.text();let data=null;try{data=text?JSON.parse(text):null}catch(_){data={message:text}}if(!resp.ok){const reason=data?.msg||data?.message||data?.error_description||data?.error||'';throw Object.assign(new Error(reason||`${label}失败（HTTP ${resp.status}）`),{status:resp.status})}return data }
+async function requestAuth(path,body) {
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),20000)
+  try { const resp=await fetch(`${APP.cloudConfig.supabaseUrl}/auth/v1/${path}`,{method:'POST',headers:cloudHeaders(),body:JSON.stringify(body),signal:controller.signal});return await readCloudResponse(resp,'云端认证') }
+  catch(err){if(controller.signal.aborted)throw new Error('云端认证超时，请检查网络');throw err}finally{clearTimeout(timer)}
 }
-
+function normalizeSession(raw,email='') { return {accessToken:raw?.access_token||'',refreshToken:raw?.refresh_token||'',expiresAt:Number(raw?.expires_at)||Math.floor(Date.now()/1000)+Number(raw?.expires_in||0),email:raw?.user?.email||email} }
+async function refreshMobileSession(session) { if(!session?.refreshToken)throw new Error('登录已过期，请重新登录');const raw=await requestAuth('token?grant_type=refresh_token',{refresh_token:session.refreshToken});const next=normalizeSession(raw,session.email);saveSession(next);return next }
+function inferMobileShop(date) { const d=String(date||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(d)||Number.isNaN(Date.parse(d+'T00:00:00Z')))return '其它';return d<'2026-10-15'?'其它':'PhtonRIng' }
+function normalizeMainPayload(payload) {
+  if(!payload||typeof payload!=='object'||Array.isArray(payload))throw new Error('主程序数据格式无法识别')
+  const data=JSON.parse(JSON.stringify(payload));data.items=Array.isArray(data.items)?data.items:[]
+  data.items.forEach(item=>{if(!item||typeof item!=='object')return;if(!item.owner)item.owner='papa';if(item.status==='sold'&&item.saleDetails&&!SALES_CHANNELS.includes(item.saleDetails.shop))item.saleDetails.shop=inferMobileShop(item.saleDetails.date)})
+  data.finance=data.finance&&typeof data.finance==='object'?data.finance:{};data.finance.records=Array.isArray(data.finance.records)?data.finance.records:[];data.finance.loans=Array.isArray(data.finance.loans)?data.finance.loans:[]
+  for(const row of [...data.finance.records,...data.finance.loans])if(row&&typeof row==='object'&&!row.owner)row.owner='papa'
+  data.transfers=Array.isArray(data.transfers)?data.transfers:[];data.ownerRegistry=data.ownerRegistry&&typeof data.ownerRegistry==='object'&&!Array.isArray(data.ownerRegistry)?data.ownerRegistry:{}
+  if(!data.ownerRegistry.papa)data.ownerRegistry.papa={label:'Papa',source:'native'}
+  if(!data.ownerRegistry.payton)data.ownerRegistry.payton={label:'Payton',source:'native',pocketBalance:0,investBalance:0,monthlyAllowance:200,loans:[],accountTransfers:[],openingAt:'',snapshotReconcile:null}
+  data.snapshots=Array.isArray(data.snapshots)?data.snapshots:[]
+  data.calc=data.calc&&typeof data.calc==='object'?data.calc:{}
+  return data
+}
+function showLogin(message='') {
+  document.getElementById('load-screen').style.display='flex';document.getElementById('main-app').style.display='none';document.getElementById('load-status').textContent='登录后读取您的私有主数据'
+  document.getElementById('load-spinner').style.display='none';document.getElementById('retry-btn').style.display='none';document.getElementById('login-form').style.display='grid';document.getElementById('load-msg').textContent=message;document.getElementById('load-msg').className=message?'load-error':''
+}
+function showLoadError(message) {
+  document.getElementById('load-screen').style.display='flex';document.getElementById('main-app').style.display='none';document.getElementById('load-status').textContent='主数据暂时无法读取'
+  document.getElementById('load-spinner').style.display='none';document.getElementById('login-form').style.display='none';document.getElementById('retry-btn').style.display='';document.getElementById('load-msg').textContent=message;document.getElementById('load-msg').className='load-error'
+}
 async function loadFromCloud() {
-  const statusEl = document.getElementById('load-status');
-  const spinnerEl = document.getElementById('load-spinner');
-  const retryBtn = document.getElementById('retry-btn');
-  const msgEl = document.getElementById('load-msg');
-  statusEl.textContent = '正在连接云端...';
-  if (spinnerEl) spinnerEl.style.display = '';
-  if (retryBtn) retryBtn.style.display = 'none';
-  msgEl.textContent = '';
-  msgEl.className = '';
+  document.getElementById('load-status').textContent='正在读取云端配置...';document.getElementById('load-spinner').style.display='';document.getElementById('login-form').style.display='none';document.getElementById('retry-btn').style.display='none';document.getElementById('load-msg').textContent=''
+  try { APP.cloudConfig=await readCloudConfigFromPublic();const session=readStoredSession();if(!session?.accessToken){showLogin();return false}saveSession(session);return await refreshMainData({initial:true}) }
+  catch(err){showLoadError(err.message||'读取失败');return false}
+}
+async function signInMobile() {
+  const email=document.getElementById('login-email').value.trim(),password=document.getElementById('login-password').value,button=document.getElementById('login-btn')
+  if(!APP.cloudConfig){try{APP.cloudConfig=await readCloudConfigFromPublic()}catch(err){showLoadError(err.message);return}}
+  button.disabled=true;button.textContent='正在登录...';document.getElementById('load-msg').textContent=''
+  try { const raw=await requestAuth('token?grant_type=password',{email,password});const session=normalizeSession(raw,email);if(!session.accessToken||!session.refreshToken)throw new Error('登录响应缺少会话信息');saveSession(session);document.getElementById('login-password').value='';await refreshMainData({initial:true}) }
+  catch(err){saveSession(null);showLogin(err.message||'登录失败，请检查账号密码')}
+  finally{button.disabled=false;button.textContent='登录并读取主数据'}
+}
+async function signOutMobile() {
+  const session=APP.session;try{if(session?.accessToken&&APP.cloudConfig)await fetch(`${APP.cloudConfig.supabaseUrl}/auth/v1/logout`,{method:'POST',headers:{...cloudHeaders(session.accessToken)}})}catch(_){}
+  saveSession(null);APP.data=null;APP.lastUpdatedAt='';showLogin('已退出云端账号')
+}
+function updateCloudMeta(message) { const el=document.getElementById('cloud-meta');if(el)el.textContent=message }
+function formatCloudTime(value) { if(!value)return '时间未知';const d=new Date(value);return Number.isNaN(d.getTime())?'时间未知':d.toLocaleString('zh-CN',{hour12:false}) }
+async function fetchMainRow(token) {
+  const params=new URLSearchParams({id:'eq.main',select:'payload,updated_at,revision',limit:'1'}),controller=new AbortController(),timer=setTimeout(()=>controller.abort(),25000)
+  try { const resp=await fetch(`${APP.cloudConfig.supabaseUrl}/rest/v1/ysp_state?${params}`,{method:'GET',headers:cloudHeaders(token),cache:'no-store',signal:controller.signal});return await readCloudResponse(resp,'主数据读取') }
+  catch(err){if(controller.signal.aborted)throw new Error('读取主数据超时，请检查网络后刷新');throw err}finally{clearTimeout(timer)}
+}
+async function refreshMainData({initial=false}={}) {
+  if(!APP.cloudConfig||!APP.session?.accessToken)return false
+  const button=document.getElementById('refresh-main-btn'),hadData=Boolean(APP.data);if(button){button.disabled=true;button.textContent='读取中'}
+  if(!hadData){document.getElementById('load-screen').style.display='flex';document.getElementById('load-status').textContent='正在安全读取主数据...';document.getElementById('load-spinner').style.display='';document.getElementById('login-form').style.display='none';document.getElementById('retry-btn').style.display='none'}
+  else updateCloudMeta('正在刷新…')
   try {
-    const config = await readCloudConfigFromPublic();
-    if (!config) throw new Error('未找到 cloud-config.json 或配置不完整');
-    await loadFromCloudConfig(config);
-    return true;
-  } catch (err) {
-    statusEl.textContent = '云端加载失败';
-    if (spinnerEl) spinnerEl.style.display = 'none';
-    if (retryBtn) retryBtn.style.display = '';
-    msgEl.textContent = err.message;
-    msgEl.className = 'load-error';
-    return false;
-  }
+    let session=APP.session;if(Number(session.expiresAt||0)<Math.floor(Date.now()/1000)+60)session=await refreshMobileSession(session)
+    let rows
+    try{rows=await fetchMainRow(session.accessToken)}catch(err){if(err.status!==401)throw err;session=await refreshMobileSession(session);rows=await fetchMainRow(session.accessToken)}
+    if(!Array.isArray(rows)||!rows[0]?.payload)throw Object.assign(new Error('当前账号无主账本读取权限，请换用主程序登录账号'),{code:'NO_MAIN_ACCESS'})
+    APP.data=normalizeMainPayload(rows[0].payload);APP.calc=Object.assign({debt:0,wechat:0,publicExp:0,unconfirmed:0,fund:0,forwarderBalance:0,watchBalance:0},APP.data.calc||{});APP.lastUpdatedAt=rows[0].updated_at||'';APP.mainRevision=rows[0].revision??null
+    document.getElementById('load-screen').style.display='none';document.getElementById('main-app').style.display='flex';document.getElementById('cloud-toolbar').style.display='flex'
+    updateCloudMeta('主数据 '+formatCloudTime(APP.lastUpdatedAt));renderAll()
+    return true
+  }catch(err){
+    if(err.code==='NO_MAIN_ACCESS'){saveSession(null);showLogin(err.message)}
+    else if(err.status===401||err.status===403||/登录已过期|刷新云端会话/i.test(err.message)){saveSession(null);if(hadData){APP.data=null;showLogin('云端登录已失效，请重新登录')}else showLogin('登录状态失效，请重新登录')}
+    else if(hadData)updateCloudMeta('刷新失败：'+(err.message||'网络异常'))
+    else showLoadError(err.message||'主数据读取失败')
+    return false
+  }finally{if(button){button.disabled=false;button.textContent='刷新'}}
 }
-
-window.addEventListener('load', loadFromCloud);
-
-function showLoadMsg(msg, ok) {
-  const el = document.getElementById('load-msg');
-  el.textContent = msg;
-  el.className = ok === true ? 'load-success' : ok === false ? 'load-error' : '';
-}
-
-function initApp(json) {
-  APP.data = json;
-  // normalize
-  APP.data.items = APP.data.items || [];
-  APP.data.finance = APP.data.finance || {};
-  APP.data.finance.records = APP.data.finance.records || [];
-  APP.data.finance.loans = APP.data.finance.loans || [];
-  APP.data.transfers = APP.data.transfers || [];
-  APP.calc = Object.assign({ debt:0, wechat:0, publicExp:0, unconfirmed:0, fund:0, forwarderBalance:0, watchBalance:0 }, APP.data.calc || {});
-
-  document.getElementById('load-screen').style.display = 'none';
-  const mainApp = document.getElementById('main-app');
-  mainApp.style.display = 'flex';
-
-  renderAll();
-  fetchCarFundBalance().then(() => renderHome());
-}
+window.addEventListener('load',loadFromCloud)
+function initApp(json) { APP.data=normalizeMainPayload(json);APP.calc=Object.assign({debt:0,wechat:0,publicExp:0,unconfirmed:0,fund:0,forwarderBalance:0,watchBalance:0},APP.data.calc||{});renderAll() }
 
 // ===== Page Navigation =====
 function switchPage(name, btn) {
@@ -686,7 +706,7 @@ function batchRank(cat, batch) {
 function filterInventoryItems() {
   const f = APP.invFilters;
   const kwNorm = String(f.keyword||'').trim().toLowerCase();
-  let items = APP.data.items.filter(i => {
+  let items = filterOwnerItems(APP.data.items).filter(i => {
     if (i.status !== 'inventory') return false;
     if (f.category !== '全部' && i.category !== f.category) return false;
     if (f.batch !== '全部' && i.batch !== f.batch) return false;
@@ -752,7 +772,7 @@ function groupInventoryItems(items) {
 function mergeItemsBySidName(items) {
   const merged = new Map();
   items.forEach(item => {
-    const key = `${item.sid||''}|${item.name||''}`;
+    const key = `${itemOwner(item)}|${item.sid||''}|${item.name||''}`;
     if (!merged.has(key)) {
       merged.set(key, { ...item, qty:1, itemIds:[item.id], totalCost:toNum(item.cost),
         longTermCount:item.isLongTerm?1:0, longTermValue:item.isLongTerm?toNum(item.cost):0,
@@ -770,7 +790,7 @@ function mergeItemsBySidName(items) {
 }
 
 function getInvStats() {
-  const items = APP.data.items;
+  const items = filterOwnerItems(APP.data.items);
   const inv = items.filter(i=>i.status==='inventory');
   const pur = items.filter(i=>i.status==='purchase');
   const lt = inv.filter(i=>i.isLongTerm===true);
@@ -792,13 +812,13 @@ function renderInventory() {
 
   // build category options
   const cats = ['全部', ...CATEGORY_ORDER.filter(c =>
-    APP.data.items.some(i=>i.status==='inventory'&&i.category===c)
+    filterOwnerItems(APP.data.items).some(i=>i.status==='inventory'&&i.category===c)
   )];
   // build batch options for selected category
   let batches = ['全部'];
   if (APP.invFilters.category !== '全部') {
     const bSet = new Set();
-    APP.data.items.filter(i=>i.status==='inventory'&&i.category===APP.invFilters.category)
+    filterOwnerItems(APP.data.items).filter(i=>i.status==='inventory'&&i.category===APP.invFilters.category)
       .forEach(i=>{ if(i.batch) bSet.add(i.batch); });
     const order = DEFAULT_BATCHES[APP.invFilters.category]||[];
     batches = ['全部', ...Array.from(bSet).sort((a,b)=>{
@@ -809,7 +829,7 @@ function renderInventory() {
   }
   // brand options
   const brandSet = new Set(['全部']);
-  APP.data.items.filter(i=>i.status==='inventory').forEach(i=>{ if(i.brand) brandSet.add(i.brand); });
+  filterOwnerItems(APP.data.items).filter(i=>i.status==='inventory').forEach(i=>{ if(i.brand) brandSet.add(i.brand); });
   const brands = Array.from(brandSet);
 
   document.getElementById('inv-subtitle').textContent =
@@ -819,19 +839,19 @@ function renderInventory() {
 
   // Stats cards
   html += `<div class="stats-row">
-    <div class="stat-card"><div class="stat-val blue">${stats.invCount}</div><div class="stat-label">库存件数</div></div>
+    <div class="stat-card"><div class="stat-val blue">${stats.invCount}</div><div class="stat-label">${APP.ownerFilter==='payton'?'自留+投资库存':'库存件数'}</div></div>
     <div class="stat-card"><div class="stat-val blue">${fmtMoney(stats.invValue)}</div><div class="stat-label">库存货值</div></div>
-    <div class="stat-card"><div class="stat-val orange">${stats.ltCount}</div><div class="stat-label">长线件数</div></div>
-    <div class="stat-card"><div class="stat-val orange">${fmtMoney(stats.ltValue)}</div><div class="stat-label">长线货值</div></div>
+    <div class="stat-card"><div class="stat-val orange">${stats.ltCount}</div><div class="stat-label">${APP.ownerFilter==='payton'?'自留件数':'长线件数'}</div></div>
+    <div class="stat-card"><div class="stat-val orange">${fmtMoney(stats.ltValue)}</div><div class="stat-label">${APP.ownerFilter==='payton'?'自留货值':'长线货值'}</div></div>
     <div class="stat-card"><div class="stat-val red">${stats.defCount}</div><div class="stat-label">残次件数</div></div>
-    <div class="stat-card"><div class="stat-val purple">${fmtMoney(stats.invValue-stats.ltValue)}</div><div class="stat-label">短线货值</div></div>
+    <div class="stat-card"><div class="stat-val purple">${fmtMoney(stats.invValue-stats.ltValue)}</div><div class="stat-label">${APP.ownerFilter==='payton'?'投资货值':'短线货值'}</div></div>
   </div>`;
 
   // Long/short filter
   html += `<div class="inv-filter-row" style="margin-top:10px">
     <button class="inv-filter-btn all ${APP.invFilterMode==='all'?'active':''}" onclick="setInvFilterMode('all')">全部</button>
-    <button class="inv-filter-btn ${APP.invFilterMode==='short'?'active short':''}" onclick="setInvFilterMode('short')">上架短线</button>
-    <button class="inv-filter-btn ${APP.invFilterMode==='long'?'active':''}" onclick="setInvFilterMode('long')">长线库存</button>
+    <button class="inv-filter-btn ${APP.invFilterMode==='short'?'active short':''}" onclick="setInvFilterMode('short')">${APP.ownerFilter==='payton'?'投资':'上架短线'}</button>
+    <button class="inv-filter-btn ${APP.invFilterMode==='long'?'active':''}" onclick="setInvFilterMode('long')">${APP.ownerFilter==='payton'?'自留':'长线库存'}</button>
   </div>`;
 
   // View mode tabs
@@ -892,7 +912,7 @@ function renderInventory() {
             <div class="group-meta">${g.count} 件 · ¥${fmtMoney(g.totalCost)}</div>
           </div>
           <div class="group-badge">`;
-      if (g.longTermCount > 0) html += `<span class="badge orange">长线 ${g.longTermCount}</span>`;
+      if (g.longTermCount > 0) html += `<span class="badge orange">${APP.ownerFilter==='payton'?'自留':'长线'} ${g.longTermCount}</span>`;
       if (g.defectCount > 0) html += `<span class="badge red">残次 ${g.defectCount}</span>`;
       html += `<span class="chevron ${expanded?'open':''}">${chevron}</span>
           </div>
@@ -904,12 +924,12 @@ function renderInventory() {
           html += `<div class="item-row" onclick="openItemDetail(${JSON.stringify(item.id)})" style="cursor:pointer">
             <div class="item-main">
               <div class="item-name">${esc(item.name)}</div>
-              <div class="item-sid">${esc(item.sid||'')} · ${esc(item.brand||'')} · ${esc(item.batch||'')}</div>
+              <div class="item-sid">${esc(item.sid||'')} · ${esc(item.brand||'')} · ${esc(item.batch||'')}${ownerBadgeHtml(item)}</div>
               <div class="item-tags">`;
-          if (item.isLongTerm) html += `<span class="tag longterm">长线</span>`;
+          if (item.isLongTerm) html += `<span class="tag longterm">${APP.ownerFilter==='payton'?'自留':'长线'}</span>`;
           if (item.isDefect) html += `<span class="tag defect">残次</span>`;
           if (item.qty > 1 && item.longTermCount > 0 && item.longTermCount < item.qty)
-            html += `<span class="tag longterm">长线 ${item.longTermCount}/${item.qty}</span>`;
+            html += `<span class="tag longterm">${APP.ownerFilter==='payton'?'自留':'长线'} ${item.longTermCount}/${item.qty}</span>`;
           html += `</div>
             </div>
             <div class="item-right">
@@ -945,11 +965,16 @@ function normFuzzy(s) {
   return String(s||'').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g,'');
 }
 
+function getVisibleSoldItems() {
+  const owner=APP.salesOwnerScope==='all'?'all':APP.ownerFilter;
+  return filterOwnerItems(APP.data.items.filter(i=>i.status==='sold'),owner).filter(i => APP.shopFilter === '全部' || getSalesChannel(i) === APP.shopFilter);
+}
+
 function filterSoldItems() {
   const f = APP.salesFilters;
   const kw = normFuzzy(f.keyword);
-  return APP.data.items.filter(i => {
-    if (i.status !== 'sold' || !i.saleDetails) return false;
+  return getVisibleSoldItems().filter(i => {
+    if (!i.saleDetails) return false;
     if (f.category !== '全部' && i.category !== f.category) return false;
     if (f.batch !== '全部' && i.batch !== f.batch) return false;
     if (kw) {
@@ -1036,7 +1061,7 @@ function groupSoldItems(items) {
 }
 
 function getSalesStats() {
-  const sold = APP.data.items.filter(i=>i.status==='sold');
+  const sold = getVisibleSoldItems();
   const totalRevenue = sold.reduce((s,i)=>s+toNum(i.saleDetails?.price),0);
   const totalProfit = sold.reduce((s,i)=>s+toNum(i.saleDetails?.profit),0);
   const totalCost = sold.reduce((s,i)=>s+toNum(i.cost),0);
@@ -1052,13 +1077,13 @@ function renderSales() {
 
   // category options
   const catSet = new Set(['全部']);
-  APP.data.items.filter(i=>i.status==='sold').forEach(i=>{ if(i.category) catSet.add(i.category); });
+  getVisibleSoldItems().forEach(i=>{ if(i.category) catSet.add(i.category); });
   const cats = Array.from(catSet);
 
   // batch options
   let batches = ['全部'];
   const bSet = new Set();
-  APP.data.items.filter(i=>i.status==='sold' && (APP.salesFilters.category==='全部'||i.category===APP.salesFilters.category))
+  getVisibleSoldItems().filter(i=>(APP.salesFilters.category==='全部'||i.category===APP.salesFilters.category))
     .forEach(i=>{ if(i.batch) bSet.add(i.batch); });
   batches = ['全部', ...Array.from(bSet)];
 
@@ -1076,6 +1101,15 @@ function renderSales() {
     <div class="stat-card"><div class="stat-val purple">${fmt(stats.profitMargin*100,1)}%</div><div class="stat-label">利润率</div></div>
     <div class="stat-card"><div class="stat-val teal">${fmt(stats.recoveryRate*100,1)}%</div><div class="stat-label">回本率</div></div>
   </div>`;
+
+  html += `<div class="filter-bar" aria-label="销售 Owner 范围">
+    <button class="filter-chip ${APP.salesOwnerScope==='current'?'active':''}" aria-pressed="${APP.salesOwnerScope==='current'}" onclick="setSalesOwnerScope('current')">当前 Owner</button>
+    <button class="filter-chip ${APP.salesOwnerScope==='all'?'active':''}" aria-pressed="${APP.salesOwnerScope==='all'}" onclick="setSalesOwnerScope('all')">全部 Owner</button>
+  </div>`;
+
+  html += `<div class="filter-bar" aria-label="销售渠道筛选">`;
+  ['全部', ...SALES_CHANNELS].forEach(shop => { html += `<button class="filter-chip ${APP.shopFilter===shop?'active':''}" aria-pressed="${APP.shopFilter===shop}" onclick="setShopFilter('${esc(shop)}')">${esc(shop)}</button>`; });
+  html += `</div>`;
 
   // View mode tabs
   html += `<div class="view-tabs">
@@ -1124,7 +1158,7 @@ function renderSales() {
             <div class="row-flex">
               <div>
                 <div class="item-name">${esc(item.name)}</div>
-                <div class="item-sid">${esc(item.sid||'')} · ${esc(item.brand||'')} · ${esc(sd.date||'')}</div>
+                <div class="item-sid">${esc(item.sid||'')} · ${esc(item.brand||'')} · ${esc(sd.date||'')}${APP.salesOwnerScope==='all'?ownerBadgeHtml(item):''}</div><div class="item-tags">${saleStatusTags(sd)}</div>
               </div>
               <div class="item-right">
                 <div class="item-cost">¥${fmtMoney(sd.price)}</div>
@@ -1160,7 +1194,7 @@ function renderSales() {
             html += `<div class="item-row" onclick="openItemDetail(${JSON.stringify(item.id)})" style="cursor:pointer">
               <div class="item-main">
                 <div class="item-name">${esc(item.name)}</div>
-                <div class="item-sid">${esc(item.sid||'')} · ${esc(item.brand||'')} · ${esc(sd.date||'')}</div>
+                <div class="item-sid">${esc(item.sid||'')} · ${esc(item.brand||'')} · ${esc(sd.date||'')}${APP.salesOwnerScope==='all'?ownerBadgeHtml(item):''}</div>
                 <div style="font-size:12px;color:#8e8e93;margin-top:3px">
                   成本¥${fmtMoney(item.cost)}
                   ${toNum(sd.express)>0?' · 快递¥'+fmtMoney(sd.express):''}
@@ -1215,7 +1249,7 @@ function mergeItemsBySid(items) {
   };
   const map = new Map();
   items.forEach(item => {
-    const key = String(item.sid||'');
+    const key = `${itemOwner(item)}|${item.sid||''}`;
     if (!map.has(key)) {
       map.set(key, {...item, qty:1, _latestTs:getSortTs(item)});
       return;
@@ -1292,14 +1326,20 @@ function buildPurchaseGroups(categoryItems) {
 function buildTransferList(category) {
   const transfers = APP.data.transfers.filter(t => {
     if (category === '全部') return true;
-    return t.category === category;
+    const transferCategory=getTransferItems(t)[0]?.category||t.category||'日淘';
+    return transferCategory===category;
   });
   // sort by date desc
   return transfers.slice().sort((a,b) => String(b.date||'').localeCompare(String(a.date||'')));
 }
 
+function getTransferItems(transfer) {
+  const byIds=Array.isArray(transfer.itemIds)?APP.data.items.filter(i=>transfer.itemIds.includes(i.id)):[];
+  return byIds.length?byIds:APP.data.items.filter(i=>i.purchaseDetails?.transferId===transfer.transferId);
+}
+
 function getPurchaseStats() {
-  const items = APP.data.items.filter(i=>i.status==='purchase' && PURCHASE_TABS.includes(i.category));
+  const items = filterOwnerItems(APP.data.items).filter(i=>i.status==='purchase' && PURCHASE_TABS.includes(i.category));
   const totalCount = items.length;
   const totalAmount = items.reduce((s,i)=>s+toNum(i.cost),0);
   const pendingCount = items.filter(i=>(i.purchaseDetails?.transferStatus||'pending')==='pending').length;
@@ -1368,7 +1408,7 @@ function renderPurchase() {
     </div>`;
 
     // Build purchase groups
-    const categoryItems = APP.data.items.filter(i=>i.status==='purchase'&&i.category===tab);
+    const categoryItems = filterOwnerItems(APP.data.items).filter(i=>i.status==='purchase'&&i.category===tab);
     const batches = buildPurchaseGroups(categoryItems);
 
     if (batches.length === 0) {
@@ -1424,7 +1464,7 @@ function renderPurchase() {
                 html += `<div class="sub-item-row" onclick="openItemDetail(${JSON.stringify(item.id)})" style="cursor:pointer">
                   <div class="item-main">
                     <div class="item-name">${esc(item.name)}</div>
-                    <div class="item-sid">${esc(item.sid||'')} · ${esc(item.brand||'')}</div>
+                    <div class="item-sid">${esc(item.sid||'')} · ${esc(item.brand||'')}${ownerBadgeHtml(item)}</div>
                     <div class="item-tags">
                       <span class="tag ${isPending?'pending':'completed'}">${isPending?'待转运':'已转运'}</span>
                       ${pd.transferBatch?`<span class="tag">${esc(pd.transferBatch)}</span>`:''}
@@ -1458,12 +1498,12 @@ function renderPurchase() {
   } else {
     // Transfer list
     html += `<div class="filter-bar">`;
-    ['全部','日淘','美淘','国内'].forEach(c => {
+    ['日淘','美淘'].forEach(c => {
       html += `<button class="filter-chip ${APP.transferCat===c?'active':''}" onclick="setTransferCat('${c}')">${esc(c)}</button>`;
     });
     html += `</div>`;
 
-    const transfers = buildTransferList(APP.transferCat||'全部');
+    const transfers = buildTransferList(APP.transferCat||'日淘');
     if (transfers.length === 0) {
       html += `<div class="empty-state">暂无转运记录</div>`;
     } else {
@@ -1472,10 +1512,9 @@ function renderPurchase() {
         const tExpanded = APP.collapsedGroups[tKey] === true;
 
         // find items for this transfer
-        const tItems = APP.data.items.filter(i =>
-          i.purchaseDetails?.transferId === t.transferId ||
-          (t.itemIds && t.itemIds.includes(i.id))
-        );
+        const tItems=getTransferItems(t);
+        const transferCategory=tItems[0]?.category||t.category||'日淘';
+        const transferBatch=tItems[0]?.batch||t.batch||'-';
 
         html += `<div class="transfer-card">
           <div class="transfer-header" onclick="togglePurGroup('${esc(tKey)}')">
@@ -1483,8 +1522,8 @@ function renderPurchase() {
               <div class="transfer-id">${esc(t.transferBatch||t.transferId)}</div>
               <div class="transfer-meta">
                 ${t.date?esc(t.date)+' · ':''}
-                ${t.category?esc(t.category)+' ':''} ${t.batch?esc(t.batch):''}
-                · ${tItems.length} 件
+                ${esc(transferCategory)} ${esc(transferBatch)}
+                · ${(t.itemIds||[]).length} 件
                 ${t.paymentAccount?' · '+esc(t.paymentAccount):''}
               </div>
             </div>
@@ -1502,7 +1541,7 @@ function renderPurchase() {
             html += `<div class="item-row" onclick="openItemDetail(${JSON.stringify(item.id)})" style="cursor:pointer">
               <div class="item-main">
                 <div class="item-name">${esc(item.name)}</div>
-                <div class="item-sid">${esc(item.sid||'')} · ${esc(item.brand||'')} · ${esc(item.status==='inventory'?'已入库':'采购中')}</div>
+                <div class="item-sid">${esc(item.sid||'')} · ${esc(item.brand||'')} · ${esc(item.status==='inventory'?'已入库':'采购中')}${ownerBadgeHtml(item)}</div>
                 <div style="font-size:11px;color:#8e8e93;margin-top:2px">
                   系数${toNum(pd.transferCoefficient,1)} · 转运¥${fmtMoney(pd.transferCost)}
                 </div>
@@ -1535,8 +1574,8 @@ function togglePurGroup(key) {
 <script>
 // ===== FINANCE MODULE =====
 function getFinanceStats() {
-  const records = APP.data.finance.records;
-  const loans = APP.data.finance.loans;
+  const records = filterOwnerRecords(APP.data.finance.records);
+  const loans = filterOwnerRecords(APP.data.finance.loans);
   const totalIncome = records.reduce((s,r)=>r.type==='income'?s+toNum(r.amount):s, 0);
   const totalExpense = records.reduce((s,r)=>r.type==='expense'?s+toNum(r.amount):s, 0);
   const totalBorrowed = loans.reduce((s,r)=>r.type==='borrow'?s+toNum(r.amount):s, 0);
@@ -1545,7 +1584,7 @@ function getFinanceStats() {
 }
 
 function buildLoanSummary() {
-  const loans = APP.data.finance.loans;
+  const loans = filterOwnerRecords(APP.data.finance.loans);
   const map = {};
   loans.forEach(l => {
     const cp = l.counterparty || '未知';
@@ -1569,6 +1608,16 @@ function getLoanStatus(g) {
 }
 
 function renderFinance() {
+  const pageTitle=document.getElementById('finance-page-title');
+  const navLabel=document.getElementById('finance-nav-label');
+  if(APP.ownerFilter==='payton') {
+    if(pageTitle)pageTitle.textContent='皮蛋金库';
+    if(navLabel)navLabel.textContent='金库';
+    renderPaytonFinance();
+    return;
+  }
+  if(pageTitle)pageTitle.textContent='公共收支';
+  if(navLabel)navLabel.textContent='收支';
   const finTab = APP.financeTab;
   const fStats = getFinanceStats();
 
@@ -1591,7 +1640,7 @@ function renderFinance() {
       <div class="stat-card"><div class="stat-val ${fStats.netBalance>=0?'green':'red'}">${fmtMoney(fStats.netBalance)}</div><div class="stat-label">净余额</div></div>
     </div>`;
 
-    const records = APP.data.finance.records.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
+    const records = filterOwnerRecords(APP.data.finance.records).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
     if (records.length === 0) {
       html += `<div class="empty-state">暂无收支记录</div>`;
     } else {
@@ -1653,7 +1702,44 @@ function renderFinance() {
   document.getElementById('finance-content').innerHTML = html;
 }
 
+function renderPaytonFinance() {
+  const owner=APP.data.ownerRegistry.payton||{};
+  const fund=getPaytonFundBreakdown();
+  const loans=Array.isArray(owner.loans)?owner.loans:[];
+  const transfers=Array.isArray(owner.accountTransfers)?owner.accountTransfers:[];
+  const records=APP.data.finance.records.filter(r=>r.owner==='payton').slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
+  document.getElementById('finance-subtitle').textContent=`零钱 ¥${fmtMoney(fund.pocket)} · 投资 ¥${fmtMoney(fund.investment)}`;
+  let html=`<div class="account-cards">
+    <div class="account-card"><div class="account-name">零钱</div><div class="account-balance ${fund.pocket>=0?'pos':'neg'}">¥${fmtMoney(fund.pocket)}</div></div>
+    <div class="account-card"><div class="account-name">投资账户</div><div class="account-balance ${fund.investment>=0?'pos':'neg'}">¥${fmtMoney(fund.investment)}</div></div>
+    <div class="account-card"><div class="account-name">贷款剩余</div><div class="account-balance">¥${fmtMoney(fund.loanRemaining)}</div></div>
+    <div class="account-card"><div class="account-name">Payton's 基金</div><div class="account-balance ${fund.balance>=0?'pos':'neg'}">¥${fmtMoney(fund.balance)}</div></div>
+  </div>
+  <div class="view-tabs" style="margin-top:10px">
+    <button class="view-tab ${APP.paytonFinanceTab==='records'?'active':''}" onclick="setPaytonFinanceTab('records')">零花收支</button>
+    <button class="view-tab ${APP.paytonFinanceTab==='loans'?'active':''}" onclick="setPaytonFinanceTab('loans')">贷款清单</button>
+    <button class="view-tab ${APP.paytonFinanceTab==='transfers'?'active':''}" onclick="setPaytonFinanceTab('transfers')">零钱↔投资互转</button>
+  </div>`;
+  if(APP.paytonFinanceTab==='records') {
+    if(!records.length) html+='<div class="empty-state">暂无零花收支</div>';
+    else { html+='<div class="card" style="margin-top:10px">'; records.forEach(r=>{html+=`<div class="finance-row"><div><div class="finance-item-name">${esc(r.item||'')}</div><div class="finance-date">${esc(r.date||'')}${r.note?' · '+esc(r.note):''}</div></div><div class="finance-amount ${r.type}">${r.type==='income'?'+':'−'}¥${fmtMoney(r.amount)}</div></div>`}); html+='</div>'; }
+  } else if(APP.paytonFinanceTab==='loans') {
+    if(!loans.length) html+='<div class="empty-state">暂无贷款</div>';
+    else loans.forEach(loan=>{
+      const events=Array.isArray(loan.events)?loan.events:[];
+      html+=`<div class="card" style="margin-top:10px;padding:12px"><div class="row-flex"><div><div class="item-name">${esc(loan.name||'未命名贷款')}</div><div class="finance-date">${esc(loan.startDate||'')} — ${esc(loan.dueDate||'未设到期日')}</div></div><div class="item-cost">剩余 ¥${fmtMoney(loan.remaining)}</div></div>`;
+      if(events.length)events.forEach(event=>{html+=`<div class="finance-row"><div class="finance-date">${esc(event.date||'')} · ${event.type==='borrow'?'追加借款':'还款'}${event.note?' · '+esc(event.note):''}</div><div>¥${fmtMoney(event.amount)}</div></div>`});
+      html+='</div>';
+    });
+  } else {
+    if(!transfers.length) html+='<div class="empty-state">暂无账户互转记录</div>';
+    else { html+='<div class="card" style="margin-top:10px">'; transfers.forEach(t=>{const from=t.fromAccount==='invest'?'投资账户':'零钱',to=t.toAccount==='invest'?'投资账户':'零钱';html+=`<div class="finance-row"><div><div class="finance-item-name">${from} → ${to}</div><div class="finance-date">${esc(t.date||'')}${t.note?' · '+esc(t.note):''}</div></div><div class="finance-amount">¥${fmtMoney(t.amount)}</div></div>`});html+='</div>'; }
+  }
+  document.getElementById('finance-content').innerHTML=html;
+}
+
 function setFinanceTab(v) { APP.financeTab=v; renderFinance(); }
+function setPaytonFinanceTab(v) { APP.paytonFinanceTab=['records','loans','transfers'].includes(v)?v:'records'; renderFinance(); }
 function toggleFinanceGroup(key) {
   APP.collapsedGroups[key] = !APP.collapsedGroups[key];
   renderFinance();
@@ -1665,7 +1751,7 @@ function toggleFinanceGroup(key) {
 
 function getMonthStats(now) {
   const y=now.getFullYear(), m=now.getMonth()+1;
-  const items = APP.data.items.filter(i => {
+  const items = filterOwnerItems(APP.data.items).filter(i => {
     if (i.status!=='sold') return false;
     const d = i.saleDetails?.date||'';
     if (!d) return false;
@@ -1685,7 +1771,7 @@ function getLast3MonthsStats(now) {
   for(let i=0;i<3;i++){
     const d=new Date(now.getFullYear(), now.getMonth()-i, 1);
     const year=d.getFullYear(), month=d.getMonth()+1;
-    const items=APP.data.items.filter(it=>{
+    const items=filterOwnerItems(APP.data.items).filter(it=>{
       if(it.status!=='sold') return false;
       const sd=it.saleDetails?.date;
       if(!sd) return false;
@@ -1701,7 +1787,7 @@ function getLast3MonthsStats(now) {
 }
 
 function getPurchaseStatus() {
-  const items=APP.data.items.filter(i=>i.status==='purchase');
+  const items=filterOwnerItems(APP.data.items).filter(i=>i.status==='purchase');
   const inProgressAmount=items.reduce((s,i)=>s+toNum(i.cost),0);
   const purchaseAmount=items.reduce((s,i)=>s+toNum(i.purchaseDetails?.preTransferCost),0);
   const transferAmount=items.reduce((s,i)=>s+toNum(i.purchaseDetails?.transferCost),0);
@@ -1727,6 +1813,7 @@ function getBatchReturnStats() {
   const allCostMap={}, allCatCostMap={};
   items.forEach(item=>{
     const key=`${item.category}|${item.batch}`;
+    if(item.category&&!categoryMap[item.category]) categoryMap[item.category]={category:item.category,totalCost:0,revenue:0};
     allCostMap[key]=(allCostMap[key]||0)+toNum(item.cost);
     allCatCostMap[item.category]=(allCatCostMap[item.category]||0)+toNum(item.cost);
     if(!batchMap[key]) batchMap[key]={category:item.category,batch:item.batch,totalCost:0,revenue:0};
@@ -1735,9 +1822,9 @@ function getBatchReturnStats() {
   const saleGroups={};
   items.forEach(item=>{
     if(item.status!=='sold') return;
-    const gk=`${item.sid||''}|${item.saleDetails?.date||''}`;
-    if(!saleGroups[gk]) saleGroups[gk]={sid:item.sid,category:item.category,batch:item.batch,
-      price:toNum(item.totalPrice||item.saleDetails?.price)};
+    const gk=`${item.owner||'papa'}|${item.sid||''}|${item.saleDetails?.date||''}`;
+    if(!saleGroups[gk]) saleGroups[gk]={sid:item.sid,category:item.category,batch:item.batch,price:0};
+    saleGroups[gk].price+=toNum(item.totalPrice||item.saleDetails?.price);
   });
 
   Object.values(saleGroups).forEach(sale=>{
@@ -1843,7 +1930,7 @@ function searchItems(keyword='') {
     if(!['purchase','inventory'].includes(status)) return null;
     const p=item.purchaseDetails||{};
     const cost=Number(item.cost||0), tc=Number(p.transferCost||0);
-    return [String(item.sid||''),status,cost.toFixed(4),String(p.transferStatus||''),
+    return [itemOwner(item),String(item.sid||''),status,cost.toFixed(4),String(p.transferStatus||''),
       String(p.transferBatch||''),tc.toFixed(4)].join('|');
   }
 
@@ -1881,60 +1968,112 @@ function statusText(s) {
 }
 
 // 公共支出净额：支出 - 收入（与主应用「公共支出」口径一致）
-function getPublicExpense() {
-  const exp=APP.data.finance.records.filter(r=>r.type==='expense').reduce((s,r)=>s+toNum(r.amount),0);
-  const inc=APP.data.finance.records.filter(r=>r.type==='income').reduce((s,r)=>s+toNum(r.amount),0);
+function getOwnerPublicExpense() {
+  const records=filterOwnerRecords(APP.data.finance.records);
+  const exp=records.filter(r=>r.type==='expense').reduce((s,r)=>s+toNum(r.amount),0);
+  const inc=records.filter(r=>r.type==='income').reduce((s,r)=>s+toNum(r.amount),0);
   return exp - inc;
 }
 
-function calcAlipayBalance() {
-  const inv=APP.data.items.filter(i=>i.status==='inventory');
-  const invValue=inv.reduce((s,i)=>s+toNum(i.cost),0);
-  const sold=APP.data.items.filter(i=>i.status==='sold');
-  const financePublicExpense=getPublicExpense();
-  const totalActualProfit=sold.reduce((s,i)=>s+toNum(i.saleDetails?.profit),0) - financePublicExpense;
-  const financeLoanBalance=APP.data.finance.loans.reduce((sum,l)=>{
-    if(l.type==='borrow') return sum+toNum(l.amount);
-    if(l.type==='lend') return sum-toNum(l.amount); // lend=还款/归还
-    return sum;
+function getPapaPublicExpense() {
+  const records=filterOwnerRecords(APP.data.finance.records,'papa');
+  const exp=records.filter(r=>r.type==='expense').reduce((s,r)=>s+toNum(r.amount),0);
+  const inc=records.filter(r=>r.type==='income').reduce((s,r)=>s+toNum(r.amount),0);
+  return exp-inc;
+}
+
+function getPapaLoanBalance() {
+  return filterOwnerRecords(APP.data.finance.loans,'papa').reduce((sum,loan)=>{
+    if(loan?.isRepaid||loan?.repaid) return sum;
+    return sum+(loan?.type==='borrow'?toNum(loan.amount):-toNum(loan.amount));
   },0);
-  const purchaseTotalCost=APP.data.items.filter(i=>i.status==='purchase').reduce((s,i)=>s+toNum(i.cost),0);
+}
+
+function getPaytonFundBreakdown() {
+  const owner=APP.data?.ownerRegistry?.payton||{};
+  const pocket=toNum(owner.pocketBalance), investment=toNum(owner.investBalance);
+  const loanRemaining=(Array.isArray(owner.loans)?owner.loans:[]).reduce((sum,loan)=>sum+(loan?.status==='active'?toNum(loan.remaining):0),0);
+  return {pocket,investment,loanRemaining,balance:pocket+investment-loanRemaining};
+}
+
+function calcAlipayBalance() {
+  const papaItems=filterOwnerItems(APP.data.items,'papa');
+  const inv=papaItems.filter(i=>i.status==='inventory');
+  const invValue=inv.reduce((s,i)=>s+toNum(i.cost),0);
+  const sold=papaItems.filter(i=>i.status==='sold');
+  const financePublicExpense=getPapaPublicExpense();
+  const totalActualProfit=sold.reduce((s,i)=>s+toNum(i.saleDetails?.profit),0) - financePublicExpense;
+  const financeLoanBalance=getPapaLoanBalance();
+  const purchaseTotalCost=papaItems.filter(i=>i.status==='purchase').reduce((s,i)=>s+toNum(i.cost),0);
 
   return toNum(APP.calc.debt)
     + financeLoanBalance
     + totalActualProfit
     - invValue
     - toNum(APP.calc.unconfirmed)
-    + toNum(APP.carFundBalance)
+    + getPaytonFundBreakdown().balance
     - purchaseTotalCost;
 }
 
-async function fetchCarFundBalance() {
-  const SUPABASE_URL = 'https://mqdxmbsaddebxlallgos.supabase.co';
-  const ANON_KEY = 'sb_publishable_pwZYqYeBwpJbj4Pt1vaQyQ_av4QZZ-U';
-  const params = new URLSearchParams();
-  params.set('id', 'eq.car');
-  params.set('select', 'payload,updated_at');
-  params.set('limit', '1');
-  try {
-    const resp = await fetch(`${SUPABASE_URL}/rest/v1/ysp_state?${params}`, {
-      headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` },
-      cache: 'no-store',
-    });
-    if (!resp.ok) return;
-    const data = await resp.json();
-    const rows = Array.isArray(data) ? data : [];
-    if (!rows.length) return;
-    APP.carFundBalance = Number(rows[0]?.payload?.balance || 0);
-    APP.carFundUpdatedAt = rows[0]?.payload?.updatedAt || rows[0]?.updated_at || '';
-  } catch (_) {
-    // 基金数据读取失败时保持旧值
-  }
+function getCashflowData(now=new Date()) {
+  const owner=APP.ownerFilter, paytonMode=owner==='payton';
+  const items=filterOwnerItems(APP.data.items,owner), snapshots=APP.data.snapshots||[];
+  const openingAt=paytonMode?String(APP.data.ownerRegistry.payton?.openingAt||'2026-10-15'):'';
+  const openingMonth=openingAt.slice(0,7);
+  const loans=paytonMode?(APP.data.ownerRegistry.payton?.loans||[]):filterOwnerRecords(APP.data.finance.loans,owner);
+  const loanBalance=loans.reduce((sum,loan)=>{
+    if(paytonMode)return sum+(loan?.status==='active'?toNum(loan.remaining):0);
+    if(loan?.isRepaid||loan?.repaid)return sum;
+    return sum+(loan?.type==='borrow'?toNum(loan.amount):-toNum(loan.amount));
+  },0);
+  const currentDebt=paytonMode?loanBalance:toNum(APP.calc.debt)+loanBalance;
+  const monthMatch=(date,year,month)=>{if(!date)return false;const d=new Date(date);return !Number.isNaN(d.getTime())&&d.getFullYear()===year&&d.getMonth()+1===month};
+  const getLastMonths=(count)=>Array.from({length:count},(_,index)=>{const d=new Date(now.getFullYear(),now.getMonth()-(count-1-index),1);return {year:d.getFullYear(),month:d.getMonth()+1}});
+  const absoluteDebt=(year,month)=>{
+    const target=snapshots.filter(s=>monthMatch(s?.date,year,month)).slice().sort((a,b)=>String(b?.date||'').localeCompare(String(a?.date||'')))[0];
+    if(!target)return null;
+    if(paytonMode)return Number.isFinite(Number(target?.payton?.loanRemaining))?Number(target.payton.loanRemaining):null;
+    return toNum(target.calc?.debt)+toNum(target.finance?.loanBalance);
+  };
+  const previousMonth=(year,month)=>month===1?{year:year-1,month:12}:{year,month:month-1};
+  const months=getLastMonths(12);
+  const buildMonth=(year,month,liveDebt)=>{
+    if(paytonMode&&`${year}-${String(month).padStart(2,'0')}`<openingMonth)return {year,month,netCollection:null,inventoryDigestion:null,procurement:null,debt:null,totalDebt:null};
+    const sold=items.filter(i=>i.status==='sold'&&monthMatch(i.saleDetails?.date,year,month));
+    const netCollection=sold.reduce((sum,i)=>sum+toNum(i.saleDetails?.profit)+toNum(i.cost),0);
+    const inventoryDigestion=sold.reduce((sum,i)=>sum+toNum(i.cost),0);
+    const procurement=items.filter(i=>monthMatch(i.purchaseDetails?.date,year,month)).reduce((sum,i)=>sum+toNum(i.cost),0);
+    const totalDebt=liveDebt!==undefined?liveDebt:absoluteDebt(year,month);
+    const prev=previousMonth(year,month),previousDebt=absoluteDebt(prev.year,prev.month);
+    return {year,month,netCollection,inventoryDigestion,procurement,debt:totalDebt==null||previousDebt==null?null:totalDebt-previousDebt,totalDebt};
+  };
+  return {current:buildMonth(now.getFullYear(),now.getMonth()+1,currentDebt),last12Months:months.map(m=>buildMonth(m.year,m.month,m.year===now.getFullYear()&&m.month===now.getMonth()+1?currentDebt:undefined))};
 }
 
-async function refreshCarFundBalance() {
-  await fetchCarFundBalance();
-  renderHome();
+function fmtCashflowShort(value) {
+  if(value==null)return '--';
+  const n=Number(value),abs=Math.abs(n);
+  if(abs>=10000)return `${(n/10000).toFixed(2)}w`;
+  if(abs>=1000)return `${(n/1000).toFixed(1)}k`;
+  return n.toFixed(0);
+}
+
+function renderCashflowMonitor() {
+  const data=getCashflowData(),months=data.last12Months;
+  const metrics=[{key:'netCollection',label:'每月净回款',color:'#16a34a'},{key:'procurement',label:'每月采购投入',color:'#f97316'},{key:'debt',label:'每月新增负债',color:'#3b82f6'}];
+  let html='<div class="card" style="margin-top:10px;background:#f9fafb"><div class="card-header"><div class="card-title">现金流与负债监控</div></div><div class="card-body">';
+  html+='<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">';
+  metrics.forEach(metric=>{
+    const values=months.map(m=>m[metric.key]).filter(v=>v!=null),max=Math.max(...values.map(v=>Math.abs(v)),0.01),cur=data.current[metric.key],prev=months.at(-2)?.[metric.key];
+    const change=cur==null||prev==null||prev===0?null:(cur-prev)/prev*100;
+    html+=`<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:8px"><div style="font-size:10px;color:#6b7280">${metric.label}</div><div style="font-size:16px;font-weight:800;margin:4px 0">${fmtMoney(cur)}</div><div style="display:flex;flex-direction:column;gap:3px">`;
+    months.forEach(m=>{const value=m[metric.key],width=value==null?0:Math.min(100,Math.abs(value)/max*100);html+=`<div style="display:flex;align-items:center;gap:3px;font-size:8px;color:#9ca3af"><span style="width:19px">${m.month}月</span><div style="height:7px;flex:1;background:#e5e7eb;border-radius:3px;overflow:hidden"><div style="width:${width}%;height:100%;background:${m.year===new Date().getFullYear()&&m.month===new Date().getMonth()+1?metric.color:'#cbd5e1'}"></div></div><span style="width:22px;text-align:right">${fmtCashflowShort(value)}</span></div>`});
+    html+='</div><div style="font-size:9px;margin-top:5px;color:'+(change==null?'#9ca3af':change>=0?'#16a34a':'#ef4444')+'">'+(change==null?'--':`${change>=0?'↑':'↓'} ${Math.abs(change).toFixed(1)}% 环比`)+'</div></div>';
+  });
+  html+='</div><div style="font-weight:700;font-size:12px;margin:14px 0 6px">12 个月现金流与负债趋势</div><div style="overflow-x:auto"><table style="width:100%;min-width:440px;border-collapse:collapse;font-size:10px"><thead><tr>'+['月份','净回款','采购投入','现金流差额','负债总规模'].map(x=>`<th style="padding:5px;text-align:right;color:#6b7280;border-bottom:1px solid #e5e7eb">${x}</th>`).join('')+'</tr></thead><tbody>';
+  months.forEach(m=>{const diff=m.netCollection==null||m.procurement==null?null:m.netCollection-m.procurement;html+=`<tr><td style="padding:5px;border-bottom:1px solid #f3f4f6">${m.year}/${m.month}</td>${[m.netCollection,m.procurement,diff,m.totalDebt].map(v=>`<td style="padding:5px;text-align:right;border-bottom:1px solid #f3f4f6">${v==null?'--':fmtMoney(v)}</td>`).join('')}</tr>`});
+  html+='</tbody></table></div></div></div>';
+  return html;
 }
 
 function renderHome() {
@@ -1944,14 +2083,14 @@ function renderHome() {
   const monthStats = getMonthStats(now);
   const last3 = getLast3MonthsStats(now);
   const purStats = getPurchaseStatus();
-  const inv = APP.data.items.filter(i=>i.status==='inventory');
+  const inv = filterOwnerItems(APP.data.items).filter(i=>i.status==='inventory');
   const invValue = inv.reduce((s,i)=>s+toNum(i.cost),0);
   const invCount = inv.length;
   const lt = inv.filter(i=>i.isLongTerm===true);
   const ltValue = lt.reduce((s,i)=>s+toNum(i.cost),0);
   const ltCount = lt.length;
-  const sold = APP.data.items.filter(i=>i.status==='sold');
-  const totalActualProfit = sold.reduce((s,i)=>s+toNum(i.saleDetails?.profit),0) - getPublicExpense();
+  const sold = filterOwnerItems(APP.data.items).filter(i=>i.status==='sold');
+  const totalActualProfit = sold.reduce((s,i)=>s+toNum(i.saleDetails?.profit),0) - getOwnerPublicExpense();
   const soldCost = sold.reduce((s,i)=>s+toNum(i.cost),0);
   const totalProfitMargin = soldCost>0 ? totalActualProfit/soldCost : 0;
 
@@ -2029,12 +2168,12 @@ function renderHome() {
     <div class="card-body" style="padding:12px">
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
         <div style="background:#fff;border-radius:10px;padding:10px;text-align:center;border:1px solid #e5e5ea">
-          <div style="font-size:11px;color:#8e8e93">库存总货值</div>
+          <div style="font-size:11px;color:#8e8e93">${APP.ownerFilter==='payton'?'自留+投资总货值':'库存总货值'}</div>
           <div style="font-size:20px;font-weight:800;color:#007aff">¥${fmtMoney(invValue)}</div>
           <div style="font-size:11px;color:#8e8e93">${invCount}件</div>
         </div>
         <div style="background:#fff;border-radius:10px;padding:10px;text-align:center;border:1px solid #e5e5ea">
-          <div style="font-size:11px;color:#8e8e93">短线货值</div>
+          <div style="font-size:11px;color:#8e8e93">${APP.ownerFilter==='payton'?'投资货值':'短线货值'}</div>
           <div style="font-size:20px;font-weight:800;color:#af52de">¥${fmtMoney(invValue-ltValue)}</div>
           <div style="font-size:11px;color:#8e8e93">${invCount-ltCount}件</div>
         </div>
@@ -2052,20 +2191,22 @@ function renderHome() {
 
   // Alipay calculator
   const alipay = calcAlipayBalance();
-  const finLoanBal = APP.data.finance.loans.reduce((sum,l)=>{
-    if(l.type==='borrow') return sum+toNum(l.amount);
-    if(l.type==='lend') return sum-toNum(l.amount);
-    return sum;
-  },0);
-  const finPubExp = getPublicExpense();
-  const purchaseTC = APP.data.items.filter(i=>i.status==='purchase').reduce((s,i)=>s+toNum(i.cost),0);
+  const papaItems=filterOwnerItems(APP.data.items,'papa');
+  const papaSold=papaItems.filter(i=>i.status==='sold');
+  const papaInventory=papaItems.filter(i=>i.status==='inventory');
+  const papaProfit=papaSold.reduce((s,i)=>s+toNum(i.saleDetails?.profit),0);
+  const finLoanBal=getPapaLoanBalance();
+  const finPubExp=getPapaPublicExpense();
+  const purchaseTC=papaItems.filter(i=>i.status==='purchase').reduce((s,i)=>s+toNum(i.cost),0);
+  const calculatorProfit=papaProfit-finPubExp;
+  const calculatorInventoryValue=papaInventory.reduce((s,i)=>s+toNum(i.cost),0);
   const actualBal = alipay - toNum(APP.calc.forwarderBalance) - toNum(APP.calc.watchBalance);
-  const formulaText = `挖财总负债(${fmtMoney(APP.calc.debt)}) + 借贷余额(${fmtMoney(finLoanBal)}) + 总实盈利润(已扣公共支出)(${fmtMoney(totalActualProfit)}) - 库存总货值(${fmtMoney(invValue)}) - 未确认交易(${fmtMoney(APP.calc.unconfirmed)}) + Payton's基金(${fmtMoney(APP.carFundBalance)}) - 采购中金额(${fmtMoney(purchaseTC)}) = ${fmtMoney(alipay)}`;
+  const paytonFund=getPaytonFundBreakdown();
+  const formulaText = `挖财总负债(${fmtMoney(APP.calc.debt)}) + 借贷余额(${fmtMoney(finLoanBal)}) + 总实盈利润(已扣公共支出)(${fmtMoney(calculatorProfit)}) - 库存总货值(${fmtMoney(calculatorInventoryValue)}) - 未确认交易(${fmtMoney(APP.calc.unconfirmed)}) + Payton's基金(${fmtMoney(paytonFund.balance)}) - 采购中金额(${fmtMoney(purchaseTC)}) = ${fmtMoney(alipay)}`;
 
   html += `<div class="card" style="margin-top:10px">
     <div class="card-header">
       <div class="card-title">💙 支付宝余额计算器</div>
-      <button onclick="refreshCarFundBalance()" style="font-size:14px;padding:2px 6px;border-radius:6px;background:#e3f0ff;color:#007aff">🔄 刷新基金</button>
     </div>
     <div class="card-body">
       <div class="calc-grid">
@@ -2087,8 +2228,8 @@ function renderHome() {
         </div>
         <div class="calc-item">
           <label>Payton's基金（云端）</label>
-          <div style="font-size:16px;font-weight:600;padding-top:4px;color:#007aff">${fmtMoney(APP.carFundBalance)}</div>
-          ${APP.carFundUpdatedAt ? `<div style="font-size:10px;color:#8e8e93;margin-top:1px">更新于 ${new Date(APP.carFundUpdatedAt).toLocaleString()}</div>` : ''}
+          <div style="font-size:16px;font-weight:600;padding-top:4px;color:#007aff">${fmtMoney(paytonFund.balance)}</div>
+          <div style="font-size:10px;color:#8e8e93;margin-top:1px">零钱 ${fmtMoney(paytonFund.pocket)} · 投资 ${fmtMoney(paytonFund.investment)} · 贷款 ${fmtMoney(paytonFund.loanRemaining)}</div>
         </div>
         <div class="calc-item">
           <label>采购中金额（自动）</label>
@@ -2110,6 +2251,8 @@ function renderHome() {
       </div>
     </div>
   </div>`;
+
+  html += renderCashflowMonitor();
 
   // Search
   html += `<div class="card" style="margin-top:10px">
@@ -2180,7 +2323,7 @@ function renderSearchResults() {
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
         <div style="flex:1;min-width:0">
           <div style="font-size:14px;font-weight:500">${esc(item.name)}</div>
-          <div style="font-size:11px;color:#8e8e93">${esc(item.sid||'')} · ${esc(item.brand||'')} · <span style="color:${statusColor}">${statusLabel}</span></div>
+          <div style="font-size:11px;color:#8e8e93">${esc(item.sid||'')} · ${esc(item.brand||'')} · ${ownerBadgeHtml(item)} · <span style="color:${statusColor}">${statusLabel}</span></div>
           ${item._groupCount>1?`<div style="font-size:11px;color:#8e8e93">×${item._groupCount}件 合计¥${fmtMoney(item._groupTotalCost)}</div>`:''}
         </div>
         <div style="text-align:right;flex-shrink:0">
@@ -2210,7 +2353,7 @@ function openItemDetail(itemId) {
     }
   }
   if (!item) {
-    item = APP.data.items.find(i => i.id === itemId);
+    item = filterOwnerItems(APP.data.items).find(i => i.id === itemId);
   }
   if (!item) return;
 
@@ -2219,9 +2362,9 @@ function openItemDetail(itemId) {
 
   let html = `<div style="margin-bottom:12px">
     <div style="font-size:17px;font-weight:700">${esc(item.name)}</div>
-    <div style="font-size:12px;color:#8e8e93;margin-top:3px">${esc(item.sid||'')} · ${esc(item.brand||'')} · ${esc(item.category||'')} · ${esc(item.batch||'')}</div>
+    <div style="font-size:12px;color:#8e8e93;margin-top:3px">${esc(item.sid||'')} · ${esc(item.brand||'')} · ${esc(item.category||'')} · ${esc(item.batch||'')} · ${ownerBadgeHtml(item)}</div>
     <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">`;
-  if (item.isLongTerm) html += `<span class="tag longterm">长线</span>`;
+  if (item.isLongTerm) html += `<span class="tag longterm">${itemOwner(item)==='payton'?'自留':'长线'}</span>`;
   if (item.isDefect) html += `<span class="tag defect">残次</span>`;
   html += `</div></div>`;
 
@@ -2247,7 +2390,10 @@ function openItemDetail(itemId) {
     if (it.status === 'sold' && sd) {
       html += `<div style="background:#f0fdf4;border-radius:8px;padding:8px;margin-top:6px;border:1px solid #bbf7d0">
         <div style="font-size:11px;font-weight:600;color:#16a34a;margin-bottom:4px">销售信息</div>`;
-      if (sd.date) html += `<div class="label-val"><span class="label">销售日期</span><span class="val">${esc(sd.date)}</span></div>`;
+      if (sd.date) html += `<div class="label-val"><span class="label">下单日期</span><span class="val">${esc(sd.date)}</span></div>`;
+      html += `<div class="label-val"><span class="label">销售渠道</span><span class="val">${esc(getSalesChannel(it))}</span></div>`;
+      if (Object.prototype.hasOwnProperty.call(sd,'isConfirmed')) html += `<div class="label-val"><span class="label">到账状态</span><span class="val">${sd.isConfirmed===false?'待确认':'已确认'}</span></div>`;
+      if (sd.entryDate) html += `<div class="label-val"><span class="label">入账日期</span><span class="val">${esc(sd.entryDate)}</span></div>`;
       html += `<div class="label-val"><span class="label">售价</span><span class="val">¥${fmtMoney(sd.price)}</span></div>`;
       if (toNum(sd.express) > 0) html += `<div class="label-val"><span class="label">运费</span><span class="val">¥${fmtMoney(sd.express)}</span></div>`;
       if (toNum(sd.feeRate) > 0) html += `<div class="label-val"><span class="label">费率</span><span class="val">${fmt(toNum(sd.feeRate)*100,1)}%</span></div>`;

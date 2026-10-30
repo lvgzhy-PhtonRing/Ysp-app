@@ -113,4 +113,9 @@ VITE_SUPABASE_PUBLIC_READ=true
 - 手机查询页：`/ysp-remote.html`
 - 兜底静态数据：`/a.json`
 
-手机查询页会优先尝试从 `cloud-config.json` 指向的 Supabase 读取；失败后自动回退到 URL 输入框里的 JSON 地址。
+手机查询页读取 `cloud-config.json` 中配置的 `main` 主账本。主账本为私有数据，需使用主程序云端账号登录；页面只读取数据，不提供写入功能。
+- 手机查询页默认 Owner 为 Papa；Owner 相关页面随 Papa/Payton 切换，销售页另有“当前 Owner / 全部 Owner”范围，商品查询与批次回款统计按主程序跨 Owner 展示。
+- 首页支付宝余额使用主程序相同口径，并从 `main` 快照的 Payton 资金注册表读取零钱、投资与贷款余额。
+- 首页现金流与负债监控按所选 Owner、开业日期和月末快照显示；切到 Payton 后财务入口显示只读皮蛋金库。
+- 登录令牌仅保存在当前标签页的 `sessionStorage`，关闭标签页后需重新登录。可使用页面顶部“刷新”读取最新云端数据，“退出”清除本标签页会话。
+- 手机页需通过 HTTPS 或本地开发服务器访问，并正确配置 Supabase Auth 与 `main` 行的已登录用户读取权限。
