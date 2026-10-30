@@ -1,3 +1,5 @@
+import { DEFAULT_SALES_CHANNEL, inferLegacySalesChannel, isSalesChannel } from '../sales/salesChannels'
+
 function toAmount(value) {
   const amount = Number(value)
   return Number.isFinite(amount) ? amount : 0
@@ -13,8 +15,8 @@ function inPeriod(date, startDate, endDate) {
   return isDateOnly(date) && date >= startDate && date <= endDate
 }
 
-function ownerOf(record) {
-  return record?.owner || 'papa'
+function salesChannelOf(sale) {
+  return isSalesChannel(sale?.shop) ? sale.shop : inferLegacySalesChannel(sale?.date)
 }
 
 function sheet(name, headers, rows) {
@@ -25,22 +27,23 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
   const startDate = options.startDate || ''
   const endDate = options.endDate || ''
   const periodValid = isDateOnly(startDate) && isDateOnly(endDate) && startDate <= endDate
-  const selectedOwners = Array.isArray(options.owners) ? new Set(options.owners) : new Set(['papa', 'payton'])
+  const selectedChannels = Array.isArray(options.channels)
+    ? new Set(options.channels.filter(isSalesChannel))
+    : new Set([DEFAULT_SALES_CHANNEL])
   const issues = []
   if (!periodValid) issues.push({ id: 'period', issue: '申报期间为空、格式无效或开始日期晚于结束日期，请先修正期间。' })
-  if (!String(options.taxpayer || '').trim()) issues.push({ id: 'taxpayer', issue: '纳税主体尚未确认；Owner 不自动映射为纳税主体。' })
+  if (!String(options.taxpayer || '').trim()) issues.push({ id: 'taxpayer', issue: '纳税主体尚未确认，请人工核实。' })
 
-  const inOwnerScope = (record) => selectedOwners.has(ownerOf(record))
-  const allSales = (Array.isArray(payload.items) ? payload.items : []).filter((item) => item?.status === 'sold' && item?.saleDetails && inOwnerScope(item))
+  const allSales = (Array.isArray(payload.items) ? payload.items : []).filter((item) => item?.status === 'sold' && item?.saleDetails && selectedChannels.has(salesChannelOf(item.saleDetails)))
   const sales = []
   allSales.forEach((item) => {
     const sale = item.saleDetails
     if (sale.isConfirmed !== true) {
-      issues.push({ id: item.id, sid: item.sid || '', name: item.name || '', owner: ownerOf(item), issue: '销售尚未确认到账，不计入所选期间。' })
+      issues.push({ id: item.id, sid: item.sid || '', name: item.name || '', issue: '销售尚未确认到账，不计入所选期间。' })
       return
     }
     if (!isDateOnly(sale.entryDate)) {
-      issues.push({ id: item.id, sid: item.sid || '', name: item.name || '', owner: ownerOf(item), issue: sale.entryDate ? '入账日期无效，不能归入申报期间。' : '缺少入账日期，不能归入申报期间。' })
+      issues.push({ id: item.id, sid: item.sid || '', name: item.name || '', issue: sale.entryDate ? '入账日期无效，不能归入申报期间。' : '缺少入账日期，不能归入申报期间。' })
       return
     }
     if (!periodValid || !inPeriod(sale.entryDate, startDate, endDate)) return
@@ -54,8 +57,6 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
       entryDate: sale.entryDate,
       name: item.name || '',
       sid: item.sid || '',
-      owner: ownerOf(item),
-      shop: sale.shop || '',
       batch: item.batch || '',
       price,
       cost,
@@ -70,17 +71,16 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
 
   const financeRecords = []
   ;(Array.isArray(payload.financeRecords) ? payload.financeRecords : payload.finance?.records || []).forEach((record) => {
-    if (!inOwnerScope(record)) return
     if (!isDateOnly(record?.date)) {
-      issues.push({ id: record?.id || '', name: record?.item || '', owner: ownerOf(record), issue: '收支记录缺少有效日期，未计入期间明细。' })
+      issues.push({ id: record?.id || '', name: record?.item || '', issue: '收支记录缺少有效日期，未计入期间明细。' })
       return
     }
     if (!periodValid || !inPeriod(record.date, startDate, endDate)) return
     financeRecords.push({
-      id: record.id || '', date: record.date, owner: ownerOf(record), type: record.type || '',
+      id: record.id || '', date: record.date, type: record.type || '',
       item: record.item || '', amount: toAmount(record.amount), note: record.note || '', taxCategory: '待人工确认',
     })
-    issues.push({ id: record.id || '', name: record.item || '', owner: ownerOf(record), issue: '收支税务性质与凭证状态未分类；请人工核实后再决定是否用于申报。' })
+    issues.push({ id: record.id || '', name: record.item || '', issue: '收支税务性质与凭证状态未分类；请人工核实后再决定是否用于申报。' })
   })
 
   const totals = sales.reduce((sum, row) => ({
@@ -92,14 +92,12 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
     referenceProfit: sum.referenceProfit + row.referenceProfit,
   }), { revenue: 0, cost: 0, platformFee: 0, express: 0, adjustment: 0, referenceProfit: 0 })
   const createdAt = new Date().toISOString()
-  const ownersText = [...selectedOwners].map((owner) => owner === 'payton' ? 'Payton' : owner === 'papa' ? 'Papa' : owner).join('、') || '未选择'
   const readingRows = [
     { field: '纳税主体（人工填写/确认）', value: options.taxpayer || '待确认' },
-    { field: '纳入 Owner', value: ownersText },
     { field: '申报期间（起止日均包含）', value: periodValid ? `${startDate} 至 ${endDate}` : '期间无效' },
     { field: '生成时间', value: createdAt },
     { field: '用途', value: '仅用于申报准备与人工复核；不自动判断税额、不提交、不缴税。' },
-    { field: '销售期间口径', value: '仅按已确认销售的入账日期归期；不展示下单日期。' },
+    { field: '销售期间口径', value: '仅按已确认销售的入账日期归期。' },
     { field: '经营利润参考', value: '售价 − 单品成本 − 平台手续费 − 快递费 − 补差；不等于应纳税所得额或税额。' },
     { field: '税务复核', value: '以当期电子税务局预填数据、适用政策及实际凭证为准。' },
   ]
@@ -134,23 +132,23 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
 
   return {
     issues,
-    period: { startDate, endDate, taxpayer: options.taxpayer || '', owners: [...selectedOwners] },
+    period: { startDate, endDate, taxpayer: options.taxpayer || '' },
     totals: { ...totals, salesCount: sales.length, expenseRows: financeRecords.length },
     sheets: [
       sheet('阅读说明', ['项目', '内容'], readingRows),
       sheet('申报步骤清单', ['申报流程', '步骤', '核对状态'], steps),
       sheet('增值税核对', ['核对项目', '金额/数量', '人工核对/补录'], vatRows),
       sheet('A表经营数据', ['经营参考项目', '金额', '人工核对'], aRows),
-      sheet('销售明细', ['入账日期', '商品名称', 'SID', 'Owner', '销售渠道', '批次', '成交总价', '单品成本', '平台手续费', '快递费', '补差（正数为卖方支出）', '经营利润参考'], sales.map((row) => ({
-        id: row.id, entryDate: row.entryDate, name: row.name, sid: row.sid, owner: row.owner, shop: row.shop, batch: row.batch,
+      sheet('销售明细', ['入账日期', '商品名称', 'SID', '批次', '成交总价', '单品成本', '平台手续费', '快递费', '补差（正数为卖方支出）', '经营利润参考'], sales.map((row) => ({
+        id: row.id, entryDate: row.entryDate, name: row.name, sid: row.sid, batch: row.batch,
         price: row.price, cost: row.cost, platformFee: row.platformFee, express: row.express, adjustment: row.adjustment, referenceProfit: row.referenceProfit,
       }))),
-      sheet('收支明细', ['日期', 'Owner', '类型', '项目', '金额', '备注', '税务归类'], financeRecords),
-      sheet('补差明细', ['入账日期', '商品名称', 'SID', 'Owner', '补差金额', '方向说明'], sales.filter((row) => row.adjustment !== 0).map((row) => ({
-        entryDate: row.entryDate, name: row.name, sid: row.sid, owner: row.owner, adjustment: row.adjustment,
+      sheet('收支明细', ['日期', '类型', '项目', '金额', '备注', '税务归类'], financeRecords),
+      sheet('补差明细', ['入账日期', '商品名称', 'SID', '补差金额', '方向说明'], sales.filter((row) => row.adjustment !== 0).map((row) => ({
+        entryDate: row.entryDate, name: row.name, sid: row.sid, adjustment: row.adjustment,
         direction: row.adjustment > 0 ? '卖方补给买家' : '买家补给卖方',
       }))),
-      sheet('待确认事项', ['记录ID', 'SID', '名称/项目', 'Owner', '待确认原因'], issues),
+      sheet('待确认事项', ['记录ID', 'SID', '名称/项目', '待确认原因'], issues),
     ],
   }
 }
@@ -162,10 +160,10 @@ export function createTaxWorkbook(workbookData, XLSX) {
       if (name === '阅读说明') return [row.field, row.value]
       if (name === '申报步骤清单') return [row.process, row.step, row.check]
       if (name === '增值税核对' || name === 'A表经营数据') return [row.metric, row.amount, row.check]
-      if (name === '销售明细') return [row.entryDate, row.name, row.sid, row.owner, row.shop, row.batch, row.price, row.cost, row.platformFee, row.express, row.adjustment, row.referenceProfit]
-      if (name === '收支明细') return [row.date, row.owner, row.type, row.item, row.amount, row.note, row.taxCategory]
-      if (name === '补差明细') return [row.entryDate, row.name, row.sid, row.owner, row.adjustment, row.direction]
-      return [row.id, row.sid, row.name || row.item || '', row.owner || '', row.issue]
+      if (name === '销售明细') return [row.entryDate, row.name, row.sid, row.batch, row.price, row.cost, row.platformFee, row.express, row.adjustment, row.referenceProfit]
+      if (name === '收支明细') return [row.date, row.type, row.item, row.amount, row.note, row.taxCategory]
+      if (name === '补差明细') return [row.entryDate, row.name, row.sid, row.adjustment, row.direction]
+      return [row.id, row.sid, row.name || row.item || '', row.issue]
     })]
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(sheetRows), name)
   })

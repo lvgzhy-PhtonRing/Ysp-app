@@ -4,7 +4,7 @@ import { buildTaxWorkbookData, createTaxWorkbook, writeTaxWorkbook } from './bui
 
 vi.mock('xlsx', async (importOriginal) => ({ ...(await importOriginal()), writeFile: vi.fn() }))
 
-const period = { startDate: '2026-10-01', endDate: '2026-12-31', taxpayer: 'Papa 个体户', owners: ['papa', 'payton'] }
+const period = { startDate: '2026-10-01', endDate: '2026-12-31', taxpayer: 'Papa 个体户', channels: ['PhtonRIng', '侧空翻棉', '其它'] }
 
 describe('buildTaxWorkbookData', () => {
   const payload = {
@@ -15,7 +15,7 @@ describe('buildTaxWorkbookData', () => {
       { id: 'pending', owner: 'payton', name: '未确认', sid: 'S3', cost: 10, status: 'sold', saleDetails: { date: '2026-10-15', price: 30, isConfirmed: false } },
       { id: 'missing', owner: 'papa', name: '无入账日', sid: 'S4', cost: 10, status: 'sold', saleDetails: { price: 30, isConfirmed: true, entryDate: '' } },
       { id: 'invalid', owner: 'papa', name: '错误入账日', sid: 'S5', cost: 10, status: 'sold', saleDetails: { price: 30, isConfirmed: true, entryDate: '2026-13-40' } },
-      { id: 'other-owner', owner: 'other', name: '未纳入', status: 'sold', saleDetails: { price: 99, isConfirmed: true, entryDate: '2026-10-10' } },
+      { id: 'other-owner', owner: 'other', name: '申报期外', status: 'sold', saleDetails: { price: 99, isConfirmed: true, entryDate: '2027-01-01' } },
     ],
     financeRecords: [
       { id: 'expense', owner: 'papa', date: '2026-11-01', type: 'expense', item: '包装', amount: 5, note: '凭证待核' },
@@ -78,5 +78,28 @@ describe('buildTaxWorkbookData', () => {
     const result = buildTaxWorkbookData(payload, period)
     await writeTaxWorkbook(result, 'YSP报税工作簿_2026Q4.xlsx')
     expect(XLSX.writeFile).toHaveBeenCalledWith(expect.objectContaining({ SheetNames: expect.any(Array) }), 'YSP报税工作簿_2026Q4.xlsx')
+  })
+
+  it('filters sales by shop across all owners and does not export Owner fields', () => {
+    const result = buildTaxWorkbookData({
+      items: [
+        { id: 'papa-pr', owner: 'papa', sid: 'P-1', status: 'sold', cost: 10, saleDetails: { shop: 'PhtonRIng', isConfirmed: true, entryDate: '2026-10-10', price: 30 } },
+        { id: 'payton-pr', owner: 'payton', sid: 'Y-1', status: 'sold', cost: 20, saleDetails: { shop: 'PhtonRIng', isConfirmed: true, entryDate: '2026-10-11', price: 40 } },
+        { id: 'papa-side', owner: 'papa', sid: 'P-2', status: 'sold', cost: 30, saleDetails: { shop: '侧空翻棉', isConfirmed: true, entryDate: '2026-10-12', price: 50 } },
+      ],
+      financeRecords: [
+        { id: 'papa-expense', owner: 'papa', date: '2026-10-10', type: 'expense', item: '包装', amount: 5 },
+        { id: 'payton-expense', owner: 'payton', date: '2026-10-11', type: 'expense', item: '运费', amount: 8 },
+      ],
+    }, { ...period, owners: ['papa'], channels: ['PhtonRIng'] })
+
+    expect(result.sheets.find((sheet) => sheet.name === '销售明细').rows.map((row) => row.id)).toEqual(['papa-pr', 'payton-pr'])
+    expect(result.sheets.find((sheet) => sheet.name === '收支明细').rows).toHaveLength(2)
+    expect(result.period).not.toHaveProperty('owners')
+    expect(result.period).not.toHaveProperty('channels')
+    expect(result.sheets.every((sheet) => !sheet.headers.includes('Owner'))).toBe(true)
+    expect(result.sheets.every((sheet) => !sheet.headers.includes('销售渠道'))).toBe(true)
+    expect(result.sheets.find((sheet) => sheet.name === '销售明细').rows.every((row) => !('shop' in row) && !('owner' in row))).toBe(true)
+    expect(result.sheets.find((sheet) => sheet.name === '阅读说明').rows.some((row) => /Owner|销售渠道|PhtonRIng|侧空翻棉|其它/.test(`${row.field} ${row.value}`))).toBe(false)
   })
 })

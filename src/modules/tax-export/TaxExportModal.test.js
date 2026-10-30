@@ -8,17 +8,23 @@ describe('TaxExportModal', () => {
     const html = await renderToString(h(TaxExportModal, {
       modelValue: true,
       payload: { items: [
-        { id: 'included', owner: 'papa', name: '确认车', sid: 'A-1', status: 'sold', cost: 50, saleDetails: { date: '2026-09-30', entryDate: '2026-10-10', isConfirmed: true, price: 100, express: 8, feeRate: 0.01 } },
-        { id: 'pending', owner: 'payton', name: '未确认车', sid: 'B-2', status: 'sold', cost: 10, saleDetails: { date: '2026-10-11', price: 20, isConfirmed: false } },
+        { id: 'included', owner: 'papa', name: '确认车', sid: 'A-1', status: 'sold', cost: 50, saleDetails: { date: '2026-09-30', shop: 'PhtonRIng', entryDate: '2026-10-10', isConfirmed: true, price: 100, express: 8, feeRate: 0.01 } },
+        { id: 'pending', owner: 'payton', name: '未确认车', sid: 'B-2', status: 'sold', cost: 10, saleDetails: { date: '2026-10-11', shop: 'PhtonRIng', price: 20, isConfirmed: false } },
       ] },
     }))
 
     expect(html).toContain('报税工作簿导出')
     expect(html).toContain('纳税主体（请人工填写确认）')
+    expect(html).toContain('导出前筛选销售')
+    expect(html).toContain('PhtonRIng')
+    expect(html).toContain('侧空翻棉')
+    expect(html).toContain('其它')
+    expect(html).not.toContain('纳入 Owner')
+    expect(html).toContain('默认仅纳入 PhtonRIng')
     expect(html).toContain('确认销售</div><b>1 笔')
     expect(html).toContain('待确认事项</div><b')
     expect(html).toContain('不会展示下单日期')
-    expect(html).toContain('不代表纳税主体映射')
+    expect(html).not.toContain('Owner')
     expect(html).toContain('税务分类')
   })
 })

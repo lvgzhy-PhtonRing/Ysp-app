@@ -129,23 +129,32 @@ function getGroupTabs(group) {
     </div>
 
     <div class="border-t border-gray-100 p-4 space-y-2">
-      <button
-        class="flex w-full items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-left text-sm font-semibold text-amber-800 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
-        @click="emit('reminders')"
-      >
-        <i class="fa-solid fa-bell" />
-        <span class="flex-1">申报提醒</span>
-        <span v-if="taxReminderCount" class="min-w-6 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-xs font-bold text-white">{{ taxReminderCount }}</span>
-      </button>
+      <div role="group" aria-label="税务申报" class="space-y-1">
+        <button
+          class="flex w-full items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-left text-sm font-semibold text-amber-800 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+          @click="emit('reminders')"
+        >
+          <i class="fa-solid fa-bell" />
+          <span class="flex-1">税务申报</span>
+          <span v-if="taxReminderCount" class="min-w-6 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-xs font-bold text-white">{{ taxReminderCount }}</span>
+        </button>
+        <button
+          class="w-full rounded-lg px-4 py-2 text-left text-sm text-gray-600 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+          @click="emit('tax-export')"
+        >
+          <i class="fa-solid fa-file-excel mr-2" />报税工作簿
+        </button>
+      </div>
       <button
         class="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer flex items-center gap-2"
+        :aria-expanded="dataOpsOpen"
         @click="toggleDataOps"
       >
         <i class="fa-solid fa-database" />
         <span>数据操作</span>
         <i :class="dataOpsOpen ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'" class="text-xs text-gray-400" />
       </button>
-      <div v-if="dataOpsOpen" class="space-y-1 ml-3 pl-3 border-l border-gray-200">
+      <div v-show="dataOpsOpen" data-menu="data-operations" class="space-y-1 ml-3 pl-3 border-l border-gray-200">
         <button
           class="w-full text-left px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer"
           @click="dataOpsOpen = false; emit('import')"
@@ -159,10 +168,11 @@ function getGroupTabs(group) {
           <i class="fa-solid fa-download mr-2" />导出备份
         </button>
         <button
-          class="w-full text-left px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer"
-          @click="dataOpsOpen = false; emit('tax-export')"
+          class="w-full text-left px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer flex items-center"
+          @click="dataOpsOpen = false; emit('cloud')"
         >
-          <i class="fa-solid fa-file-excel mr-2" />报税工作簿
+          <i class="fa-solid fa-cloud mr-2" />云端同步
+          <i v-if="cloudUnhealthy" class="fa-solid fa-circle ml-auto text-amber-400 text-[8px] animate-pulse" title="云端未连接" />
         </button>
         <button
           class="w-full text-left px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer"
@@ -171,14 +181,6 @@ function getGroupTabs(group) {
           <i class="fa-solid fa-circle-question mr-2" />数据说明
         </button>
       </div>
-      <button
-        class="w-full text-left px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg flex items-center gap-2"
-        @click="emit('cloud')"
-      >
-        <i class="fa-solid fa-cloud mr-1" />
-        <span class="flex-1">云端同步</span>
-        <i v-if="cloudUnhealthy" class="fa-solid fa-circle text-amber-400 text-[8px] animate-pulse" title="云端未连接" />
-      </button>
       <button
         class="w-full text-left px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-lg"
         @click="emit('logs')"

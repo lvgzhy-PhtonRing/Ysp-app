@@ -34,4 +34,15 @@ describe('AppSidebar owner navigation', () => {
     expect(html).not.toContain('flex-1">数据操作')
     expect(html).toContain('text-left text-[11px] text-gray-400')
   })
+
+  it('groups the tax workbook with tax filing and places cloud sync in data operations', async () => {
+    const html = await renderToString(h(AppSidebar, { tabs, currentTab: 'home' }))
+    expect(html).toContain('税务申报')
+    expect(html).not.toContain('申报提醒')
+    expect(html.indexOf('报税工作簿')).toBeGreaterThan(html.indexOf('税务申报'))
+    expect(html.indexOf('数据操作')).toBeGreaterThan(html.indexOf('报税工作簿'))
+    expect(html).toMatch(/<div[^>]*data-menu="data-operations"[^>]*>[\s\S]*?云端同步[\s\S]*?<\/div>/)
+    expect(html.indexOf('云端同步')).toBeGreaterThan(html.indexOf('数据操作'))
+    expect(html.indexOf('云端同步')).toBeLessThan(html.indexOf('操作日志'))
+  })
 })

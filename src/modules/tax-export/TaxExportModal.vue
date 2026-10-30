@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import GlassModal from '../../components/GlassModal.vue'
 import { buildTaxWorkbookData, writeTaxWorkbook } from './buildTaxWorkbook'
+import { SALES_CHANNELS } from '../sales/salesChannels'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -18,13 +19,13 @@ const quarterMonth = Math.floor(now.getMonth() / 3) * 3
 const startDate = ref(localDate(new Date(now.getFullYear(), quarterMonth, 1)))
 const endDate = ref(localDate(new Date(now.getFullYear(), quarterMonth + 3, 0)))
 const taxpayer = ref('')
-const owners = ref(['papa', 'payton'])
+const channels = ref(['PhtonRIng'])
 const downloadError = ref('')
 const workbookData = computed(() => buildTaxWorkbookData(props.payload, {
   startDate: startDate.value,
   endDate: endDate.value,
   taxpayer: taxpayer.value,
-  owners: owners.value,
+  channels: channels.value,
 }))
 const previewIssues = computed(() => workbookData.value.issues.slice(0, 8))
 
@@ -62,11 +63,11 @@ async function download() {
         <label class="text-sm text-gray-600">期间结束<input v-model="endDate" type="date" class="apple-input mt-1" /></label>
       </div>
       <fieldset class="md:col-span-2">
-        <legend class="mb-2 text-sm font-semibold text-gray-700">纳入 Owner（不代表纳税主体映射）</legend>
-        <div class="flex gap-5">
-          <label class="flex items-center gap-2 text-sm"><input v-model="owners" type="checkbox" value="papa" />Papa</label>
-          <label class="flex items-center gap-2 text-sm"><input v-model="owners" type="checkbox" value="payton" />Payton</label>
+        <legend class="mb-2 text-sm font-semibold text-gray-700">导出前筛选销售</legend>
+        <div class="flex flex-wrap gap-5">
+          <label v-for="channel in SALES_CHANNELS" :key="channel" class="flex items-center gap-2 text-sm"><input v-model="channels" type="checkbox" :value="channel" />{{ channel }}</label>
         </div>
+        <p class="mt-2 text-xs text-gray-500">默认仅纳入 PhtonRIng；“侧空翻棉”和“其它”个人出物不属于当前报税范围。</p>
       </fieldset>
     </div>
 
@@ -86,6 +87,6 @@ async function download() {
 
     <p class="mt-4 rounded-lg bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">工作簿用于申报准备和人工复核，不计算应纳税所得额或税额。税务分类、发票数据、纳税主体及费用凭证请以当期电子税务局和实际资料为准。</p>
     <p v-if="downloadError" class="mt-3 text-sm text-red-700" role="alert">{{ downloadError }}</p>
-    <div class="mt-5 flex justify-end gap-3"><button class="btn btn-outline" @click="close">关闭</button><button class="btn btn-primary" :disabled="!startDate || !endDate || startDate > endDate || !owners.length" @click="download">下载 Excel 工作簿</button></div>
+    <div class="mt-5 flex justify-end gap-3"><button class="btn btn-outline" @click="close">关闭</button><button class="btn btn-primary" :disabled="!startDate || !endDate || startDate > endDate || !channels.length" @click="download">下载 Excel 工作簿</button></div>
   </GlassModal>
 </template>

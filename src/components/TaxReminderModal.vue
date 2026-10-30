@@ -31,7 +31,7 @@ function dueTone(item) {
           <div class="mb-1 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-amber-600">
             <i class="fa-solid fa-bell" /> 申报事项
           </div>
-          <h2 id="tax-reminder-title" class="text-xl font-bold text-slate-900 sm:text-2xl">申报提醒</h2>
+          <h2 id="tax-reminder-title" class="text-xl font-bold text-slate-900 sm:text-2xl">税务申报</h2>
           <p class="mt-1 text-sm text-slate-500">提前 14、7、4、3、2、1 天提醒；申报日期以税务系统为准。</p>
         </div>
         <button class="rounded-lg px-3 py-2 text-sm font-semibold text-slate-500 hover:bg-white hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="关闭提醒" @click="emit('close')">关闭</button>
