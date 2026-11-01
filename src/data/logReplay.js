@@ -344,6 +344,7 @@ const INVERSE_HANDLERS = {
   purchase_edit: (state, d) => {
     const item = findItem(state.items, d.itemId)
     applyChangesTo(item, d.changes)
+    if (item && d.purchaseDetailsBefore) item.purchaseDetails = clone(d.purchaseDetailsBefore)
   },
 
   finance_add_record: (state, d) => removeById(state.financeRecords, 'id', d.recordId),

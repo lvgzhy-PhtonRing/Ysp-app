@@ -3,6 +3,7 @@ import sampleData from '../../__tests__/fixtures/sampleData.json'
 import { calcItemCost } from '../../utils/calc'
 import { loadData, state as store } from '../../data/store'
 import { addPurchaseItem, batchMoveToInventory, moveToInventory } from './usePurchase'
+import * as purchase from './usePurchase'
 
 describe('usePurchase logic', () => {
   beforeEach(() => {
@@ -56,6 +57,38 @@ describe('usePurchase logic', () => {
     moveToInventory(item.id, { [item.id]: { owner: 'payton', isLongTerm: false } })
     expect(item.owner).toBe('payton')
     expect(store.ownerRegistry.payton.investBalance).toBe(175)
+  })
+
+  it('rebalances Payton investment when deleting another item reallocates transfer cost', () => {
+    loadData({
+      items: [
+        { id: 'kept', owner: 'payton', status: 'inventory', cost: 50, isLongTerm: false, purchaseDetails: { transferId: 'T1', transferCoefficient: 1, preTransferCost: 20, transferCost: 30 } },
+        { id: 'removed', owner: 'papa', status: 'purchase', cost: 50, purchaseDetails: { transferId: 'T1', transferCoefficient: 1, preTransferCost: 20, transferCost: 30 } },
+      ],
+      transfers: [{ transferId: 'T1', totalRMB: 60 }],
+      ownerRegistry: { papa: {}, payton: { pocketBalance: 100, investBalance: 50, loans: [], accountTransfers: [] } },
+    })
+    purchase.deletePurchaseItem('removed')
+    expect(store.items.find((item) => item.id === 'kept').cost).toBe(80)
+    expect(store.ownerRegistry.payton.investBalance).toBe(20)
+  })
+
+  it('rebalances the original Payton account when an inventory cost is corrected', () => {
+    loadData({ items: [{ id: 'keep', owner: 'payton', status: 'inventory', cost: 50, isLongTerm: true }], ownerRegistry: { papa: {}, payton: { pocketBalance: 50, investBalance: 100, loans: [], accountTransfers: [] } } })
+    purchase.setPurchaseItemCost(store.items[0], 65)
+    expect(store.items[0].cost).toBe(65)
+    expect(store.ownerRegistry.payton.pocketBalance).toBe(35)
+    expect(store.ownerRegistry.payton.investBalance).toBe(100)
+  })
+
+  it('keeps purchase and transfer cost components aligned after directly editing total cost', () => {
+    loadData({ items: [{ id: 'buy', owner: 'papa', status: 'purchase', cost: 25, purchaseDetails: { originalPrice: 20, exchangeRate: 0, domesticShipping: 0, fee: 0, preTransferCost: 20, transferCost: 5, transferStatus: 'completed' } }] })
+    purchase.editPurchaseItemCost(store.items[0], 35)
+    expect(store.items[0].cost).toBe(35)
+    expect(store.items[0].purchaseDetails.preTransferCost).toBe(30)
+    expect(store.items[0].purchaseDetails.transferCost).toBe(5)
+    expect(purchase.resolveEditedPreTransferCost(store.items[0], 20, { originalPrice: 20, exchangeRate: 0, domesticShipping: 0, fee: 0 })).toBe(30)
+    expect(purchase.resolveEditedPreTransferCost(store.items[0], 25, { originalPrice: 25, exchangeRate: 0, domesticShipping: 0, fee: 0 })).toBe(25)
   })
 
   it('test2 submitTransfer related cost formula consistency on real data', () => {

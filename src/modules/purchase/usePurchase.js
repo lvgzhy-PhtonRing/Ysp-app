@@ -45,6 +45,32 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(n) ? n : fallback
 }
 
+export function setPurchaseItemCost(item, cost) {
+  const nextCost = toNumber(cost)
+  const account = item.status === 'inventory' ? getPaytonAccountForItem(item) : null
+  const balanceDelta = toNumber(item.cost) - nextCost
+  if (account && balanceDelta) adjustPaytonBalance(account, balanceDelta)
+  item.cost = nextCost
+  return nextCost
+}
+
+export function editPurchaseItemCost(item, cost) {
+  const nextCost = setPurchaseItemCost(item, cost)
+  item.purchaseDetails = item.purchaseDetails || {}
+  item.purchaseDetails.preTransferCost = nextCost - toNumber(item.purchaseDetails.transferCost)
+  item.purchaseDetails.manualPreTransferCost = item.purchaseDetails.preTransferCost
+  return nextCost
+}
+
+export function resolveEditedPreTransferCost(item, calculatedCost, nextDetails) {
+  const previous = item.purchaseDetails || {}
+  if (previous.manualPreTransferCost === undefined) return calculatedCost
+  const priceFields = ['originalPrice', 'exchangeRate', 'domesticShipping', 'fee']
+  return priceFields.every((field) => toNumber(previous[field]) === toNumber(nextDetails[field]))
+    ? toNumber(previous.manualPreTransferCost)
+    : calculatedCost
+}
+
 function generateItemId() {
   return Date.now() + Math.floor(Math.random() * 1000)
 }
@@ -120,7 +146,7 @@ function recalcTransferItemsByTransferId(transferId) {
     const transferCost = calcTransferCost(transfer.totalRMB, coefficient, totalCoefficients || 1)
 
     item.purchaseDetails.transferCost = transferCost
-    item.cost = calcItemCost(preTransferCost, transferCost)
+    setPurchaseItemCost(item, calcItemCost(preTransferCost, transferCost))
   })
 }
 
@@ -220,7 +246,7 @@ export function submitTransfer(transferData = {}, selectedItemIds = []) {
       transferCost,
     }
 
-    item.cost = calcItemCost(preTransferCost, transferCost)
+    setPurchaseItemCost(item, calcItemCost(preTransferCost, transferCost))
   })
 
   saveToLocalStorage()

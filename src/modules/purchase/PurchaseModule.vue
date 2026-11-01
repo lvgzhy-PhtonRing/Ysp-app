@@ -7,6 +7,9 @@ import {
   moveToInventory,
   submitTransfer,
   generatePurchaseGroupMetadata,
+  setPurchaseItemCost,
+  editPurchaseItemCost,
+  resolveEditedPreTransferCost,
 } from './usePurchase'
 import { calcItemCost, calcPreTransferCost, calcTransferCost } from '../../utils/calc'
 import { addOperationLog, clone, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
@@ -765,10 +768,14 @@ function applyLineToItem(line, target) {
   const fee = isDomestic ? 0 : Number(line.fee || 0)
   const transferCoefficient = isDomestic ? 1 : Number(line.transferCoefficient || 1)
   const exchangeRate = isDomestic ? 0 : Number(editGroupRate.value || 0)
-  const preTransferCost =
+  const calculatedCost =
     isDomestic
       ? originalPrice
       : calcPreTransferCost(originalPrice, exchangeRate, domesticShipping, fee)
+  const preTransferCost = resolveEditedPreTransferCost(target, calculatedCost, {
+    originalPrice, exchangeRate, domesticShipping, fee,
+  })
+  const manualCostPreserved = target.purchaseDetails?.manualPreTransferCost !== undefined && preTransferCost !== calculatedCost
 
   target.name = line.name
   target.brand = line.brand
@@ -790,9 +797,10 @@ function applyLineToItem(line, target) {
     preTransferCost,
     transferCoefficient,
   }
-  target.cost = target.purchaseDetails?.transferStatus === 'completed'
+  if (!manualCostPreserved) delete target.purchaseDetails.manualPreTransferCost
+  setPurchaseItemCost(target, target.purchaseDetails?.transferStatus === 'completed'
     ? calcItemCost(preTransferCost, Number(target.purchaseDetails?.transferCost || 0))
-    : preTransferCost
+    : preTransferCost)
 }
 
 function buildEditGroupItemsBySid() {
@@ -1345,7 +1353,7 @@ function submitEditPurchaseGroup() {
         const c = Number(item?.purchaseDetails?.transferCoefficient || 1)
         const tc = calcTransferCost(Number(transferRecord.totalRMB || 0), c, totalCoefficients || 1)
         item.purchaseDetails.transferCost = tc
-        item.cost = calcItemCost(pre, tc)
+        setPurchaseItemCost(item, calcItemCost(pre, tc))
       })
     })
 
@@ -1486,7 +1494,7 @@ function submitEditTransfer() {
       const preTransferCost = Number(item?.purchaseDetails?.preTransferCost || 0)
       const transferCost = calcTransferCost(record.totalRMB, coefficient, totalCoefficients || 1)
       item.purchaseDetails.transferCost = transferCost
-      item.cost = calcItemCost(preTransferCost, transferCost)
+      setPurchaseItemCost(item, calcItemCost(preTransferCost, transferCost))
     })
 
     saveToLocalStorage()
@@ -1530,7 +1538,7 @@ function deleteTransferRecord(record) {
     item.purchaseDetails.transferId = undefined
     item.purchaseDetails.transferBatch = undefined
     item.purchaseDetails.transferCost = 0
-    item.cost = Number(item.purchaseDetails.preTransferCost || 0)
+    setPurchaseItemCost(item, Number(item.purchaseDetails.preTransferCost || 0))
   })
 
   const idx = store.transfers.findIndex((r) => r?.transferId === record.transferId)
@@ -1584,10 +1592,11 @@ function submitEdit() {
     brand: item.brand,
     cost: Number(item.cost || 0),
   }
+  const purchaseDetailsBefore = clone(item.purchaseDetails || {})
 
   item.name = editForm.name
   item.brand = editForm.brand
-  item.cost = Number(editForm.cost || 0)
+  editPurchaseItemCost(item, editForm.cost)
 
   const changes = {}
   ;['name', 'brand', 'cost'].forEach((field) => {
@@ -1607,6 +1616,7 @@ function submitEdit() {
     itemId: item.id,
     changedFields: Object.keys(changes),
     changes: changes,
+    ...(changes.cost ? { purchaseDetailsBefore } : {}),
   })
   showEditModal.value = false
 }

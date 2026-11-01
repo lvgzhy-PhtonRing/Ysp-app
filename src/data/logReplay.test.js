@@ -2,6 +2,16 @@ import { describe, expect, it } from 'vitest'
 import { reconstructAtTime } from './logReplay'
 
 describe('sale log replay', () => {
+  it('restores both total and pre-transfer cost after reversing a purchase cost edit', () => {
+    const current = { items: [{ id: 'buy', cost: 35, purchaseDetails: { preTransferCost: 30, transferCost: 5 } }] }
+    const logs = [{ id: 3, time: '2026-10-29T12:00:00.000Z', type: 'purchase_edit', detail: {
+      itemId: 'buy', changes: { cost: { before: 25, after: 35 } }, purchaseDetailsBefore: { preTransferCost: 20, transferCost: 5 },
+    } }]
+    const { state } = reconstructAtTime(current, logs)
+    expect(state.items[0].cost).toBe(25)
+    expect(state.items[0].purchaseDetails.preTransferCost).toBe(20)
+  })
+
   it('restores the saved stock state when reversing an inventory sales sync', () => {
     const current = {
       items: [{
