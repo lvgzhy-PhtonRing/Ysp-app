@@ -63,6 +63,9 @@ function submitExpense() {
   addPaytonExpense({ ...expenseForm })
   expenseForm.item = ''; expenseForm.amount = 0; expenseForm.note = ''
 }
+function toggleExpenseType(form) {
+  form.type = form.type === 'expense' ? 'income' : 'expense'
+}
 function editRecord(record) {
   editingRecordId.value = record.id
   Object.assign(editExpenseForm, { type: record.type, date: record.date || '', item: record.item || '', amount: Number(record.amount || 0), note: record.note || '' })
@@ -158,7 +161,7 @@ function saveTransferEdit() {
 
     <section v-if="activeTab === '零花收支'" class="apple-card space-y-4">
       <div class="flex flex-wrap gap-3 items-end">
-        <div class="text-sm"><span class="mb-1 block">类型</span><div role="group" aria-label="收支类型" class="flex gap-2"><button type="button" class="rounded-full px-3 py-1.5 font-semibold transition-colors focus-visible:outline focus-visible:outline-2" :class="expenseForm.type === 'expense' ? 'bg-red-100 text-red-800 focus-visible:outline-red-500' : 'bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-700 focus-visible:outline-gray-400'" :aria-pressed="expenseForm.type === 'expense'" @click="expenseForm.type = 'expense'">支出</button><button type="button" class="rounded-full px-3 py-1.5 font-semibold transition-colors focus-visible:outline focus-visible:outline-2" :class="expenseForm.type === 'income' ? 'bg-green-100 text-green-800 focus-visible:outline-green-500' : 'bg-gray-100 text-gray-500 hover:bg-green-50 hover:text-green-700 focus-visible:outline-gray-400'" :aria-pressed="expenseForm.type === 'income'" @click="expenseForm.type = 'income'">收入</button></div></div>
+        <div class="text-sm"><span class="mb-1 block">类型</span><button type="button" class="rounded-full px-3 py-1.5 font-semibold transition-colors whitespace-nowrap focus-visible:outline focus-visible:outline-2" :class="expenseForm.type === 'expense' ? 'bg-red-100 text-red-800 focus-visible:outline-red-500' : 'bg-green-100 text-green-800 focus-visible:outline-green-500'" :aria-label="`当前为${expenseForm.type === 'expense' ? '支出' : '收入'}，点击切换`" :aria-pressed="expenseForm.type === 'income'" @click="toggleExpenseType(expenseForm)">{{ expenseForm.type === 'expense' ? '支出' : '收入' }} <span class="text-xs opacity-70">· 点击切换</span></button></div>
         <label class="text-sm">日期<input v-model="expenseForm.date" type="date" class="apple-input mt-1 block" /></label>
         <label class="text-sm">项目<input v-model="expenseForm.item" list="payton-expense-items" class="apple-input mt-1 block" /></label>
         <label class="text-sm">金额<input v-model.number="expenseForm.amount" type="number" min="0" step="0.01" class="apple-input mt-1 block" /></label>
@@ -237,7 +240,7 @@ function saveTransferEdit() {
       <div class="apple-card w-full max-w-xl space-y-4" role="dialog" aria-modal="true" aria-labelledby="edit-expense-title">
         <div class="flex items-center justify-between"><h3 id="edit-expense-title" class="text-xl font-bold">编辑零花收支</h3><button class="text-gray-400 hover:text-gray-700" aria-label="关闭" @click="editingRecordId = null">✕</button></div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div class="text-sm"><span class="mb-1 block">类型</span><div role="group" aria-label="收支类型" class="flex gap-2"><button type="button" class="rounded-full px-3 py-1.5 font-semibold transition-colors focus-visible:outline focus-visible:outline-2" :class="editExpenseForm.type === 'expense' ? 'bg-red-100 text-red-800 focus-visible:outline-red-500' : 'bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-700 focus-visible:outline-gray-400'" :aria-pressed="editExpenseForm.type === 'expense'" @click="editExpenseForm.type = 'expense'">支出</button><button type="button" class="rounded-full px-3 py-1.5 font-semibold transition-colors focus-visible:outline focus-visible:outline-2" :class="editExpenseForm.type === 'income' ? 'bg-green-100 text-green-800 focus-visible:outline-green-500' : 'bg-gray-100 text-gray-500 hover:bg-green-50 hover:text-green-700 focus-visible:outline-gray-400'" :aria-pressed="editExpenseForm.type === 'income'" @click="editExpenseForm.type = 'income'">收入</button></div></div>
+          <div class="text-sm"><span class="mb-1 block">类型</span><button type="button" class="rounded-full px-3 py-1.5 font-semibold transition-colors whitespace-nowrap focus-visible:outline focus-visible:outline-2" :class="editExpenseForm.type === 'expense' ? 'bg-red-100 text-red-800 focus-visible:outline-red-500' : 'bg-green-100 text-green-800 focus-visible:outline-green-500'" :aria-label="`当前为${editExpenseForm.type === 'expense' ? '支出' : '收入'}，点击切换`" :aria-pressed="editExpenseForm.type === 'income'" @click="toggleExpenseType(editExpenseForm)">{{ editExpenseForm.type === 'expense' ? '支出' : '收入' }} <span class="text-xs opacity-70">· 点击切换</span></button></div>
           <label class="text-sm">日期<input v-model="editExpenseForm.date" type="date" class="apple-input mt-1 block w-full" /></label>
           <label class="text-sm">项目<input v-model="editExpenseForm.item" list="payton-expense-items" class="apple-input mt-1 block w-full" /></label>
           <label class="text-sm">金额<input v-model.number="editExpenseForm.amount" type="number" min="0" step="0.01" class="apple-input mt-1 block w-full" /></label>
