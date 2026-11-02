@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { calcProfit } from '../../utils/calc'
+import { getPublicExpense } from '../finance/useFinance'
 import { state as store } from '../../data/store'
 import { editSaleRecord, getOwnerInventory, getSalesChannelStats, getSalesStats, rollbackSale as rollbackSaleRecord, setSaleConfirmation, submitSell } from './useSales'
 import { DEFAULT_SALES_CHANNEL, filterSalesByOwner, filterSalesByShop, SALES_CHANNELS } from './salesChannels'
@@ -100,6 +101,8 @@ const inventoryItems = computed(() => getOwnerInventory(store.items, store.curre
 
 const shopFilteredItems = computed(() => filterSalesByShop(soldItems.value, selectedShop.value))
 const salesStats = computed(() => getSalesStats(shopFilteredItems.value))
+const totalActualProfit = computed(() => salesStats.value.totalProfit - getPublicExpense(store.financeRecords.filter((record) => (record?.owner || 'papa') === store.currentOwner)))
+const actualProfitMargin = computed(() => salesStats.value.totalInvestment > 0 ? totalActualProfit.value / salesStats.value.totalInvestment : 0)
 const salesChannelStats = computed(() => getSalesChannelStats(soldItems.value))
 
 const addSelectedItem = computed(() =>
@@ -353,12 +356,13 @@ watch(
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <article v-for="summary in salesChannelStats" :key="summary.shop" :data-shop-summary="summary.shop" class="rounded-xl border border-gray-100 border-l-4 border-l-blue-400 bg-gray-50 p-3">
           <div class="flex items-center justify-between gap-2">
-            <h4 class="font-semibold text-gray-800">{{ summary.shop }}</h4>
+            <h4 class="font-semibold text-gray-800">{{ summary.shop === '其它' ? '其它（历史销售）' : summary.shop }}</h4>
             <span class="text-xs text-gray-500">{{ summary.totalSoldCount }} 件</span>
           </div>
           <div class="mt-2 grid grid-cols-2 gap-3">
             <div><div class="text-[11px] text-gray-400">成交额</div><div class="text-sm font-bold text-gray-700">{{ fmtMoney(summary.totalRevenue) }}</div></div>
             <div><div class="text-[11px] text-gray-400">销售利润</div><div class="text-sm font-bold" :class="summary.totalProfit >= 0 ? 'text-success' : 'text-danger'">{{ fmtMoney(summary.totalProfit) }}</div></div>
+            <div class="col-span-2 flex items-center justify-between border-t border-gray-200 pt-2"><span class="text-[11px] text-gray-400">毛利率（不含公共支出）</span><span class="text-sm font-bold" :class="summary.profitMargin >= 0 ? 'text-success' : 'text-danger'">{{ Number(summary.profitMargin || 0).toFixed(2) }}%</span></div>
           </div>
         </article>
       </div>
@@ -373,10 +377,10 @@ watch(
         <div class="text-xs text-gray-500 mb-1">成交总额</div>
         <div class="text-2xl font-bold text-gray-800">{{ fmtMoney(salesStats.totalRevenue) }}</div>
       </div>
-      <div class="bg-gray-50 p-4 rounded-xl border-l-4" :class="salesStats.totalProfit >= 0 ? 'border-green-500' : 'border-red-500'">
-        <div class="text-xs text-gray-500 mb-1">销售利润</div>
-        <div class="text-2xl font-bold" :class="salesStats.totalProfit >= 0 ? 'text-success' : 'text-danger'">{{ fmtMoney(salesStats.totalProfit) }}</div>
-        <div class="mt-1 text-xs text-gray-400">未扣公共支出</div>
+      <div class="bg-gray-50 p-4 rounded-xl border-l-4" :class="totalActualProfit >= 0 ? 'border-green-500' : 'border-red-500'">
+        <div class="text-xs text-gray-500 mb-1">总实盈利润</div>
+        <div class="text-2xl font-bold" :class="totalActualProfit >= 0 ? 'text-success' : 'text-danger'">{{ fmtMoney(totalActualProfit) }}</div>
+        <div class="mt-1 text-xs text-gray-400">利润率 {{ (actualProfitMargin * 100).toFixed(2) }}% · 已扣除公共支出</div>
       </div>
     </div>
 
