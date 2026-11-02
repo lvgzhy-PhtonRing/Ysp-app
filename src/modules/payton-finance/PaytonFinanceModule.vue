@@ -86,6 +86,12 @@ function monthsRemaining(loan) {
   const now = new Date()
   return Math.max(0, (due.getFullYear() - now.getFullYear()) * 12 + due.getMonth() - now.getMonth() + (due.getDate() >= now.getDate() ? 0 : -1))
 }
+function loanProgress(loan) {
+  const total = Number(loan.amount || 0)
+  if (total <= 0) return 0
+  const remaining = Number(loan.remaining ?? total)
+  return Math.min(100, Math.max(0, (total - remaining) / total * 100))
+}
 function submitTransfer() {
   if (Number(transferForm.amount) <= 0) return
   addPaytonTransfer({ ...transferForm })
@@ -163,8 +169,8 @@ function editTransfer(transfer) {
         <button class="btn btn-primary" @click="showLoanForm = true">新增贷款</button>
       </div>
       <article v-for="loan in loans" :key="loan.id" class="rounded-2xl border border-gray-100 bg-white p-5 flex items-center gap-5 cursor-pointer" @click="showLoanDetailId = loan.id">
-        <div class="w-20 h-20 rounded-full border-[6px] border-emerald-600 flex flex-col items-center justify-center shrink-0"><span class="font-bold">{{ monthsRemaining(loan) ?? '—' }}{{ monthsRemaining(loan) === null ? '' : '月' }}</span><span class="text-xs text-gray-400">剩余</span></div>
-        <div class="min-w-0 flex-1"><div class="text-gray-400">{{ loan.name }} <span v-if="loan.dueDate">· {{ loan.dueDate }}到期</span></div><div class="text-3xl font-bold mt-1">¥{{ Number(loan.remaining || 0).toFixed(2) }}</div><div class="text-sm text-gray-400">总额 ¥{{ Number(loan.amount || 0).toFixed(2) }}</div></div>
+        <div class="w-20 h-20 rounded-full flex flex-col items-center justify-center shrink-0" :style="{ background: `conic-gradient(#059669 ${loanProgress(loan)}%, #e5e7eb 0)` }"><div class="w-[calc(100%-10px)] h-[calc(100%-10px)] rounded-full bg-white flex flex-col items-center justify-center"><span class="font-bold">{{ loanProgress(loan).toFixed(0) }}%</span><span class="text-xs text-gray-400">已还</span></div></div>
+        <div class="min-w-0 flex-1"><div class="text-gray-400">{{ loan.name }} <span v-if="monthsRemaining(loan) !== null">· 剩余{{ monthsRemaining(loan) }}个月</span><span v-if="loan.dueDate">· {{ loan.dueDate }}到期</span></div><div class="text-3xl font-bold mt-1">¥{{ Number(loan.remaining || 0).toFixed(2) }}</div><div class="text-sm text-gray-400">总额 ¥{{ Number(loan.amount || 0).toFixed(2) }}</div></div>
         <div class="flex gap-3" @click.stop><button class="text-blue-600" title="查看贷款详情" @click="showLoanDetailId = loan.id">详情</button></div>
       </article>
       <div v-if="!loans.length" class="py-8 text-center text-gray-400">暂无贷款</div>
