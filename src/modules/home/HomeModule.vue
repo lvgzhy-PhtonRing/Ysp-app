@@ -37,7 +37,7 @@ const longTermValue = computed(() => longTermItems.value.reduce((s, i) => s + Nu
 const longTermCount = computed(() => longTermItems.value.length)
 
 const financeRecords = computed(() => store.financeRecords.filter((record) => (record?.owner || 'papa') === store.currentOwner))
-const financePublicExpense = computed(() => getPublicExpense(financeRecords.value))
+const financePublicExpense = computed(() => store.currentOwner === 'payton' ? 0 : getPublicExpense(financeRecords.value))
 const papaPublicExpense = computed(() => getPublicExpense(store.financeRecords.filter((record) => !record?.owner || record.owner === 'papa')))
 const papaLoanBalance = computed(() => store.loanRecords.filter((loan) => !loan?.owner || loan.owner === 'papa').reduce((sum, loan) => {
   if (loan?.isRepaid || loan?.repaid) return sum

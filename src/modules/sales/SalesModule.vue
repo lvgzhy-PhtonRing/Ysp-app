@@ -101,7 +101,7 @@ const inventoryItems = computed(() => getOwnerInventory(store.items, store.curre
 
 const shopFilteredItems = computed(() => filterSalesByShop(soldItems.value, selectedShop.value))
 const salesStats = computed(() => getSalesStats(shopFilteredItems.value))
-const totalActualProfit = computed(() => salesStats.value.totalProfit - getPublicExpense(store.financeRecords.filter((record) => (record?.owner || 'papa') === store.currentOwner)))
+const totalActualProfit = computed(() => salesStats.value.totalProfit - (store.currentOwner === 'payton' ? 0 : getPublicExpense(store.financeRecords.filter((record) => (record?.owner || 'papa') === 'papa'))))
 const actualProfitMargin = computed(() => salesStats.value.totalInvestment > 0 ? totalActualProfit.value / salesStats.value.totalInvestment : 0)
 const salesChannelStats = computed(() => getSalesChannelStats(soldItems.value))
 
