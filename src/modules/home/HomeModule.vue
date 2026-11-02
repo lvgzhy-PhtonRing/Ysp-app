@@ -192,15 +192,14 @@ function statusText(status) {
             <div><div v-for="x in alipayBreakdown.outgoing" :key="x.label" class="flex justify-between text-xs text-gray-600 py-0.5"><span>{{ x.label }}</span><span class="text-orange-700">{{ fmtMoney(x.value) }}</span></div></div>
             <div class="flex justify-between text-xs font-bold text-orange-700 border-t border-orange-200 mt-1 pt-1"><span>小计</span><span>{{ fmtMoney(alipayBreakdown.outSubtotal) }}</span></div>
           </div>
-          <div class="bg-violet-50 border border-violet-200 rounded-lg p-3">
-            <div class="text-[11px] font-bold text-violet-800 mb-2">Payton's基金计算</div>
+          <div class="bg-violet-50 border border-violet-200 rounded-lg p-2.5 grid grid-rows-[auto_1fr_auto]">
+            <div class="text-[11px] font-bold text-violet-800 mb-1">Payton's基金计算</div>
             <div class="space-y-1 text-xs text-violet-900">
               <div class="flex justify-between"><span>零钱余额</span><span>{{ fmtCurrency(paytonPocketBalance) }}</span></div>
               <div class="flex justify-between"><span>＋ 投资余额</span><span>{{ fmtCurrency(paytonInvestBalance) }}</span></div>
               <div class="flex justify-between"><span>－ 贷款剩余</span><span>{{ fmtCurrency(paytonLoanRemaining) }}</span></div>
-              <div class="h-2" aria-hidden="true"></div>
-              <div class="flex justify-between border-t border-violet-200 pt-1 font-bold"><span>＝ Payton's基金</span><span>{{ fmtCurrency(carFundBalance) }}</span></div>
             </div>
+            <div class="flex justify-between text-xs font-bold text-violet-900 border-t border-violet-200 mt-1 pt-1"><span>＝ Payton's基金</span><span>{{ fmtCurrency(carFundBalance) }}</span></div>
           </div>
         </div>
       </div>
