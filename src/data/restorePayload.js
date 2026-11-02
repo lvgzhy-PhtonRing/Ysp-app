@@ -5,7 +5,7 @@
 // 自动同步整轮跳过，恢复内容无法上云。此处对「内容与当前不同的槽位」rev+1，
 // 使下次同步判定为 upload 自动上云；未变槽位沿用当前 rev，语义与内容一致。
 
-import { SLOT_KEYS, slotValue } from './cloudSlotPlan'
+import { SLOT_KEYS, hasUsableSlotValue, slotValue } from './cloudSlotPlan'
 import { stableSerialize } from './store'
 
 /**
@@ -29,4 +29,14 @@ export function finalizeRestorePayload(priorPayload, currentPayload, at = new Da
       : { rev: Number(cur?.rev) || 0, at: cur?.at || '' }
   }
   return { ...priorPayload, _rev: nextRev, updatedAt: at }
+}
+
+export function isCompleteHistoryEntry(entry) {
+  return !!entry?.after && SLOT_KEYS.every((slot) => hasUsableSlotValue(entry.after, slot))
+}
+
+export function getHistoryRestoreTarget(entries, id, currentPayload) {
+  const entry = entries.find((item) => String(item.id) === String(id))
+  if (!isCompleteHistoryEntry(entry)) return null
+  return { payload: finalizeRestorePayload(entry.after, currentPayload), time: entry.time }
 }

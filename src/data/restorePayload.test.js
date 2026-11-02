@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { computeSlotPlan } from './cloudSlotPlan'
 import { stableSerialize } from './store'
-import { finalizeRestorePayload } from './restorePayload'
+import { finalizeRestorePayload, getHistoryRestoreTarget, isCompleteHistoryEntry } from './restorePayload'
 
 const basePayload = () => ({
   items: [{ id: 1, name: 'A', sid: 'JP-1', cost: 100, status: 'inventory' }],
@@ -28,6 +28,24 @@ const basePayload = () => ({
 })
 
 describe('finalizeRestorePayload（E2 恢复版本化）', () => {
+  it('从完整历史快照同时恢复商品和 Payton 余额，缺失资金快照时拒绝恢复', () => {
+    const current = {
+      ...basePayload(),
+      ownerRegistry: { payton: { pocketBalance: 100, investBalance: 50 } },
+      taxpayerProfiles: [],
+    }
+    const prior = JSON.parse(JSON.stringify(current))
+    prior.items[0].status = 'purchase'
+    prior.ownerRegistry.payton.investBalance = 150
+    const complete = { id: 7, time: '2026-10-31T10:00:00Z', after: prior }
+    const target = getHistoryRestoreTarget([complete], '7', current)
+    expect(target.payload.items[0].status).toBe('purchase')
+    expect(target.payload.ownerRegistry.payton.investBalance).toBe(150)
+    expect(target.payload._rev.ownerRegistry.rev).toBe(1)
+    expect(isCompleteHistoryEntry({ id: 8, after: { items: prior.items } })).toBe(false)
+    expect(getHistoryRestoreTarget([{ id: 8, after: { items: prior.items } }], '8', current)).toBeNull()
+  })
+
   it('内容变化的槽位 rev+1，未变槽位沿用当前 rev', () => {
     const current = basePayload()
     const prior = {

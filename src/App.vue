@@ -58,8 +58,7 @@ import {
   unloadSync,
 } from './data/store'
 import { appendAdoptBefore, latestFullImportSnapshot } from './data/adoptLog'
-import { reconstructAtTime } from './data/logReplay'
-import { finalizeRestorePayload } from './data/restorePayload'
+import { finalizeRestorePayload, getHistoryRestoreTarget, isCompleteHistoryEntry } from './data/restorePayload'
 import {
   getLogBrief,
   getLogDetailSections,
@@ -154,73 +153,42 @@ function switchOwner(owner) {
 
 // ── 数据回溯（操作日志模态框内） ─────────────────────────────────
 const showHistoryRestore = ref(false)
+const historyTargetId = ref('')
 const historyTargetTime = ref('')
 const historyDiff = ref([])
 const historyTargetState = ref(null)
 
-// reconstructAtTime 的输出是扁平结构（financeRecords/loanRecords），
-// 需转换为 exportData() 的嵌套 payload 形状，才能喂给 computeConflictDiff / applyCloudDataToStore
-function replayStateToPayload(state) {
-  const src = state || {}
-  const calc = src.calc && typeof src.calc === 'object' ? src.calc : {}
-  return {
-    items: Array.isArray(src.items) ? src.items : [],
-    calc,
-    finance: {
-      records: Array.isArray(src.financeRecords) ? src.financeRecords : [],
-      loans: Array.isArray(src.loanRecords) ? src.loanRecords : [],
-    },
-    transfers: Array.isArray(src.transfers) ? src.transfers : [],
-    rushcar: src.rushcar && typeof src.rushcar === 'object' ? src.rushcar : {},
-    updatedAt: src.updatedAt || '',
-    _rev: src._rev && typeof src._rev === 'object' ? src._rev : {},
-  }
-}
-
 function buildHistoryTimeline() {
-  return store.operationLogs.map((log) => ({
-    id: log.id,
-    time: log.time,
-    type: log.type,
-    message: getLogBrief(log),
+  return [...store.undoStack].reverse().filter(isCompleteHistoryEntry).map((entry) => ({
+    id: entry.id,
+    time: entry.time,
+    message: entry.message,
   }))
 }
 
-function computeHistoryDiff(targetTime) {
-  // reconstructAtTime 要求扁平结构；exportData() 是嵌套结构（finance.records/loans），
-  // 直接传入会导致财务/借贷数据回放时被清空，故从 store 构造扁平输入
-  const currentFlat = {
-    items: store.items,
-    calc: store.calc,
-    financeRecords: store.financeRecords,
-    loanRecords: store.loanRecords,
-    transfers: store.transfers,
-  }
-  const { state: prior, barriers, skipped } = reconstructAtTime(currentFlat, store.operationLogs, targetTime)
-  if (barriers.length > 0) {
-    historyTargetState.value = null
-    historyDiff.value = []
-    alert('该时间点之前存在不可逆操作（导入/撤销/清空），无法精确还原。')
-    return
-  }
-  const priorPayload = replayStateToPayload(prior)
-  priorPayload.ownerRegistry = exportData().ownerRegistry
-  // 回溯引擎无法重建 rushcar 槽位，保留当前数据：既避免误清空美淘数据，
-  // 也避免 applyCloudDataToStore 因 rushcar 缺失（非数组）拒绝应用
-  priorPayload.rushcar = exportData().rushcar
+function computeHistoryDiff(targetId) {
+  historyTargetState.value = null
+  historyDiff.value = []
   const currentPayload = exportData()
-  const diff = computeConflictDiff(priorPayload, currentPayload)
+  const target = getHistoryRestoreTarget(store.undoStack, targetId, currentPayload)
+  if (!target) return
+  const diff = computeConflictDiff(target.payload, currentPayload)
   // 恢复目标带新 _rev/updatedAt：变更槽位 rev+1，使下次同步判 upload 自动上云
-  historyTargetState.value = finalizeRestorePayload(priorPayload, currentPayload)
-  historyTargetTime.value = targetTime
+  historyTargetState.value = target.payload
+  historyTargetTime.value = target.time
   historyDiff.value = diff.entries || []
-  void skipped
 }
 
 function handleRestoreFromHistory() {
   if (!historyTargetState.value) return
+  const target = getHistoryRestoreTarget(store.undoStack, historyTargetId.value, exportData())
+  if (!target) {
+    historyTargetState.value = null
+    alert('完整快照已不可用，请重新选择时间点。')
+    return
+  }
   if (!confirm('将当前数据恢复到所选时间点（会同步至云端），是否继续？')) return
-  applyCloudDataToStore(historyTargetState.value, { trackHistory: true })
+  if (!applyCloudDataToStore(target.payload, { trackHistory: true })) return
   addOperationLog('app_history_restore', `恢复数据到 ${new Date(historyTargetTime.value).toLocaleString()}`, {
     targetTime: historyTargetTime.value,
   })
@@ -1336,13 +1304,14 @@ watch(
           <h4 class="font-bold text-lg">数据回溯</h4>
           <button class="text-xs text-gray-500 hover:text-gray-700" @click="showHistoryRestore = false">关闭</button>
         </div>
-        <p class="text-sm text-gray-500 mb-3">选择一个历史时间点，查看当时的差异摘要并可恢复。</p>
-        <select class="apple-select w-full mb-3" v-model="historyTargetTime" @change="computeHistoryDiff(historyTargetTime)">
+        <p class="text-sm text-gray-500 mb-3">选择本次会话保留的完整数据快照（最多 20 次），核对差异后恢复。旧日志缺少资金快照，不能用于精确恢复；更早的数据请使用 JSON 备份。</p>
+        <select class="apple-select w-full mb-3" v-model="historyTargetId" @change="computeHistoryDiff(historyTargetId)">
           <option value="">选择时间点…</option>
-          <option v-for="t in buildHistoryTimeline()" :key="t.id" :value="t.time">
+          <option v-for="t in buildHistoryTimeline()" :key="t.id" :value="String(t.id)">
             {{ new Date(t.time).toLocaleString() }} · {{ t.message }}
           </option>
         </select>
+        <p v-if="buildHistoryTimeline().length === 0" class="text-xs text-amber-700 mb-3">当前没有可精确恢复的完整快照。</p>
         <div v-if="historyDiff.length" class="text-xs text-gray-600 space-y-1">
           <div v-for="(e, i) in historyDiff.slice(0, 20)" :key="i"
                class="flex items-start gap-2 border-b border-gray-50 pb-1">
