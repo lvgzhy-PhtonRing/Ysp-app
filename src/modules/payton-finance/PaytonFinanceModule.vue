@@ -47,6 +47,10 @@ const expenseForm = reactive({ type: 'expense', date: new Date().toISOString().s
 const loanForm = reactive({ name: '', amount: 0, date: new Date().toISOString().slice(0, 10), dueDate: '', note: '' })
 const loanEventForm = reactive({ type: 'repay', amount: 0, date: new Date().toISOString().slice(0, 10), note: '' })
 const transferForm = reactive({ fromAccount: 'pocket', toAccount: 'invest', amount: 0, date: new Date().toISOString().slice(0, 10), note: '' })
+const transferDirection = ref('pocket-to-invest')
+const editingTransferId = ref(null)
+const editTransferDirection = ref('pocket-to-invest')
+const editTransferForm = reactive({ fromAccount: 'pocket', toAccount: 'invest', amount: 0, date: '', note: '' })
 const editingRecordId = ref(null)
 const showLoanForm = ref(false)
 const showRepayForm = ref(false)
@@ -86,20 +90,49 @@ function monthsRemaining(loan) {
   const now = new Date()
   return Math.max(0, (due.getFullYear() - now.getFullYear()) * 12 + due.getMonth() - now.getMonth() + (due.getDate() >= now.getDate() ? 0 : -1))
 }
+function totalLoanMonths(loan) {
+  if (!loan.startDate || !loan.dueDate) return null
+  const start = new Date(`${loan.startDate}T00:00:00`)
+  const due = new Date(`${loan.dueDate}T00:00:00`)
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(due.getTime())) return null
+  return Math.max(0, (due.getFullYear() - start.getFullYear()) * 12 + due.getMonth() - start.getMonth() + (due.getDate() >= start.getDate() ? 0 : -1))
+}
 function loanProgress(loan) {
-  const total = Number(loan.amount || 0)
-  if (total <= 0) return 0
-  const remaining = Number(loan.remaining ?? total)
-  return Math.min(100, Math.max(0, (total - remaining) / total * 100))
+  const totalMonths = totalLoanMonths(loan)
+  const remainingMonths = monthsRemaining(loan)
+  if (totalMonths === null || totalMonths <= 0 || remainingMonths === null) return null
+  return Math.min(100, Math.max(0, remainingMonths / totalMonths * 100))
 }
 function submitTransfer() {
   if (Number(transferForm.amount) <= 0) return
   addPaytonTransfer({ ...transferForm })
   transferForm.amount = 0; transferForm.note = ''
 }
+function selectTransferDirection(direction) {
+  transferDirection.value = direction
+  transferForm.fromAccount = direction === 'pocket-to-invest' ? 'pocket' : 'invest'
+  transferForm.toAccount = direction === 'pocket-to-invest' ? 'invest' : 'pocket'
+}
+function selectEditTransferDirection(direction) {
+  editTransferDirection.value = direction
+  editTransferForm.fromAccount = direction === 'pocket-to-invest' ? 'pocket' : 'invest'
+  editTransferForm.toAccount = direction === 'pocket-to-invest' ? 'invest' : 'pocket'
+}
 function editTransfer(transfer) {
-  const amount = Number(prompt('请输入新金额', String(transfer.amount)))
-  if (Number.isFinite(amount) && amount > 0) updatePaytonTransfer(transfer.id, { amount })
+  editingTransferId.value = transfer.id
+  editTransferDirection.value = transfer.fromAccount === 'pocket' ? 'pocket-to-invest' : 'invest-to-pocket'
+  Object.assign(editTransferForm, {
+    fromAccount: transfer.fromAccount,
+    toAccount: transfer.toAccount,
+    amount: Number(transfer.amount || 0),
+    date: transfer.date || '',
+    note: transfer.note || '',
+  })
+}
+function saveTransferEdit() {
+  if (!Number.isFinite(Number(editTransferForm.amount)) || Number(editTransferForm.amount) <= 0) return
+  updatePaytonTransfer(editingTransferId.value, { ...editTransferForm, amount: Number(editTransferForm.amount) })
+  editingTransferId.value = null
 }
 </script>
 
@@ -125,7 +158,7 @@ function editTransfer(transfer) {
 
     <section v-if="activeTab === '零花收支'" class="apple-card space-y-4">
       <div class="flex flex-wrap gap-3 items-end">
-        <label class="text-sm">类型<select v-model="expenseForm.type" class="apple-select mt-1 block"><option value="expense">支出</option><option value="income">收入</option></select></label>
+        <div class="text-sm"><span class="mb-1 block">类型</span><div role="group" aria-label="收支类型" class="flex gap-2"><button type="button" class="rounded-full px-3 py-1.5 font-semibold transition-colors focus-visible:outline focus-visible:outline-2" :class="expenseForm.type === 'expense' ? 'bg-red-100 text-red-800 focus-visible:outline-red-500' : 'bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-700 focus-visible:outline-gray-400'" :aria-pressed="expenseForm.type === 'expense'" @click="expenseForm.type = 'expense'">支出</button><button type="button" class="rounded-full px-3 py-1.5 font-semibold transition-colors focus-visible:outline focus-visible:outline-2" :class="expenseForm.type === 'income' ? 'bg-green-100 text-green-800 focus-visible:outline-green-500' : 'bg-gray-100 text-gray-500 hover:bg-green-50 hover:text-green-700 focus-visible:outline-gray-400'" :aria-pressed="expenseForm.type === 'income'" @click="expenseForm.type = 'income'">收入</button></div></div>
         <label class="text-sm">日期<input v-model="expenseForm.date" type="date" class="apple-input mt-1 block" /></label>
         <label class="text-sm">项目<input v-model="expenseForm.item" list="payton-expense-items" class="apple-input mt-1 block" /></label>
         <label class="text-sm">金额<input v-model.number="expenseForm.amount" type="number" min="0" step="0.01" class="apple-input mt-1 block" /></label>
@@ -169,8 +202,8 @@ function editTransfer(transfer) {
         <button class="btn btn-primary" @click="showLoanForm = true">新增贷款</button>
       </div>
       <article v-for="loan in loans" :key="loan.id" class="rounded-2xl border border-gray-100 bg-white p-5 flex items-center gap-5 cursor-pointer" @click="showLoanDetailId = loan.id">
-        <div class="w-20 h-20 rounded-full flex flex-col items-center justify-center shrink-0" :style="{ background: `conic-gradient(#059669 ${loanProgress(loan)}%, #e5e7eb 0)` }"><div class="w-[calc(100%-10px)] h-[calc(100%-10px)] rounded-full bg-white flex flex-col items-center justify-center"><span class="font-bold">{{ loanProgress(loan).toFixed(0) }}%</span><span class="text-xs text-gray-400">已还</span></div></div>
-        <div class="min-w-0 flex-1"><div class="text-gray-400">{{ loan.name }} <span v-if="monthsRemaining(loan) !== null">· 剩余{{ monthsRemaining(loan) }}个月</span><span v-if="loan.dueDate">· {{ loan.dueDate }}到期</span></div><div class="text-3xl font-bold mt-1">¥{{ Number(loan.remaining || 0).toFixed(2) }}</div><div class="text-sm text-gray-400">总额 ¥{{ Number(loan.amount || 0).toFixed(2) }}</div></div>
+        <div class="w-20 h-20 rounded-full flex flex-col items-center justify-center shrink-0" :style="{ background: `conic-gradient(#059669 ${loanProgress(loan) ?? 0}%, #e5e7eb 0)` }"><div class="w-[calc(100%-10px)] h-[calc(100%-10px)] rounded-full bg-white flex flex-col items-center justify-center"><span class="font-bold">{{ loanProgress(loan) === null ? '—' : loanProgress(loan).toFixed(0) + '%' }}</span><span class="text-xs text-gray-400">剩余</span></div></div>
+        <div class="min-w-0 flex-1"><div class="text-gray-400">{{ loan.name }} <span v-if="totalLoanMonths(loan) !== null">· 剩余{{ monthsRemaining(loan) }} / {{ totalLoanMonths(loan) }}个月</span><span v-else-if="monthsRemaining(loan) !== null">· 剩余{{ monthsRemaining(loan) }}个月</span><span v-if="loan.dueDate">· {{ loan.dueDate }}到期</span></div><div class="text-3xl font-bold mt-1">¥{{ Number(loan.remaining || 0).toFixed(2) }}</div><div class="text-sm text-gray-400">总额 ¥{{ Number(loan.amount || 0).toFixed(2) }}</div></div>
         <div class="flex gap-3" @click.stop><button class="text-blue-600" title="查看贷款详情" @click="showLoanDetailId = loan.id">详情</button></div>
       </article>
       <div v-if="!loans.length" class="py-8 text-center text-gray-400">暂无贷款</div>
@@ -180,16 +213,23 @@ function editTransfer(transfer) {
     </section>
 
     <section v-else class="apple-card space-y-4">
+      <div class="space-y-3">
+        <div class="text-sm font-medium">选择互转方向</div>
+        <div role="group" aria-label="互转方向" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button type="button" class="rounded-xl border px-4 py-3 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500" :class="transferDirection === 'pocket-to-invest' ? 'border-blue-500 bg-blue-50 text-blue-900' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'" :aria-pressed="transferDirection === 'pocket-to-invest'" @click="selectTransferDirection('pocket-to-invest')"><span class="font-semibold">零钱 → 投资</span><span class="mt-1 block text-xs opacity-75">从零钱转入投资账户</span></button>
+          <button type="button" class="rounded-xl border px-4 py-3 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500" :class="transferDirection === 'invest-to-pocket' ? 'border-blue-500 bg-blue-50 text-blue-900' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'" :aria-pressed="transferDirection === 'invest-to-pocket'" @click="selectTransferDirection('invest-to-pocket')"><span class="font-semibold">投资 → 零钱</span><span class="mt-1 block text-xs opacity-75">从投资账户转入零钱</span></button>
+        </div>
+      </div>
       <div class="flex flex-wrap gap-3 items-end">
-        <label class="text-sm">转出<select v-model="transferForm.fromAccount" class="apple-select mt-1 block"><option value="pocket">零钱</option><option value="invest">投资</option></select></label>
-        <label class="text-sm">转入<select v-model="transferForm.toAccount" class="apple-select mt-1 block"><option value="invest">投资</option><option value="pocket">零钱</option></select></label>
         <label class="text-sm">金额<input v-model.number="transferForm.amount" type="number" min="0" step="0.01" class="apple-input mt-1 block" /></label>
         <label class="text-sm">日期<input v-model="transferForm.date" type="date" class="apple-input mt-1 block" /></label>
+        <label class="text-sm flex-1 min-w-48">备注<input v-model="transferForm.note" class="apple-input mt-1 block w-full" placeholder="可填写互转原因" /></label>
         <button class="btn btn-primary" @click="submitTransfer">确认互转</button>
       </div>
+      <p v-if="Number(transferForm.amount) > 0" class="text-sm text-gray-500">¥{{ Number(transferForm.amount).toFixed(2) }} 将从{{ transferForm.fromAccount === 'pocket' ? '零钱' : '投资账户' }}扣除，转入{{ transferForm.toAccount === 'pocket' ? '零钱' : '投资账户' }}。</p>
       <div v-for="transfer in transfers" :key="transfer.id" class="flex justify-between border-t py-3 text-sm">
-        <span>{{ transfer.date }} · {{ transfer.fromAccount === 'pocket' ? '零钱' : '投资' }} → {{ transfer.toAccount === 'pocket' ? '零钱' : '投资' }} · ¥{{ Number(transfer.amount).toFixed(2) }}</span>
-        <span><button class="mr-3 text-blue-600" @click="editTransfer(transfer)">编辑金额</button><button class="text-red-500" @click="deletePaytonTransfer(transfer.id)">删除</button></span>
+        <div class="min-w-0"><div>{{ transfer.date }} · {{ transfer.fromAccount === 'pocket' ? '零钱' : '投资' }} → {{ transfer.toAccount === 'pocket' ? '零钱' : '投资' }} · ¥{{ Number(transfer.amount).toFixed(2) }}</div><div v-if="transfer.note" class="mt-1 text-xs text-gray-400">备注：{{ transfer.note }}</div></div>
+        <span class="shrink-0"><button class="mr-3 text-blue-600" @click="editTransfer(transfer)">编辑</button><button class="text-red-500" @click="deletePaytonTransfer(transfer.id)">删除</button></span>
       </div>
     </section>
 
@@ -197,13 +237,24 @@ function editTransfer(transfer) {
       <div class="apple-card w-full max-w-xl space-y-4" role="dialog" aria-modal="true" aria-labelledby="edit-expense-title">
         <div class="flex items-center justify-between"><h3 id="edit-expense-title" class="text-xl font-bold">编辑零花收支</h3><button class="text-gray-400 hover:text-gray-700" aria-label="关闭" @click="editingRecordId = null">✕</button></div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label class="text-sm">类型<select v-model="editExpenseForm.type" class="apple-select mt-1 block w-full"><option value="expense">支出</option><option value="income">收入</option></select></label>
+          <div class="text-sm"><span class="mb-1 block">类型</span><div role="group" aria-label="收支类型" class="flex gap-2"><button type="button" class="rounded-full px-3 py-1.5 font-semibold transition-colors focus-visible:outline focus-visible:outline-2" :class="editExpenseForm.type === 'expense' ? 'bg-red-100 text-red-800 focus-visible:outline-red-500' : 'bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-700 focus-visible:outline-gray-400'" :aria-pressed="editExpenseForm.type === 'expense'" @click="editExpenseForm.type = 'expense'">支出</button><button type="button" class="rounded-full px-3 py-1.5 font-semibold transition-colors focus-visible:outline focus-visible:outline-2" :class="editExpenseForm.type === 'income' ? 'bg-green-100 text-green-800 focus-visible:outline-green-500' : 'bg-gray-100 text-gray-500 hover:bg-green-50 hover:text-green-700 focus-visible:outline-gray-400'" :aria-pressed="editExpenseForm.type === 'income'" @click="editExpenseForm.type = 'income'">收入</button></div></div>
           <label class="text-sm">日期<input v-model="editExpenseForm.date" type="date" class="apple-input mt-1 block w-full" /></label>
           <label class="text-sm">项目<input v-model="editExpenseForm.item" list="payton-expense-items" class="apple-input mt-1 block w-full" /></label>
           <label class="text-sm">金额<input v-model.number="editExpenseForm.amount" type="number" min="0" step="0.01" class="apple-input mt-1 block w-full" /></label>
           <label class="text-sm sm:col-span-2">备注<input v-model="editExpenseForm.note" class="apple-input mt-1 block w-full" /></label>
         </div>
         <div class="flex justify-end gap-2"><button class="btn btn-outline" @click="editingRecordId = null">取消</button><button class="btn btn-primary" @click="saveExpenseEdit">保存修改</button></div>
+      </div>
+    </div>
+    <div v-if="editingTransferId !== null" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 glass-modal" @click.self="editingTransferId = null">
+      <div class="apple-card w-full max-w-xl space-y-4" role="dialog" aria-modal="true" aria-labelledby="edit-transfer-title">
+        <div class="flex items-center justify-between"><h3 id="edit-transfer-title" class="text-xl font-bold">编辑零钱↔投资互转</h3><button class="text-gray-400 hover:text-gray-700" aria-label="关闭" @click="editingTransferId = null">✕</button></div>
+        <div class="space-y-2"><div class="text-sm font-medium">互转方向</div><div role="group" aria-label="编辑互转方向" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button type="button" class="rounded-xl border px-4 py-3 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500" :class="editTransferDirection === 'pocket-to-invest' ? 'border-blue-500 bg-blue-50 text-blue-900' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'" :aria-pressed="editTransferDirection === 'pocket-to-invest'" @click="selectEditTransferDirection('pocket-to-invest')"><span class="font-semibold">零钱 → 投资</span><span class="mt-1 block text-xs opacity-75">从零钱转入投资账户</span></button>
+          <button type="button" class="rounded-xl border px-4 py-3 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500" :class="editTransferDirection === 'invest-to-pocket' ? 'border-blue-500 bg-blue-50 text-blue-900' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'" :aria-pressed="editTransferDirection === 'invest-to-pocket'" @click="selectEditTransferDirection('invest-to-pocket')"><span class="font-semibold">投资 → 零钱</span><span class="mt-1 block text-xs opacity-75">从投资账户转入零钱</span></button>
+        </div></div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3"><label class="text-sm">金额<input v-model.number="editTransferForm.amount" type="number" min="0" step="0.01" class="apple-input mt-1 block w-full" /></label><label class="text-sm">日期<input v-model="editTransferForm.date" type="date" class="apple-input mt-1 block w-full" /></label><label class="text-sm sm:col-span-2">备注<input v-model="editTransferForm.note" class="apple-input mt-1 block w-full" placeholder="可填写互转原因" /></label></div>
+        <div class="flex justify-end gap-2"><button class="btn btn-outline" @click="editingTransferId = null">取消</button><button class="btn btn-primary" @click="saveTransferEdit">保存修改</button></div>
       </div>
     </div>
     <datalist id="payton-expense-items"><option v-for="item in expenseItems" :key="item" :value="item" /></datalist>
