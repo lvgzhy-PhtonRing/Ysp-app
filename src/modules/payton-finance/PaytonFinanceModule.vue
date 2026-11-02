@@ -7,13 +7,35 @@ import {
   getPaytonFund, updatePaytonExpense, updatePaytonTransfer,
 } from './usePaytonFinance'
 
-const tabs = ['零花收支', '贷款清单', '零钱↔投资互转']
+const tabs = ['零花收支', '买车支出', '贷款清单', '零钱↔投资互转']
 const activeTab = ref(tabs[0])
 const owner = computed(() => state.ownerRegistry.payton || {})
 const loans = computed(() => owner.value.loans || [])
 const transfers = computed(() => owner.value.accountTransfers || [])
 const records = computed(() => state.financeRecords.filter((record) => record.owner === 'payton').sort((a, b) => String(b.date).localeCompare(String(a.date))))
 const expenseItems = computed(() => [...new Set(records.value.map((record) => String(record.item || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-CN')))
+const now = new Date()
+const purchaseMonth = ref(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)
+const carPurchases = computed(() => state.items
+  .map((item, sourceIndex) => ({ item, sourceIndex }))
+  .filter(({ item }) => item?.owner === 'payton' && item?.status !== 'purchase' && String(item?.inventoryDetails?.inStockDate || '').slice(0, 7) === purchaseMonth.value)
+  .map(({ item, sourceIndex }) => ({
+    sourceIndex,
+    ...item,
+    purchaseDate: item.inventoryDetails.inStockDate,
+    purchaseCost: item.purchaseDetails?.preTransferCost == null ? null : Number(item.purchaseDetails.preTransferCost),
+    transferCost: item.purchaseDetails?.transferCost == null ? null : Number(item.purchaseDetails.transferCost),
+    totalCost: Number(item.cost || 0),
+  }))
+  .sort((a, b) => String(b.purchaseDate).localeCompare(String(a.purchaseDate))))
+const carPurchaseSummary = computed(() => carPurchases.value.reduce((summary, item) => {
+  const account = item.isLongTerm ? 'self' : 'invest'
+  summary[account].count += 1
+  summary[account].amount += item.totalCost
+  summary.total.count += 1
+  summary.total.amount += item.totalCost
+  return summary
+}, { self: { count: 0, amount: 0 }, invest: { count: 0, amount: 0 }, total: { count: 0, amount: 0 } }))
 const loanTotal = computed(() => loans.value.reduce((sum, loan) => sum + (loan.status === 'active' ? Number(loan.remaining || 0) : 0), 0))
 const balanceCards = computed(() => [
   { label: '零钱', value: owner.value.pocketBalance },
@@ -109,6 +131,30 @@ function editTransfer(transfer) {
         <div class="flex items-center gap-3"><span class="font-semibold tabular-nums whitespace-nowrap" :class="record.type === 'income' ? 'text-green-600' : 'text-red-600'">{{ record.type === 'income' ? '+' : '−' }}¥{{ Number(record.amount).toFixed(2) }}</span><button class="text-blue-600" @click="editRecord(record)">编辑</button><button class="text-red-500" @click="deletePaytonExpense(record.id)">删除</button></div>
       </div>
       <div v-if="!records.length" class="py-8 text-center text-gray-400">暂无零花收支</div>
+    </section>
+
+    <section v-else-if="activeTab === '买车支出'" class="apple-card space-y-4">
+      <div class="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h3 class="text-lg font-bold">买车支出</h3>
+          <p class="mt-1 text-xs text-gray-400">只读采购入库记录；金额按商品入库成本统计，修改请到采购管理操作。</p>
+        </div>
+        <label class="text-sm">入库月份<input v-model="purchaseMonth" type="month" class="apple-input mt-1 block" /></label>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div class="rounded-xl bg-gray-50 p-4"><div class="text-sm text-gray-500">当月买车支出 · {{ carPurchaseSummary.total.count }} 辆</div><div class="mt-1 text-xl font-bold">¥{{ carPurchaseSummary.total.amount.toFixed(2) }}</div></div>
+        <div class="rounded-xl bg-purple-50 p-4"><div class="text-sm text-purple-700">自留 · {{ carPurchaseSummary.self.count }} 辆</div><div class="mt-1 text-xl font-bold text-purple-800">¥{{ carPurchaseSummary.self.amount.toFixed(2) }}</div></div>
+        <div class="rounded-xl bg-blue-50 p-4"><div class="text-sm text-blue-700">投资 · {{ carPurchaseSummary.invest.count }} 辆</div><div class="mt-1 text-xl font-bold text-blue-800">¥{{ carPurchaseSummary.invest.amount.toFixed(2) }}</div></div>
+      </div>
+      <div v-for="item in carPurchases" :key="item.sourceIndex" class="border-t pt-4 grid grid-cols-[1fr_auto] gap-3 items-center text-sm">
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-2"><span class="font-semibold">{{ item.name || '未命名商品' }}</span><span class="rounded-full px-2 py-0.5 text-xs" :class="item.isLongTerm ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'">{{ item.isLongTerm ? '自留' : '投资' }}</span></div>
+          <div class="mt-1 text-xs text-gray-400">SID {{ item.sid || '—' }} · 入库 {{ item.purchaseDate }}</div>
+          <div class="mt-1 text-xs text-gray-500">采购 {{ item.purchaseCost === null ? '—' : '¥' + item.purchaseCost.toFixed(2) }} · 转运 {{ item.transferCost === null ? '—' : '¥' + item.transferCost.toFixed(2) }}</div>
+        </div>
+        <div class="text-right"><div class="text-xs text-gray-400">入库成本</div><div class="font-semibold tabular-nums">¥{{ item.totalCost.toFixed(2) }}</div></div>
+      </div>
+      <div v-if="!carPurchases.length" class="py-8 text-center text-gray-400">该月没有买车入库记录</div>
     </section>
 
     <section v-else-if="activeTab === '贷款清单'" class="apple-card space-y-4">
