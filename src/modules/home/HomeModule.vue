@@ -26,7 +26,7 @@ const inventoryItems = computed(() => currentItems.value.filter((i) => i?.status
 
 const monthStats = computed(() => getMonthStats(currentItems.value, now.value))
 const last3MonthsStats = computed(() => getLast3MonthsStats(currentItems.value, now.value))
-const purchaseStats = computed(() => getPurchaseStatus(currentItems.value))
+const purchaseStats = computed(() => getPurchaseStatus(papaItems.value))
 
 const inventoryValue = computed(() => inventoryItems.value.reduce((s, i) => s + Number(i?.cost || 0), 0))
 const inventoryCount = computed(() => inventoryItems.value.length)
