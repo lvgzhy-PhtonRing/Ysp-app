@@ -172,7 +172,7 @@ function statusText(status) {
       <div class="bg-white px-4 py-3 rounded-xl shadow-sm border border-blue-50">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
           <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
-            <div class="text-sm font-bold text-blue-800">应有支付宝余额</div>
+            <div class="flex items-center gap-2 text-sm font-bold text-blue-800"><i class="fa-brands fa-alipay text-blue-500 text-lg" aria-hidden="true"></i><span>应有支付宝余额</span></div>
             <div class="text-3xl md:text-4xl font-extrabold text-blue-700 tracking-tight">{{ fmtCurrency(alipayBalance) }}</div>
           </div>
           <div class="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">
@@ -198,6 +198,7 @@ function statusText(status) {
               <div class="flex justify-between"><span>零钱余额</span><span>{{ fmtCurrency(paytonPocketBalance) }}</span></div>
               <div class="flex justify-between"><span>＋ 投资余额</span><span>{{ fmtCurrency(paytonInvestBalance) }}</span></div>
               <div class="flex justify-between"><span>－ 贷款剩余</span><span>{{ fmtCurrency(paytonLoanRemaining) }}</span></div>
+              <div class="h-2" aria-hidden="true"></div>
               <div class="flex justify-between border-t border-violet-200 pt-1 font-bold"><span>＝ Payton's基金</span><span>{{ fmtCurrency(carFundBalance) }}</span></div>
             </div>
           </div>
