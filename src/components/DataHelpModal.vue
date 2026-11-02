@@ -54,7 +54,7 @@ function close() {
           <div class="rounded-lg bg-amber-50/60 border border-amber-100 p-4">
             <div class="font-bold text-gray-900 mb-1">③ 本机 Downloads 文件夹（每日 JSON 文件）</div>
             <p class="text-gray-600">
-              每天页面可见时首次保存会尝试下载一份完整业务数据文件：<code class="bg-white/70 px-1 rounded">PhtonRing数据_YYYY-MM-DD.json</code>。
+              每天页面可见时首次保存会尝试下载一份完整业务数据文件：<code class="bg-white/70 px-1 rounded">PhotonRing数据_YYYY-MM-DD.json</code>。
               浏览器可能拦截自动下载，请确认文件已生成；未生成时请使用“导出备份”。文件保存在浏览器之外，可另存到网盘或 U 盘。
             </p>
           </div>
@@ -154,7 +154,7 @@ function close() {
       <section>
         <h4 class="text-lg font-bold text-gray-900 mb-3">怎么操作</h4>
         <ul class="space-y-2 list-disc pl-5">
-          <li><b>导出备份</b>：侧边栏 → 数据操作 → 导出备份，会下载一个「PhtonRing数据Manual_今天日期.json」文件，包含商品、Owner、销售渠道、Payton 资金等业务数据及每日快照，不包含操作日志。每日自动备份文件名为「PhtonRing数据_日期.json」，并包含当时的操作日志。</li>
+          <li><b>导出备份</b>：侧边栏 → 数据操作 → 导出备份，会下载一个「PhotonRing数据Manual_今天日期.json」文件，包含商品、Owner、销售渠道、Payton 资金等业务数据及每日快照，不包含操作日志。每日自动备份文件名为「PhotonRing数据_日期.json」，并包含当时的操作日志。</li>
           <li><b>报税导出</b>：侧边栏 → 税务申报 → 报税导出，填写纳税主体名称、纳税人识别号并选择销售渠道和期间后下载 Excel。默认只导出 PhtonRIng 销售，按已确认的入账日筛选，不显示下单日；未确认交易、缺失日期及税务分类问题列入“待确认事项”。工作簿明细不展示 Owner 或销售渠道，只用于准备和人工复核，不计算税额、不提交申报，也不会上传数据。</li>
           <li><b>导入恢复</b>：侧边栏 → 数据操作 → 导入数据，选择要恢复的那个文件。</li>
           <li><b>撤销采纳 / 导入</b>：侧边栏 → 操作日志 → 数据回溯，或「恢复到最近一次导入前」。</li>

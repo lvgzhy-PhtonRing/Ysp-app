@@ -18,6 +18,12 @@ import {
 import { calcItemCost, calcPreTransferCost, calcTransferCost } from '../../utils/calc'
 import { addOperationLog, clone, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
 import { CATEGORY_BATCHES } from './purchaseOptions'
+import {
+  createInventoryAssignmentRows,
+  setInventoryAssignmentOwner,
+  setInventoryAssignmentPurpose,
+  summarizeInventoryAssignments,
+} from './inventoryAssignment'
 
 const BRANDS = ['Hotwheels', 'MINIGT', 'TLV', 'Kyosho', 'Tomica', 'Matchbox', 'AR BOX', 'KingModel', 'Mortal', '其它']
 const PURCHASE_TABS = ['日淘', '美淘', '国内']
@@ -38,6 +44,11 @@ const showEditModal = ref(false)
 const showEditGroupModal = ref(false)
 const showTransferListModal = ref(false)
 const showEditTransferModal = ref(false)
+const showInventoryAssignmentModal = ref(false)
+const pendingInventoryItems = ref([])
+const pendingInventoryAssignments = ref([])
+const pendingInventoryScope = ref('')
+const pendingInventoryAction = ref(null)
 const isSubmittingAdd = ref(false)
 const isSubmittingTransfer = ref(false)
 const isSubmittingEditTransfer = ref(false)
@@ -87,6 +98,10 @@ function getNextEditGroupTempKey() {
 }
 
 const isDomesticEditGroup = computed(() => editGroupForm.category === '国内')
+const pendingInventorySummary = computed(() => summarizeInventoryAssignments(
+  pendingInventoryItems.value,
+  pendingInventoryAssignments.value,
+))
 const editGroupPriceUnit = computed(() => {
   if (editGroupForm.category === '日淘') return 'JPY'
   if (editGroupForm.category === '美淘') return 'USD'
@@ -1034,32 +1049,19 @@ function handleNewTransfer() {
 function moveSingle(itemId) {
   const item = store.items.find((x) => x.id === itemId)
   if (!item) return
-  if (item.category === '国内' || item.category === '2025JAPAN') {
-    const ok = confirmMoveBySid([item])
-    if (!ok) return
-  }
   const transferId = item?.purchaseDetails?.transferId
   const movingItems = transferId
     ? store.items.filter((entry) => entry?.status === 'purchase' && entry?.purchaseDetails?.transferId === transferId)
     : [item]
-  const assignments = promptOwnerAssignments(movingItems)
-  if (!assignments) return
-  moveToInventory(itemId, assignments)
-  selectedItemIds.value = selectedItemIds.value.filter((x) => x !== itemId)
+  openInventoryAssignment(movingItems, { kind: 'single', itemId }, transferId
+    ? `该商品属于转运批次，确认后会将该批次全部 ${movingItems.length} 件待入库商品一起入库。`
+    : '本次只入库当前商品。')
 }
 
 function moveBatch() {
   if (selectedItemIds.value.length === 0) return
   const selectedItems = store.items.filter((item) => selectedItemIds.value.includes(item.id))
-  const hasDomestic = selectedItems.some((item) => item?.category === '国内' || item?.category === '2025JAPAN')
-  if (hasDomestic) {
-    const ok = confirmMoveBySid(selectedItems)
-    if (!ok) return
-  }
-  const assignments = promptOwnerAssignments(selectedItems)
-  if (!assignments) return
-  batchMoveToInventory(selectedItemIds.value, assignments)
-  selectedItemIds.value = []
+  openInventoryAssignment(selectedItems, { kind: 'batch', itemIds: selectedItems.map((item) => item.id), clearSelection: true }, '仅处理当前选中的商品。')
 }
 
 function removeItem(itemId) {
@@ -1072,64 +1074,64 @@ function batchMovePurchaseGroup(group) {
   const ids = items.map((i) => i.id)
   if (ids.length === 0) return
 
-  if (group?.category === '国内' || group?.category === '2025JAPAN') {
-    const ok = confirmMoveBySid(items)
-    if (!ok) return
-  }
-
-  const assignments = promptOwnerAssignments(items)
-  if (!assignments) return
-  batchMoveToInventory(ids, assignments)
+  openInventoryAssignment(items, { kind: 'batch', itemIds: ids }, `购买组：${group?.paymentBatch || group?.batch || group?.key || '未命名'}，共 ${items.length} 件待入库商品。`)
 }
 
-function promptOwnerAssignments(items = []) {
-  const assignments = {}
-  for (const item of items) {
-    const owner = prompt(`商品：${item.name}\n输入归属：papa / payton`, 'papa')
-    if (owner === null) return null
-    if (!['papa', 'payton'].includes(owner.trim().toLowerCase())) {
-      alert('归属只能是 papa 或 payton。')
-      return null
-    }
-    const assignment = { owner: owner.trim().toLowerCase() }
-    if (assignment.owner === 'payton') {
-      const account = prompt('Payton 用途：输入 invest（投资）或 keep（自留）', 'invest')
-      if (account === null) return null
-      if (!['invest', 'keep'].includes(account.trim().toLowerCase())) {
-        alert('用途只能是 invest 或 keep。')
-        return null
-      }
-      assignment.isLongTerm = account.trim().toLowerCase() === 'keep'
-    }
-    assignments[item.id] = assignment
-  }
-  return assignments
+function openInventoryAssignment(items, action, scope) {
+  const pendingItems = (items || []).filter((item) => item?.status === 'purchase')
+  if (pendingItems.length === 0) return
+  pendingInventoryItems.value = pendingItems
+  pendingInventoryAssignments.value = createInventoryAssignmentRows(pendingItems)
+  pendingInventoryAction.value = action
+  pendingInventoryScope.value = scope
+  showInventoryAssignmentModal.value = true
 }
 
-function confirmMoveBySid(items = []) {
-  const ids = (items || []).map((i) => i.id).filter(Boolean)
-  if (ids.length === 0) return false
+function updatePendingOwner(target, owner) {
+  pendingInventoryAssignments.value = setInventoryAssignmentOwner(pendingInventoryAssignments.value, target, owner)
+}
 
-  const sidMap = new Map()
-  items.forEach((item) => {
-    const key = String(item?.sid || '').trim() || `NO_SID_${item?.id}`
-    if (!sidMap.has(key)) {
-      sidMap.set(key, {
-        sid: item?.sid || '-',
-        name: item?.name || '-',
-        qty: 0,
-        unitCost: Number(item?.cost || 0),
-      })
-    }
-    sidMap.get(key).qty += 1
-  })
+function updatePendingPurpose(itemId, isLongTerm) {
+  pendingInventoryAssignments.value = setInventoryAssignmentPurpose(pendingInventoryAssignments.value, itemId, isLongTerm)
+}
 
-  const lines = Array.from(sidMap.values())
-    .slice(0, 12)
-    .map((x) => `- ${x.sid} | ${x.name} | x${x.qty} | 单品成本 ¥${fmtNum(x.unitCost)}`)
-    .join('\n')
-  const more = sidMap.size > 12 ? `\n... 另有 ${sidMap.size - 12} 个SID` : ''
-  return confirm(`确认入库以下商品？\n${lines}${more}`)
+function pendingAssignmentFor(itemId) {
+  return pendingInventoryAssignments.value.find((row) => row.itemId === itemId) || { owner: 'papa', isLongTerm: false }
+}
+
+function isPendingOwnerUniform(owner) {
+  return pendingInventoryAssignments.value.length > 0 && pendingInventoryAssignments.value.every((row) => row.owner === owner)
+}
+
+function closeInventoryAssignment() {
+  showInventoryAssignmentModal.value = false
+  pendingInventoryItems.value = []
+  pendingInventoryAssignments.value = []
+  pendingInventoryAction.value = null
+  pendingInventoryScope.value = ''
+}
+
+function confirmInventoryAssignment() {
+  const action = pendingInventoryAction.value
+  if (!action || pendingInventoryItems.value.length === 0) return
+  const assignments = Object.fromEntries(pendingInventoryAssignments.value.map((row) => [row.itemId, {
+    owner: row.owner,
+    isLongTerm: row.owner === 'payton' && row.isLongTerm,
+  }]))
+
+  if (action.kind === 'single') {
+    moveToInventory(action.itemId, assignments)
+    const movedIds = new Set(pendingInventoryItems.value.map((item) => item.id))
+    selectedItemIds.value = selectedItemIds.value.filter((id) => !movedIds.has(id))
+  } else {
+    batchMoveToInventory(action.itemIds, assignments)
+    const movedIds = new Set(action.itemIds)
+    selectedItemIds.value = action.clearSelection
+      ? []
+      : selectedItemIds.value.filter((id) => !movedIds.has(id))
+    if (action.record) action.record.isInventory = true
+  }
+  closeInventoryAssignment()
 }
 
 function deletePurchaseGroup(group) {
@@ -1545,20 +1547,11 @@ function deleteTransferRecord(record) {
 function batchMoveToInventoryByRecord(record) {
   const items = getTransferItems(record).filter((i) => i?.status === 'purchase')
   if (items.length === 0) return
-  const preview = items
-    .slice(0, 12)
-    .map((i) => `- ${i?.sid || '-'} | ${i?.name || '-'} | ¥${fmtMoney(i?.cost || 0)}`)
-    .join('\n')
-  const more = items.length > 12 ? `\n... 另有 ${items.length - 12} 件` : ''
-  const ok = confirm(
-    `将同转运记录商品一起入库（共 ${items.length} 件）：\n${preview}${more}\n\n确认继续？`,
+  openInventoryAssignment(
+    items,
+    { kind: 'batch', itemIds: items.map((item) => item.id), record },
+    `转运记录：${record?.transferBatch || record?.transferId || '未命名'}，共 ${items.length} 件待入库商品。`,
   )
-  if (!ok) return
-
-  const assignments = promptOwnerAssignments(items)
-  if (!assignments) return
-  batchMoveToInventory(items.map((item) => item.id), assignments)
-  record.isInventory = true
 }
 
 function openEdit(item) {
@@ -2238,6 +2231,133 @@ watch(purchaseViewCategory, () => {
           <button class="btn btn-primary" @click="submitEdit">保存</button>
         </div>
       </div>
+    </div>
+
+    <!-- 统一入库确认与 Owner 分配 -->
+    <div
+      v-if="showInventoryAssignmentModal"
+      class="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-black/40 glass-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="inventory-assignment-title"
+      @keydown.esc.prevent="closeInventoryAssignment"
+      @click.self="closeInventoryAssignment"
+    >
+      <section class="apple-card relative flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden p-0 shadow-2xl">
+        <header class="flex shrink-0 items-start justify-between gap-4 border-b border-gray-100 px-4 py-4 sm:px-6">
+          <div class="min-w-0">
+            <h3 id="inventory-assignment-title" class="text-lg font-bold text-gray-900 sm:text-xl">确认入库 · {{ pendingInventorySummary.count }} 件</h3>
+            <p class="mt-1 text-sm leading-5 text-gray-500">{{ pendingInventoryScope }}</p>
+          </div>
+          <button type="button" class="shrink-0 rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="关闭入库确认" @click="closeInventoryAssignment">
+            <i class="fa-solid fa-xmark text-lg" />
+          </button>
+        </header>
+
+        <div class="shrink-0 border-b border-gray-100 bg-gray-50/80 px-4 py-3 sm:px-6">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="mr-1 text-sm font-medium text-gray-600">批量设置 Owner</span>
+            <button
+              type="button"
+              class="rounded-full border px-4 py-1.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              :class="isPendingOwnerUniform('papa') ? 'border-blue-600 bg-blue-600 text-white' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'"
+              :aria-pressed="isPendingOwnerUniform('papa')"
+              @click="updatePendingOwner('all', 'papa')"
+            >Papa</button>
+            <button
+              type="button"
+              class="rounded-full border px-4 py-1.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+              :class="isPendingOwnerUniform('payton') ? 'border-purple-600 bg-purple-600 text-white' : 'border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100'"
+              :aria-pressed="isPendingOwnerUniform('payton')"
+              @click="updatePendingOwner('all', 'payton')"
+            >Payton</button>
+            <span class="ml-1 text-xs text-gray-400">可再逐件调整</span>
+          </div>
+        </div>
+
+        <div class="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-6">
+          <div class="space-y-2">
+            <article v-for="item in pendingInventoryItems" :key="item.id" class="rounded-xl border border-gray-200 bg-white p-3 sm:p-4">
+              <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div class="min-w-0 flex-1">
+                  <div class="truncate text-sm font-semibold text-gray-900 sm:text-base">{{ item.name || '未命名商品' }}</div>
+                  <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                    <span class="font-mono">SID {{ item.sid || '缺失' }}</span>
+                    <span>单件成本 {{ fmtMoney(item.cost || 0) }}</span>
+                    <span v-if="item.category === '国内' || item.category === '2025JAPAN'" class="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-700">国内商品</span>
+                  </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
+                  <div>
+                    <div class="mb-1 text-[11px] font-medium text-gray-500">Owner</div>
+                    <div class="flex items-center gap-1.5" role="group" :aria-label="`${item.name || '商品'} Owner`">
+                      <button
+                        type="button"
+                        class="min-w-16 rounded-full border px-3 py-1 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                        :class="pendingAssignmentFor(item.id).owner === 'papa' ? 'border-blue-600 bg-blue-600 text-white' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'"
+                        :aria-pressed="pendingAssignmentFor(item.id).owner === 'papa'"
+                        @click="updatePendingOwner(item.id, 'papa')"
+                      >Papa</button>
+                      <button
+                        type="button"
+                        class="min-w-16 rounded-full border px-3 py-1 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                        :class="pendingAssignmentFor(item.id).owner === 'payton' ? 'border-purple-600 bg-purple-600 text-white' : 'border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100'"
+                        :aria-pressed="pendingAssignmentFor(item.id).owner === 'payton'"
+                        @click="updatePendingOwner(item.id, 'payton')"
+                      >Payton</button>
+                    </div>
+                  </div>
+
+                  <div v-if="pendingAssignmentFor(item.id).owner === 'payton'">
+                    <div class="mb-1 text-[11px] font-medium text-gray-500">Payton 用途</div>
+                    <div class="flex items-center gap-1.5" role="group" :aria-label="`${item.name || '商品'} Payton用途`">
+                      <button
+                        type="button"
+                        class="rounded-full border px-3 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                        :class="!pendingAssignmentFor(item.id).isLongTerm ? 'border-purple-600 bg-purple-600 text-white' : 'border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100'"
+                        :aria-pressed="!pendingAssignmentFor(item.id).isLongTerm"
+                        @click="updatePendingPurpose(item.id, false)"
+                      >投资</button>
+                      <button
+                        type="button"
+                        class="rounded-full border px-3 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                        :class="pendingAssignmentFor(item.id).isLongTerm ? 'border-purple-600 bg-purple-600 text-white' : 'border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100'"
+                        :aria-pressed="pendingAssignmentFor(item.id).isLongTerm"
+                        @click="updatePendingPurpose(item.id, true)"
+                      >自留</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <footer class="shrink-0 border-t border-gray-100 bg-white px-4 py-4 sm:px-6">
+          <div class="grid gap-2 sm:grid-cols-3">
+            <div class="rounded-lg bg-gray-50 px-3 py-2">
+              <div class="text-xs text-gray-500">入库合计</div>
+              <div class="mt-0.5 text-sm font-bold text-gray-900">{{ pendingInventorySummary.count }} 件 · {{ fmtMoney(pendingInventorySummary.totalCost) }}</div>
+            </div>
+            <div class="rounded-lg bg-purple-50 px-3 py-2">
+              <div class="text-xs text-purple-700">Payton 投资账户扣款</div>
+              <div class="mt-0.5 text-sm font-bold text-purple-800">{{ fmtMoney(pendingInventorySummary.paytonInvestCost) }}</div>
+            </div>
+            <div class="rounded-lg bg-indigo-50 px-3 py-2">
+              <div class="text-xs text-indigo-700">Payton 自留账户扣款</div>
+              <div class="mt-0.5 text-sm font-bold text-indigo-800">{{ fmtMoney(pendingInventorySummary.paytonKeepCost) }}</div>
+            </div>
+          </div>
+          <div class="mt-3 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p class="text-xs text-gray-500">取消不会修改商品归属或账户余额。</p>
+            <div class="flex justify-end gap-2">
+              <button type="button" class="btn btn-outline" @click="closeInventoryAssignment">取消</button>
+              <button type="button" class="btn btn-primary" @click="confirmInventoryAssignment">确认入库 {{ pendingInventorySummary.count }} 件</button>
+            </div>
+          </div>
+        </footer>
+      </section>
     </div>
   </div>
 </template>

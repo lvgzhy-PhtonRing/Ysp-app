@@ -22,7 +22,7 @@ describe('HomeModule owner layout and balance display', () => {
 
   it('places global modules before the current-owner group and shows live Payton formula', async () => {
     const html = await renderToString(h(HomeModule))
-    const positions = ['支付宝余额计算器', '商品查询器', '各批次回款统计', 'Owner 经营数据', '本月数据', '近三个月销售数据', '现金流与负债监控'].map((text) => html.indexOf(text))
+    const positions = ['应有支付宝余额', '商品查询器', '各批次回款统计', 'Owner 经营数据', '本月数据', '近三个月销售数据', '现金流与负债监控'].map((text) => html.indexOf(text))
 
     expect(positions.every((position) => position >= 0)).toBe(true)
     expect(positions).toEqual([...positions].sort((a, b) => a - b))
@@ -111,7 +111,7 @@ describe('HomeModule owner layout and balance display', () => {
     const ownerEnd = html.indexOf('</section>', html.indexOf('Owner 经营数据'))
     const ownerGroup = html.slice(ownerStart, ownerEnd)
     expect(ownerGroup).toContain('选择数据 Owner')
-    expect(ownerGroup).toContain('apple-card bg-white')
+    expect(ownerGroup).toContain('dashboard-panel bg-white')
     const monthPosition = ownerGroup.indexOf('本月数据')
     const monthCardPosition = ownerGroup.indexOf('apple-card bg-gray-50')
     expect(monthCardPosition).toBeGreaterThanOrEqual(0)

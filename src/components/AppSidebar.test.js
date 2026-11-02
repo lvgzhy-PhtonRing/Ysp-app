@@ -10,6 +10,12 @@ describe('AppSidebar owner navigation', () => {
     { id: 'payton-finance', name: '皮蛋金库' },
   ]
 
+  it('uses the PhotonRing brand in the sidebar', async () => {
+    const html = await renderToString(h(AppSidebar, { tabs, currentTab: 'home' }))
+    expect(html).toContain('PhotonRing在哪')
+    expect(html).not.toContain('PhtonRing在哪儿')
+  })
+
   it('only exposes Payton finance while Payton is selected', async () => {
     const papa = await renderToString(h(AppSidebar, { tabs, currentTab: 'home', currentOwner: 'papa' }))
     expect(papa).not.toContain('皮蛋金库')

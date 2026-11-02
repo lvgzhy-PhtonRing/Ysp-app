@@ -212,6 +212,37 @@ function statusText(status) {
       </div>
     </div>
 
+    <div class="apple-card dashboard-panel">
+      <h3 class="text-lg font-semibold mb-4 text-gray-800"><i class="fa-solid fa-magnifying-glass text-blue-500 mr-2"></i>商品查询器 <span class="text-xs font-normal text-gray-400">跨 Owner</span></h3>
+      <div class="mb-4"><input type="text" v-model="searchKeyword" placeholder="输入SID/名称/品牌搜索（不区分大小写）" class="apple-input" /></div>
+      <div v-if="searchResults.length > 0" class="mt-4">
+        <div class="text-sm text-gray-500 mb-2">找到 {{ totalSearchCount }} 条记录（合并后 {{ mergedGroupCount }} 组）：</div>
+        <div class="space-y-2 max-h-[920px] overflow-y-auto">
+          <div v-for="(item, idx) in searchResults" :key="idx" @click="showItemDetail(item)" class="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer flex justify-between items-center">
+            <div>
+              <div class="font-medium text-sm">{{ item.name }}</div>
+              <div class="text-xs text-gray-500">SID: {{ item.sid }}<template v-if="item._isMerged"> | 数量: x{{ item._groupCount }} | 单件: {{ fmtMoney(item.cost) }} | 合计: {{ fmtMoney(item._groupTotalCost) }}</template><template v-else> | 成本: {{ fmtMoney(item.cost) }}</template></div>
+              <div v-if="item._searchMatchTypes?.length" class="mt-1 flex flex-wrap gap-1"><span v-for="tag in item._searchMatchTypes" :key="tag" class="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{{ tag }}</span></div>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs px-2 py-1 rounded bg-slate-100 text-slate-600">{{ item.owner === 'payton' ? 'Payton' : 'Papa' }}</span>
+              <span :class="{'bg-green-100 text-green-700': item.status === 'inventory', 'bg-blue-100 text-blue-700': item.status === 'purchase', 'bg-gray-100 text-gray-600': item.status === 'sold'}" class="text-xs px-2 py-1 rounded">{{ statusText(item.status) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="apple-card dashboard-panel">
+      <h3 class="text-lg font-semibold mb-4 text-gray-800 cursor-pointer select-none" @click="batchStatsCollapsed = !batchStatsCollapsed"><i class="fa-solid fa-chart-line text-blue-500 mr-2"></i>各批次回款统计 <span class="text-xs font-normal text-gray-400">跨 Owner</span> <span class="text-xs text-gray-400">{{ batchStatsCollapsed ? '▼' : '▲' }}</span></h3>
+      <div class="overflow-x-auto" v-show="!batchStatsCollapsed">
+        <table class="apple-table text-sm w-full">
+          <thead><tr><th>批次</th><th class="text-right">总成本</th><th class="text-right">回款</th><th class="text-right">回款比例</th></tr></thead>
+          <tbody><template v-for="b in batchReturnStats" :key="b.category + b.batch"><tr v-if="b.isSummary" class="bg-blue-50 font-bold border-t-2 border-blue-200"><td class="text-blue-700">汇总</td><td class="text-right text-blue-700">{{ fmtMoney(b.totalCost) }}</td><td class="text-right text-blue-700">{{ fmtMoney(b.revenue) }}</td><td class="text-right text-blue-700">{{ fmtNum(b.rate) }}%</td></tr><tr v-else-if="b.isCategory" class="bg-gray-100 font-bold"><td style="color:#9ca3af">{{ b.category }}</td><td class="text-right" style="color:#9ca3af">{{ fmtMoney(b.totalCost) }}</td><td class="text-right" style="color:#9ca3af">{{ fmtMoney(b.revenue) }}</td><td class="text-right" :style="returnRateStyle(b.rate)">{{ fmtNum(b.rate) }}%</td></tr><tr v-else><td class="pl-6" style="color:#9ca3af">{{ b.batch }}</td><td class="text-right" style="color:#9ca3af">{{ fmtMoney(b.totalCost) }}</td><td class="text-right" style="color:#9ca3af">{{ fmtMoney(b.revenue) }}</td><td class="text-right font-medium" :style="returnRateStyle(b.rate)">{{ fmtNum(b.rate) }}%</td></tr></template></tbody>
+        </table>
+      </div>
+    </div>
+
     <section class="apple-card dashboard-panel bg-white space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
         <div><h3 class="text-lg font-bold text-gray-800">Owner 经营数据</h3><p class="text-xs text-gray-400">以下四个模块按所选 Owner 展示</p></div>
@@ -249,37 +280,6 @@ function statusText(status) {
       </div>
 
     </section>
-
-    <div class="apple-card dashboard-panel">
-      <h3 class="text-lg font-semibold mb-4 text-gray-800"><i class="fa-solid fa-magnifying-glass text-blue-500 mr-2"></i>商品查询器 <span class="text-xs font-normal text-gray-400">跨 Owner</span></h3>
-      <div class="mb-4"><input type="text" v-model="searchKeyword" placeholder="输入SID/名称/品牌搜索（不区分大小写）" class="apple-input" /></div>
-      <div v-if="searchResults.length > 0" class="mt-4">
-        <div class="text-sm text-gray-500 mb-2">找到 {{ totalSearchCount }} 条记录（合并后 {{ mergedGroupCount }} 组）：</div>
-        <div class="space-y-2 max-h-[920px] overflow-y-auto">
-          <div v-for="(item, idx) in searchResults" :key="idx" @click="showItemDetail(item)" class="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer flex justify-between items-center">
-            <div>
-              <div class="font-medium text-sm">{{ item.name }}</div>
-              <div class="text-xs text-gray-500">SID: {{ item.sid }}<template v-if="item._isMerged"> | 数量: x{{ item._groupCount }} | 单件: {{ fmtMoney(item.cost) }} | 合计: {{ fmtMoney(item._groupTotalCost) }}</template><template v-else> | 成本: {{ fmtMoney(item.cost) }}</template></div>
-              <div v-if="item._searchMatchTypes?.length" class="mt-1 flex flex-wrap gap-1"><span v-for="tag in item._searchMatchTypes" :key="tag" class="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{{ tag }}</span></div>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="text-xs px-2 py-1 rounded bg-slate-100 text-slate-600">{{ item.owner === 'payton' ? 'Payton' : 'Papa' }}</span>
-              <span :class="{'bg-green-100 text-green-700': item.status === 'inventory', 'bg-blue-100 text-blue-700': item.status === 'purchase', 'bg-gray-100 text-gray-600': item.status === 'sold'}" class="text-xs px-2 py-1 rounded">{{ statusText(item.status) }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="apple-card dashboard-panel">
-      <h3 class="text-lg font-semibold mb-4 text-gray-800 cursor-pointer select-none" @click="batchStatsCollapsed = !batchStatsCollapsed"><i class="fa-solid fa-chart-line text-blue-500 mr-2"></i>各批次回款统计 <span class="text-xs font-normal text-gray-400">跨 Owner</span> <span class="text-xs text-gray-400">{{ batchStatsCollapsed ? '▼' : '▲' }}</span></h3>
-      <div class="overflow-x-auto" v-show="!batchStatsCollapsed">
-        <table class="apple-table text-sm w-full">
-          <thead><tr><th>批次</th><th class="text-right">总成本</th><th class="text-right">回款</th><th class="text-right">回款比例</th></tr></thead>
-          <tbody><template v-for="b in batchReturnStats" :key="b.category + b.batch"><tr v-if="b.isSummary" class="bg-blue-50 font-bold border-t-2 border-blue-200"><td class="text-blue-700">汇总</td><td class="text-right text-blue-700">{{ fmtMoney(b.totalCost) }}</td><td class="text-right text-blue-700">{{ fmtMoney(b.revenue) }}</td><td class="text-right text-blue-700">{{ fmtNum(b.rate) }}%</td></tr><tr v-else-if="b.isCategory" class="bg-gray-100 font-bold"><td style="color:#9ca3af">{{ b.category }}</td><td class="text-right" style="color:#9ca3af">{{ fmtMoney(b.totalCost) }}</td><td class="text-right" style="color:#9ca3af">{{ fmtMoney(b.revenue) }}</td><td class="text-right" :style="returnRateStyle(b.rate)">{{ fmtNum(b.rate) }}%</td></tr><tr v-else><td class="pl-6" style="color:#9ca3af">{{ b.batch }}</td><td class="text-right" style="color:#9ca3af">{{ fmtMoney(b.totalCost) }}</td><td class="text-right" style="color:#9ca3af">{{ fmtMoney(b.revenue) }}</td><td class="text-right font-medium" :style="returnRateStyle(b.rate)">{{ fmtNum(b.rate) }}%</td></tr></template></tbody>
-        </table>
-      </div>
-    </div>
 
     <CashflowMonitor @update-owner="emit('update-owner', $event)" />
 

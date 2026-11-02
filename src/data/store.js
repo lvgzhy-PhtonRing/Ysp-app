@@ -5,7 +5,7 @@ import { reactive } from 'vue'
 import { SLOT_KEYS, slotValue, normalizeRev, computeSlotPlan, buildMerged, revOf, hasUsableSlotValue, mergeSnapshots } from './cloudSlotPlan'
 
 import { evictOldestAdoptBefore } from './adoptLog'
-import { migratePayload } from './migrations'
+import { createDefaultOwnerRegistry, migratePayload } from './migrations'
 import { normalizeTaxpayerProfiles, upsertTaxpayerProfile } from './taxpayerProfiles'
 import { getUnconfirmedSalesTotal } from '../modules/sales/saleAccounting'
 
@@ -837,12 +837,12 @@ function maybeAutoBackup() {
   if (!isBackupDue(today, state.autoBackup.lastDate)) return
 
   const payload = { ...exportData(), operationLogs: [...state.operationLogs] }
-  downloadJsonBackup(payload, `PhtonRing数据_${today}.json`)
+  downloadJsonBackup(payload, `PhotonRing数据_${today}.json`)
 
   state.autoBackup.lastDate = today
   state.autoBackup.lastNotice = today
   saveUiStateToLocalStorage()
-  addOperationLog('app_auto_backup', `已生成每日备份 PhtonRing数据_${today}.json`, { date: today })
+  addOperationLog('app_auto_backup', `已生成每日备份 PhotonRing数据_${today}.json`, { date: today })
 }
 
 // === localStorage 配额保护 ===
@@ -1549,6 +1549,9 @@ export function loadFromLocalStorage() {
   _sessionStartAt = Date.now() // 标记新会话开始
   const raw = localStorage.getItem('ysp_data')
   if (!raw) {
+    const defaults = createDefaultOwnerRegistry()
+    if (!state.ownerRegistry.papa) state.ownerRegistry.papa = defaults.papa
+    if (!state.ownerRegistry.payton) state.ownerRegistry.payton = defaults.payton
     hasPersistedSnapshot = false
     lastPersistedData = null
     lastPersistedSerialized = ''

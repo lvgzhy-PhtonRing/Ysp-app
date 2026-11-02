@@ -100,7 +100,7 @@ function getGroupTabs(group) {
   <aside class="z-10 flex h-screen w-56 shrink-0 flex-col border-r border-gray-200 bg-white relative">
     <div class="flex-1">
       <div class="h-20 border-b border-gray-100 px-5 py-4">
-        <div class="font-bold text-xl tracking-wide text-gray-800">PhtonRing在哪儿</div>
+        <div class="font-bold text-xl tracking-wide text-gray-800">PhotonRing在哪</div>
         <div class="mt-1 text-[11px] text-gray-400">v{{ version }}</div>
       </div>
 

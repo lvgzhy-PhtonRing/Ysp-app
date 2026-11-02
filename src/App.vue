@@ -270,7 +270,7 @@ watch(
 
 function downloadBackupManually() {
   const today = todayStr()
-  downloadJsonBackup({ ...exportData(), operationLogs: [...store.operationLogs] }, `PhtonRing数据_${today}.json`)
+  downloadJsonBackup({ ...exportData(), operationLogs: [...store.operationLogs] }, `PhotonRing数据_${today}.json`)
   backupNoticeVisible.value = false
 }
 
@@ -327,7 +327,7 @@ async function retryEditorLock() {
 }
 
 function exportLockedPageBackup() {
-  downloadJsonBackup({ ...exportData(), operationLogs: [...store.operationLogs] }, `PhtonRing数据_锁定页_${todayStr()}.json`)
+  downloadJsonBackup({ ...exportData(), operationLogs: [...store.operationLogs] }, `PhotonRing数据_锁定页_${todayStr()}.json`)
 }
 
 function todayStr() {
@@ -471,7 +471,7 @@ function resolveSlotConflict() {
       copies.push(row.slot)
       downloadJsonBackup(
         { slot: row.slot, [SLOT_LABELS[row.slot] || row.slot]: slotValue(slotConflictInfo.value.cloudPayload, row.slot) },
-        `PhtonRing数据_${row.slot}_冲突副本_${Date.now()}.json`,
+        `PhotonRing数据_${row.slot}_冲突副本_${Date.now()}.json`,
       )
     }
   }
@@ -870,7 +870,7 @@ function handleExport() {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `PhtonRing数据Manual_${currentDate.value}.json`
+  a.download = `PhotonRing数据Manual_${currentDate.value}.json`
   document.body.appendChild(a)
   a.click()
   a.remove()
@@ -1445,7 +1445,7 @@ watch(
         v-if="backupNoticeVisible && !slotConflict"
         class="fixed left-1/2 top-16 z-50 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800 shadow-lg"
       >
-        <span>今日备份已生成：PhtonRing数据_{{ todayStr() }}.json</span>
+        <span>今日备份已生成：PhotonRing数据_{{ todayStr() }}.json</span>
         <button class="font-semibold underline" @click="downloadBackupManually">若未自动下载，点此下载</button>
         <button class="ml-1 text-emerald-500 hover:text-emerald-700" @click="dismissBackupNotice">✕</button>
       </div>
