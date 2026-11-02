@@ -29,6 +29,7 @@ const BRANDS = ['Hotwheels', 'MINIGT', 'TLV', 'Kyosho', 'Tomica', 'Matchbox', 'A
 const PURCHASE_TABS = ['日淘', '美淘', '国内']
 
 const collapsedGroups = reactive({})
+const collapsedPurchaseGroups = reactive({})
 const expandedTransfers = reactive({})
 const selectedItemIds = ref([])
 const purchaseViewCategory = ref('日淘')
@@ -36,6 +37,7 @@ const purchaseGroupView = ref('purchase')
 const purchaseGroupKeyword = ref('')
 const transferCategoryBatch = ref('')
 const purchaseCollapseStorageKey = 'ysp_ui_purchase_collapse'
+const purchaseGroupCollapseStorageKey = 'ysp_ui_purchase_group_collapse'
 const purchaseTransferExpandStorageKey = 'ysp_ui_purchase_transfer_expand'
 
 const showAddModal = ref(false)
@@ -216,7 +218,7 @@ const stats = computed(() => {
   return { totalCount, totalAmount, pendingCount, completedCount }
 })
 
-function mergeItemsBySid(items = []) {
+function mergeItemsBySid(items = [], splitByStatus = false) {
   const getSortTs = (item) => {
     const d = item?.purchaseDetails?.date
     const dateTs = d ? new Date(d).getTime() : 0
@@ -228,7 +230,7 @@ function mergeItemsBySid(items = []) {
 
   const map = new Map()
   items.forEach((item) => {
-    const key = `${item?.sid || ''}`
+    const key = splitByStatus ? `${item?.sid || ''}__${item?.status || ''}` : `${item?.sid || ''}`
     if (!map.has(key)) {
       map.set(key, { ...item, qty: 1, _latestTs: getSortTs(item) })
       return
@@ -260,6 +262,8 @@ const groupedByBatch = computed(() => {
         totalAmount: 0,
         purchase: 0,
         transfer: 0,
+        activeCount: 0,
+        endedCount: 0,
         _purchaseGroupMap: new Map(),
       })
     }
@@ -268,6 +272,8 @@ const groupedByBatch = computed(() => {
     batchGroup.totalAmount += Number(item.cost || 0)
     batchGroup.purchase += Number(item.purchaseDetails?.preTransferCost || 0)
     batchGroup.transfer += Number(item.purchaseDetails?.transferCost || 0)
+    if (item.status === 'purchase') batchGroup.activeCount += 1
+    else batchGroup.endedCount += 1
 
     const pgKey = getPurchaseGroupKey(item)
 
@@ -298,7 +304,10 @@ const groupedByBatch = computed(() => {
       const purchaseGroups = Array.from(batch._purchaseGroupMap.values())
         .map((g) => ({
           ...g,
-          itemsBySid: mergeItemsBySid(g.items),
+          activeCount: g.items.filter((item) => item.status === 'purchase').length,
+          endedCount: g.items.filter((item) => item.status !== 'purchase').length,
+          hasActiveItemsInBatch: batch.activeCount > 0,
+          itemsBySid: mergeItemsBySid(g.items, purchaseGroupView.value === 'all'),
         }))
         .sort((a, b) => {
           const dateCmp = String(b.date || '').localeCompare(String(a.date || ''))
@@ -553,6 +562,36 @@ function toggleGroup(key) {
   collapsedGroups[key] = !collapsedGroups[key]
 }
 
+function isBatchCollapsed(batch) {
+  if (purchaseGroupKeyword.value.trim()) return false
+  if (typeof collapsedGroups[batch.key] === 'boolean') return collapsedGroups[batch.key]
+  return purchaseGroupView.value === 'all' && batch.activeCount === 0
+}
+
+function toggleBatchGroup(batch) {
+  collapsedGroups[batch.key] = !isBatchCollapsed(batch)
+}
+
+function purchaseItemStatusText(status) {
+  return ({ purchase: '采购中', inventory: '已入库', sold: '已售', unlisted: '已下架' })[status] || '已结束'
+}
+
+function purchaseGroupStatusText(group) {
+  if (group.activeCount > 0 && group.endedCount > 0) return '部分结束'
+  return group.activeCount > 0 ? '采购中' : '已结束'
+}
+
+function isPurchaseGroupCollapsed(group) {
+  if (purchaseGroupKeyword.value.trim()) return false
+  if (purchaseGroupView.value !== 'all') return false
+  if (typeof collapsedPurchaseGroups[group.key] === 'boolean') return collapsedPurchaseGroups[group.key]
+  return group.activeCount === 0 && group.hasActiveItemsInBatch
+}
+
+function togglePurchaseGroup(group) {
+  collapsedPurchaseGroups[group.key] = !isPurchaseGroupCollapsed(group)
+}
+
 function expandAllPurchaseGroups() {
   groupedByBatch.value.forEach((g) => {
     collapsedGroups[g.key] = false
@@ -571,10 +610,14 @@ function resetPurchaseViewState() {
   Object.keys(collapsedGroups).forEach((k) => {
     delete collapsedGroups[k]
   })
+  Object.keys(collapsedPurchaseGroups).forEach((k) => {
+    delete collapsedPurchaseGroups[k]
+  })
   Object.keys(expandedTransfers).forEach((k) => {
     delete expandedTransfers[k]
   })
   localStorage.removeItem(purchaseCollapseStorageKey)
+  localStorage.removeItem(purchaseGroupCollapseStorageKey)
   localStorage.removeItem(purchaseTransferExpandStorageKey)
 }
 
@@ -1609,6 +1652,9 @@ onMounted(() => {
     const collapsedRaw = localStorage.getItem(purchaseCollapseStorageKey)
     if (collapsedRaw) Object.assign(collapsedGroups, JSON.parse(collapsedRaw))
 
+    const purchaseGroupCollapsedRaw = localStorage.getItem(purchaseGroupCollapseStorageKey)
+    if (purchaseGroupCollapsedRaw) Object.assign(collapsedPurchaseGroups, JSON.parse(purchaseGroupCollapsedRaw))
+
     const expandedRaw = localStorage.getItem(purchaseTransferExpandStorageKey)
     if (expandedRaw) Object.assign(expandedTransfers, JSON.parse(expandedRaw))
   } catch (_) {
@@ -1620,6 +1666,14 @@ watch(
   collapsedGroups,
   (val) => {
     localStorage.setItem(purchaseCollapseStorageKey, JSON.stringify(val))
+  },
+  { deep: true },
+)
+
+watch(
+  collapsedPurchaseGroups,
+  (val) => {
+    localStorage.setItem(purchaseGroupCollapseStorageKey, JSON.stringify(val))
   },
   { deep: true },
 )
@@ -1698,38 +1752,49 @@ watch(purchaseViewCategory, () => {
       </div>
     </div>
 
-    <div class="flex gap-2 mb-3" aria-label="购买组范围">
-      <button class="btn btn-xs" :class="purchaseGroupView === 'purchase' ? 'btn-primary' : 'btn-outline'" @click="purchaseGroupView = 'purchase'">采购中购买组</button>
-      <button class="btn btn-xs" :class="purchaseGroupView === 'all' ? 'btn-primary' : 'btn-outline'" @click="purchaseGroupView = 'all'">全部购买组（含已入库、已售、已下架）</button>
+    <div class="mb-3 flex flex-wrap items-center gap-2" aria-label="购买组范围">
+      <button class="btn btn-xs" :class="purchaseGroupView === 'purchase' ? 'btn-primary' : 'btn-outline'" @click="purchaseGroupView = 'purchase'">采购中</button>
+      <button class="btn btn-xs" :class="purchaseGroupView === 'all' ? 'btn-primary' : 'btn-outline'" title="包含采购中、已入库、已售和已下架购买组" @click="purchaseGroupView = 'all'">全部购买组</button>
+      <span v-if="purchaseGroupView === 'all'" class="text-xs text-gray-400">已结束批次默认收起；混合批次中的已结束购买组收起</span>
     </div>
     <input v-model="purchaseGroupKeyword" class="apple-input mb-3" type="search" placeholder="搜索购买组、SID 或商品名称" aria-label="搜索购买组" />
     <div v-for="batch in displayedGroupedByBatch" :key="batch.key" class="mb-4">
       <div class="bg-gray-50 border border-gray-200 rounded-lg overflow-hidden">
         <div
           class="bg-gray-200 px-4 py-2 border-b border-gray-200 font-semibold text-gray-800 cursor-pointer flex items-center gap-2"
-          @click="toggleGroup(batch.key)"
+          @click="toggleBatchGroup(batch)"
         >
-          <i :class="collapsedGroups[batch.key] ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'" />
+          <i :class="isBatchCollapsed(batch) ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'" />
           <span class="font-semibold text-gray-800">{{ batch.category }} / {{ batch.batch }}</span>
           <span class="text-xs text-gray-500 font-normal">- {{ batch.count }}件/采购{{ fmtNum(batch.purchase) }}/转运{{ fmtNum(batch.transfer) }}</span>
+          <span v-if="purchaseGroupView === 'all'" class="ml-auto flex flex-wrap items-center gap-2 text-[11px] font-medium">
+            <span class="rounded-full bg-blue-100 px-2 py-0.5 text-blue-700">采购中 {{ batch.activeCount }} 件</span>
+            <span class="rounded-full bg-gray-200 px-2 py-0.5 text-gray-600">已结束 {{ batch.endedCount }} 件</span>
+          </span>
         </div>
-        <div v-show="collapsedGroups[batch.key] !== true" class="divide-y divide-gray-100">
+        <div v-show="!isBatchCollapsed(batch)" class="divide-y divide-gray-100">
           <div v-for="group in batch.purchaseGroups" :key="group.key">
-            <div class="p-3 border-b border-gray-100 bg-gray-100">
+            <div class="p-3 border-b border-gray-100" :class="purchaseGroupView === 'all' && group.activeCount === 0 ? 'bg-gray-100' : 'bg-blue-50/70'">
               <div class="grid grid-cols-12 gap-2 text-sm items-center">
-                <div class="col-span-2 font-medium truncate">{{ group.date }}</div>
+                <div class="col-span-2 flex min-w-0 flex-wrap items-center gap-1.5 font-medium">
+                  <span class="truncate">{{ group.date }}</span>
+                  <span v-if="purchaseGroupView === 'all'" class="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-bold" :class="group.activeCount > 0 && group.endedCount > 0 ? 'bg-amber-100 text-amber-700' : group.activeCount > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'">{{ purchaseGroupStatusText(group) }}</span>
+                </div>
                 <div class="col-span-3 truncate">{{ group.website || '-' }}<span v-if="group.note" class="text-gray-500 text-xs ml-2">{{ group.note }}</span></div>
                 <div class="col-span-2 text-gray-400 text-xs text-right">100{{ group.category === '日淘' ? 'JPY' : group.category === '美淘' ? 'USD' : '' }}={{ group.category === '日淘' || group.category === '美淘' ? fmtNum(group.exchangeRate * 100) + 'RMB' : '' }}</div>
                 <div class="col-span-2 text-gray-300 text-xs truncate text-right">{{ group.paymentBatch || '-' }}</div>
                 <div class="col-span-2 font-semibold text-gray-700 text-right"><span class="text-xs font-normal">初始购买金额(不含转运)</span> ¥{{ fmtNum(group.totalRMB) }}</div>
                 <div class="col-span-1 flex gap-1 justify-end">
+                  <button v-if="purchaseGroupView === 'all'" type="button" class="btn btn-outline btn-xs" :aria-expanded="!isPurchaseGroupCollapsed(group)" :aria-label="`${isPurchaseGroupCollapsed(group) ? '展开' : '收起'}${group.date}商品明细`" @click.stop="togglePurchaseGroup(group)">
+                    <i :class="isPurchaseGroupCollapsed(group) ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'" />
+                  </button>
                   <button v-if="purchaseGroupView === 'purchase' && (group.category === '国内' || group.category === '2025JAPAN')" @click="batchMovePurchaseGroup(group)" class="btn btn-success btn-xs" title="入库"><i class="fa-solid fa-box"></i></button>
                   <button @click="openEditPurchaseGroup(group)" class="btn btn-outline btn-xs"><i class="fa-solid fa-pen"></i></button>
                   <button v-if="purchaseGroupView === 'purchase'" @click="deletePurchaseGroup(group)" class="btn btn-danger btn-xs"><i class="fa-solid fa-trash"></i></button>
                 </div>
               </div>
             </div>
-            <table class="w-full table-fixed text-sm">
+            <table v-show="!isPurchaseGroupCollapsed(group)" class="w-full table-fixed text-sm">
               <thead>
                 <tr class="bg-gray-50 text-xs text-gray-500 border-b border-gray-100">
                   <th class="w-auto text-left font-medium px-3 py-2">名称</th>
@@ -1746,8 +1811,11 @@ watch(purchaseViewCategory, () => {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="item in group.itemsBySid" :key="item.sid" class="bg-white border-b border-gray-50 last:border-b-0">
-                  <td class="font-medium truncate max-w-xs px-3 py-2">{{ item.name }} <span v-if="item.qty > 1" class="text-xs text-gray-400">x{{ item.qty }}</span></td>
+                <tr v-for="item in group.itemsBySid" :key="`${item.sid}-${item.status}`" class="bg-white border-b border-gray-50 last:border-b-0">
+                  <td class="font-medium truncate max-w-xs px-3 py-2">
+                    {{ item.name }} <span v-if="item.qty > 1" class="text-xs text-gray-400">x{{ item.qty }}</span>
+                    <span v-if="purchaseGroupView === 'all'" class="ml-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold" :class="item.status === 'purchase' ? 'bg-blue-100 text-blue-700' : item.status === 'inventory' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'">{{ purchaseItemStatusText(item.status) }}</span>
+                  </td>
                   <td class="text-center px-2 py-2">{{ item.qty }}</td>
                   <td class="text-gray-500 text-right px-2 py-2">{{ item.purchaseDetails?.originalPrice || '-' }}</td>
                   <td class="text-gray-500 text-right px-2 py-2">{{ item.purchaseDetails?.domesticShipping || 0 }}</td>
