@@ -603,6 +603,7 @@ function openUnlist(item) {
 
 function getUnlistScope(item) {
   if (!item) return 'current'
+  if (item?.purchaseDetails?.purchaseGroupId) return 'purchaseGroup'
   return item?.purchaseDetails?.transferId || item?.purchaseDetails?.transferBatch ? 'transfer' : 'current'
 }
 
@@ -625,6 +626,15 @@ function getUnlistLinkedItems(item) {
   if (!item) return []
   const transferId = item?.purchaseDetails?.transferId
   const transferBatch = item?.purchaseDetails?.transferBatch
+  const purchaseGroupId = item?.purchaseDetails?.purchaseGroupId
+  const paymentBatch = item?.purchaseDetails?.paymentBatch
+
+  if (purchaseGroupId) {
+    return store.items.filter((x) =>
+      x?.purchaseDetails?.purchaseGroupId === purchaseGroupId &&
+      (!paymentBatch || x?.purchaseDetails?.paymentBatch === paymentBatch),
+    )
+  }
 
   if (transferId) {
     return store.items.filter((x) => x?.purchaseDetails?.transferId === transferId)
@@ -680,7 +690,7 @@ function submitUnlist() {
   if (soldItems.length > 0) {
     const details = buildSoldDetailsText(soldItems)
     const more = soldItems.length > 12 ? `\n... 另有 ${soldItems.length - 12} 件` : ''
-    const scopeLabel = scope === 'transfer' ? '当前转运批次中' : '当前条目中'
+    const scopeLabel = scope === 'purchaseGroup' ? '当前购买组中' : scope === 'transfer' ? '当前转运批次中' : '当前条目中'
     alert(
       `${scopeLabel}有 ${soldItems.length} 件已售出，无法批量下架。\n\n请先在“销售记账”中将这些商品手动回滚到库存后再下架：\n${details}${more}`,
     )
@@ -696,8 +706,9 @@ function submitUnlist() {
 
   const preview = buildUnlistTargetDetailsText(targetItems)
   const more = targetItems.length > 12 ? `\n... 另有 ${targetItems.length - 12} 件` : ''
-  const actionText =
-    scope === 'transfer' ? '将同转运批次商品一起下架回采购' : '将当前条目商品下架回采购'
+  const actionText = scope === 'purchaseGroup'
+    ? '将同购买组商品一起下架回采购'
+    : scope === 'transfer' ? '将同转运批次商品一起下架回采购' : '将当前条目商品下架回采购'
   const ok = confirm(
     `${actionText}（共 ${targetItems.length} 件）：\n${preview}${more}\n\n确认继续？`,
   )
@@ -716,13 +727,13 @@ function submitUnlist() {
     if (!x.purchaseDetails) x.purchaseDetails = {}
     x.purchaseDetails.transferStatus = 'completed'
     x.unlistDetails = {
-      reason: scope === 'transfer' ? '同转运批次下架' : '当前条目下架',
+      reason: scope === 'purchaseGroup' ? '同购买组下架' : scope === 'transfer' ? '同转运批次下架' : '当前条目下架',
       date: new Date().toISOString().slice(0, 10),
     }
   })
 
   saveToLocalStorage()
-  addOperationLog('inventory_unlist', `${scope === 'transfer' ? '批量' : '当前条目'}下架回采购: ${item.name}`, {
+  addOperationLog('inventory_unlist', `${scope === 'current' ? '当前条目' : '整组'}下架回采购: ${item.name}`, {
     itemId: item.id,
     name: item.name,
     sid: item.sid,
@@ -1131,7 +1142,7 @@ watch(invFilterMode, (val) => {
         <div class="bg-yellow-50 p-4 rounded-xl mb-4">
           <div class="text-sm text-yellow-800 font-medium">{{ currentUnlistItem?.name }}</div>
           <div class="text-xs text-yellow-600 mt-1">数量: {{ currentUnlistItem?.qty || 1 }} 件</div>
-          <div class="text-xs text-yellow-600">{{ isTransferUnlist ? '下架后将按同转运批次批量移回采购（已转运状态）' : '下架后将仅移回当前条目对应商品到采购（已转运状态）' }}</div>
+          <div class="text-xs text-yellow-600">{{ getUnlistScope(currentUnlistItem) === 'purchaseGroup' ? '下架后将按购买组批量移回采购；组内有已售商品时需先回滚销售' : isTransferUnlist ? '下架后将按同转运批次批量移回采购（已转运状态）' : '下架后将仅移回当前条目对应商品到采购（已转运状态）' }}</div>
         </div>
         <div class="border border-yellow-200 rounded-lg p-3 bg-yellow-50/60 mb-4" v-if="unlistPreviewItems.length">
           <div class="text-xs text-yellow-800 mb-2">将一起下架（共 {{ unlistPreviewItems.length }} 件）</div>
