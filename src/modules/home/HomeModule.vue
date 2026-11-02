@@ -162,22 +162,21 @@ function statusText(status) {
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div class="home-dashboard space-y-3">
     <div class="flex items-baseline gap-3 mb-3">
       <h2 class="text-3xl leading-10 font-extrabold">数据透视</h2>
       <span class="text-base text-gray-400 font-light">Data Insights</span>
     </div>
 
-    <div class="apple-card bg-gradient-to-br from-white to-gray-50 border-blue-100">
-      <h3 class="text-lg font-semibold mb-4 text-blue-800"><i class="fa-brands fa-alipay text-blue-500 mr-2 text-xl"></i>支付宝余额计算器</h3>
-      <div class="bg-white p-4 rounded-xl shadow-sm border border-blue-50">
+    <div class="apple-card dashboard-panel bg-gradient-to-br from-white to-gray-50 border-blue-100">
+      <div class="bg-white px-4 py-3 rounded-xl shadow-sm border border-blue-50">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
           <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
             <div class="text-sm font-bold text-blue-800">应有支付宝余额</div>
             <div class="text-3xl md:text-4xl font-extrabold text-blue-700 tracking-tight">{{ fmtCurrency(alipayBalance) }}</div>
           </div>
           <div class="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">
-            <div class="text-sm font-bold text-sky-800">实际支付宝余额</div>
+            <div class="flex items-center gap-2 text-sm font-bold text-sky-800"><i class="fa-brands fa-alipay text-blue-500 text-lg" aria-hidden="true"></i><span>实际支付宝余额</span></div>
             <div class="text-3xl md:text-4xl font-extrabold text-sky-700 tracking-tight">{{ fmtCurrency(actualBalance) }}</div>
             <div class="mt-1 text-[10px] leading-tight text-sky-700/70">较应有余额扣除：转运公司余额 {{ fmtCurrency(store.calc.forwarderBalance) }} · 皮蛋手表账户余额 {{ fmtCurrency(store.calc.watchBalance) }}</div>
           </div>
@@ -213,7 +212,7 @@ function statusText(status) {
       </div>
     </div>
 
-    <section class="apple-card bg-white space-y-5">
+    <section class="apple-card dashboard-panel bg-white space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
         <div><h3 class="text-lg font-bold text-gray-800">Owner 经营数据</h3><p class="text-xs text-gray-400">以下四个模块按所选 Owner 展示</p></div>
         <div class="inline-flex h-9 items-center rounded-xl border border-blue-200 bg-white p-1 shadow-sm" aria-label="选择数据 Owner">
@@ -251,7 +250,7 @@ function statusText(status) {
 
     </section>
 
-    <div class="apple-card">
+    <div class="apple-card dashboard-panel">
       <h3 class="text-lg font-semibold mb-4 text-gray-800"><i class="fa-solid fa-magnifying-glass text-blue-500 mr-2"></i>商品查询器 <span class="text-xs font-normal text-gray-400">跨 Owner</span></h3>
       <div class="mb-4"><input type="text" v-model="searchKeyword" placeholder="输入SID/名称/品牌搜索（不区分大小写）" class="apple-input" /></div>
       <div v-if="searchResults.length > 0" class="mt-4">
@@ -272,7 +271,7 @@ function statusText(status) {
       </div>
     </div>
 
-    <div class="apple-card">
+    <div class="apple-card dashboard-panel">
       <h3 class="text-lg font-semibold mb-4 text-gray-800 cursor-pointer select-none" @click="batchStatsCollapsed = !batchStatsCollapsed"><i class="fa-solid fa-chart-line text-blue-500 mr-2"></i>各批次回款统计 <span class="text-xs font-normal text-gray-400">跨 Owner</span> <span class="text-xs text-gray-400">{{ batchStatsCollapsed ? '▼' : '▲' }}</span></h3>
       <div class="overflow-x-auto" v-show="!batchStatsCollapsed">
         <table class="apple-table text-sm w-full">
@@ -342,3 +341,9 @@ function statusText(status) {
     </GlassModal>
   </div>
 </template>
+
+<style scoped>
+.home-dashboard > .dashboard-panel {
+  padding-block: 1rem;
+}
+</style>

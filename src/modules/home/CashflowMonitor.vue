@@ -217,7 +217,7 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
 </script>
 
 <template>
-  <div class="apple-card bg-gray-50 space-y-5">
+  <div class="apple-card dashboard-panel bg-gray-50 space-y-4">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <h3 class="text-lg font-semibold text-gray-800"><i class="fa-solid fa-coins text-blue-500 mr-2"></i>现金流与负债监控</h3>
       <div class="inline-flex h-9 items-center rounded-xl border border-blue-200 bg-white p-1 shadow-sm" aria-label="选择数据 Owner">
@@ -226,11 +226,11 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
     </div>
 
     <!-- 三指标卡片 -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
       <div
         v-for="cfg in miniBarConfigs"
         :key="cfg.key"
-        class="bg-gray-50 rounded-xl p-4 border border-gray-100 flex flex-col gap-2"
+        class="bg-gray-50 rounded-xl p-3 border border-gray-100 flex flex-col gap-1.5"
       >
         <div class="text-xs text-gray-500">{{ cfg.label }}</div>
         <div class="text-2xl font-extrabold text-gray-800">
@@ -238,7 +238,7 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
         </div>
 
         <!-- 迷你横向柱状条 -->
-        <div class="flex flex-col gap-1.5 mt-1">
+        <div class="flex flex-col gap-1 mt-1">
           <div
             v-for="(bar, bi) in miniBarData(cfg)"
             :key="bi"
@@ -277,7 +277,7 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
     <!-- Chart.js 混合图 -->
     <div>
       <h4 class="text-sm font-semibold text-gray-700 mb-3">12 个月现金流与负债趋势</h4>
-      <div class="relative" style="height: 320px;">
+      <div class="relative h-56 md:h-64">
         <canvas ref="chartCanvas"></canvas>
       </div>
     </div>
