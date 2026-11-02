@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   createInventoryAssignmentRows,
   setInventoryAssignmentOwner,
-  setInventoryAssignmentPurpose,
+  setInventoryAssignmentLongTerm,
   summarizeInventoryAssignments,
 } from './inventoryAssignment'
 
@@ -34,6 +34,28 @@ describe('inventory assignment UX state', () => {
     ])
   })
 
+  it('lets Papa choose long-term or short-term per item', () => {
+    const rows = createInventoryAssignmentRows([{ id: 'long' }, { id: 'short' }])
+    const longTermRows = setInventoryAssignmentLongTerm(rows, 'long', true)
+
+    expect(longTermRows).toEqual([
+      { itemId: 'long', owner: 'papa', isLongTerm: true },
+      { itemId: 'short', owner: 'papa', isLongTerm: false },
+    ])
+  })
+
+  it('resets the classification to its default when the Owner changes', () => {
+    const papaLongTerm = setInventoryAssignmentLongTerm(
+      createInventoryAssignmentRows([{ id: 'a' }]),
+      'a',
+      true,
+    )
+
+    expect(setInventoryAssignmentOwner(papaLongTerm, 'a', 'payton')).toEqual([
+      { itemId: 'a', owner: 'payton', isLongTerm: false },
+    ])
+  })
+
   it('summarizes mixed ownership and the same account costs used at confirmation', () => {
     const items = [
       { id: 'keep', cost: 10 },
@@ -42,7 +64,7 @@ describe('inventory assignment UX state', () => {
     ]
     let rows = createInventoryAssignmentRows(items)
     rows = setInventoryAssignmentOwner(rows, 'keep', 'payton')
-    rows = setInventoryAssignmentPurpose(rows, 'keep', true)
+    rows = setInventoryAssignmentLongTerm(rows, 'keep', true)
     rows = setInventoryAssignmentOwner(rows, 'invest', 'payton')
 
     expect(summarizeInventoryAssignments(items, rows)).toEqual({

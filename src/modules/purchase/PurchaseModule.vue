@@ -21,7 +21,7 @@ import { CATEGORY_BATCHES } from './purchaseOptions'
 import {
   createInventoryAssignmentRows,
   setInventoryAssignmentOwner,
-  setInventoryAssignmentPurpose,
+  setInventoryAssignmentLongTerm,
   summarizeInventoryAssignments,
 } from './inventoryAssignment'
 
@@ -1092,7 +1092,7 @@ function updatePendingOwner(target, owner) {
 }
 
 function updatePendingPurpose(itemId, isLongTerm) {
-  pendingInventoryAssignments.value = setInventoryAssignmentPurpose(pendingInventoryAssignments.value, itemId, isLongTerm)
+  pendingInventoryAssignments.value = setInventoryAssignmentLongTerm(pendingInventoryAssignments.value, itemId, isLongTerm)
 }
 
 function pendingAssignmentFor(itemId) {
@@ -1116,7 +1116,7 @@ function confirmInventoryAssignment() {
   if (!action || pendingInventoryItems.value.length === 0) return
   const assignments = Object.fromEntries(pendingInventoryAssignments.value.map((row) => [row.itemId, {
     owner: row.owner,
-    isLongTerm: row.owner === 'payton' && row.isLongTerm,
+    isLongTerm: row.isLongTerm,
   }]))
 
   if (action.kind === 'single') {
@@ -2326,6 +2326,25 @@ watch(purchaseViewCategory, () => {
                         :aria-pressed="pendingAssignmentFor(item.id).isLongTerm"
                         @click="updatePendingPurpose(item.id, true)"
                       >自留</button>
+                    </div>
+                  </div>
+                  <div v-else>
+                    <div class="mb-1 text-[11px] font-medium text-gray-500">库存类型</div>
+                    <div class="flex items-center gap-1.5" role="group" :aria-label="`${item.name || '商品'} 库存类型`">
+                      <button
+                        type="button"
+                        class="rounded-full border px-3 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                        :class="pendingAssignmentFor(item.id).isLongTerm ? 'border-blue-600 bg-blue-600 text-white' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'"
+                        :aria-pressed="pendingAssignmentFor(item.id).isLongTerm"
+                        @click="updatePendingPurpose(item.id, true)"
+                      >长线</button>
+                      <button
+                        type="button"
+                        class="rounded-full border px-3 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                        :class="!pendingAssignmentFor(item.id).isLongTerm ? 'border-blue-600 bg-blue-600 text-white' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'"
+                        :aria-pressed="!pendingAssignmentFor(item.id).isLongTerm"
+                        @click="updatePendingPurpose(item.id, false)"
+                      >短线</button>
                     </div>
                   </div>
                 </div>

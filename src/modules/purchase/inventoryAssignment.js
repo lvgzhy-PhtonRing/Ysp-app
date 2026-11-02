@@ -8,12 +8,12 @@ export function createInventoryAssignmentRows(items = []) {
 export function setInventoryAssignmentOwner(rows = [], target, owner) {
   return rows.map((row) => {
     if (target !== 'all' && row.itemId !== target) return row
-    return { ...row, owner, isLongTerm: owner === 'payton' ? row.isLongTerm : false }
+    return { ...row, owner, isLongTerm: row.owner === owner ? row.isLongTerm : false }
   })
 }
 
-export function setInventoryAssignmentPurpose(rows = [], itemId, isLongTerm) {
-  return rows.map((row) => row.itemId === itemId && row.owner === 'payton'
+export function setInventoryAssignmentLongTerm(rows = [], itemId, isLongTerm) {
+  return rows.map((row) => row.itemId === itemId
     ? { ...row, isLongTerm: Boolean(isLongTerm) }
     : row)
 }
