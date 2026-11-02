@@ -18,6 +18,7 @@ import {
 import { calcItemCost, calcPreTransferCost, calcTransferCost } from '../../utils/calc'
 import { addOperationLog, clone, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
 import { CATEGORY_BATCHES } from './purchaseOptions'
+import { getPurchaseGroupKey } from './purchaseGrouping'
 import {
   createInventoryAssignmentRows,
   setInventoryAssignmentOwner,
@@ -134,16 +135,6 @@ function createGroupedLine(items) {
     items,
     id: representative.id || representative.sid || getNextEditGroupTempKey(),
   }
-}
-
-function getPurchaseGroupKey(item) {
-  const purchaseGroupId = String(item?.purchaseDetails?.purchaseGroupId || '').trim()
-  const paymentBatch = String(item?.purchaseDetails?.paymentBatch || '').trim()
-  if (purchaseGroupId && paymentBatch) return `${purchaseGroupId}__${paymentBatch}`
-  if (purchaseGroupId) return purchaseGroupId
-  const date = item?.purchaseDetails?.date || ''
-  const website = item?.purchaseDetails?.website || ''
-  return date || website || paymentBatch ? `${date}__${website}__${paymentBatch}` : `item_${item?.id}`
 }
 
 function isInEditingPurchaseGroup(item) {
@@ -288,6 +279,7 @@ const groupedByBatch = computed(() => {
         discount: item.purchaseDetails?.discount || '',
         exchangeRate: Number(item.purchaseDetails?.exchangeRate || 0),
         paymentBatch: item.purchaseDetails?.paymentBatch || '-',
+        purchaseGroupId: item.purchaseDetails?.purchaseGroupId || '',
         note: item.purchaseDetails?.note || '',
         totalRMB: Number(item.purchaseDetails?.totalRMB || 0),
         items: [],
@@ -1778,6 +1770,7 @@ watch(purchaseViewCategory, () => {
               <div class="grid grid-cols-12 gap-2 text-sm items-center">
                 <div class="col-span-2 flex min-w-0 flex-wrap items-center gap-1.5 font-medium">
                   <span class="truncate">{{ group.date }}</span>
+                  <span v-if="group.purchaseGroupId" class="inline-flex shrink-0 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700" :title="`购买组 ${group.purchaseGroupId}`">{{ group.purchaseGroupId }}</span>
                   <span v-if="purchaseGroupView === 'all'" class="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-bold" :class="group.activeCount > 0 && group.endedCount > 0 ? 'bg-amber-100 text-amber-700' : group.activeCount > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'">{{ purchaseGroupStatusText(group) }}</span>
                 </div>
                 <div class="col-span-3 truncate">{{ group.website || '-' }}<span v-if="group.note" class="text-gray-500 text-xs ml-2">{{ group.note }}</span></div>
