@@ -282,7 +282,7 @@ function statusText(status) {
       </div>
     </div>
 
-    <CashflowMonitor />
+    <CashflowMonitor @update-owner="emit('update-owner', $event)" />
 
     <GlassModal v-model="showItemDetailModal" panel-class="w-full max-w-2xl p-5">
       <div class="mb-4 text-lg font-semibold">商品详情</div>

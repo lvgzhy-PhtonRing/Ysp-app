@@ -4,6 +4,8 @@ import { Chart, registerables } from 'chart.js'
 import { getCashflowData } from './useCashflow'
 import { state as store } from '../../data/store'
 
+const emit = defineEmits(['update-owner'])
+
 Chart.register(...registerables)
 
 const now = computed(() => new Date())
@@ -216,7 +218,12 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
 
 <template>
   <div class="apple-card bg-gray-50 space-y-5">
-    <h3 class="text-lg font-semibold mb-4 text-gray-800"><i class="fa-solid fa-coins text-blue-500 mr-2"></i>现金流与负债监控</h3>
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <h3 class="text-lg font-semibold text-gray-800"><i class="fa-solid fa-coins text-blue-500 mr-2"></i>现金流与负债监控</h3>
+      <div class="inline-flex h-9 items-center rounded-xl border border-blue-200 bg-white p-1 shadow-sm" aria-label="选择数据 Owner">
+        <button v-for="owner in ['papa', 'payton']" :key="owner" class="h-7 min-w-20 rounded-lg px-3 text-xs font-bold transition" :class="store.currentOwner === owner ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-700'" :aria-pressed="store.currentOwner === owner" @click="emit('update-owner', owner)">{{ owner === 'papa' ? 'Papa' : 'Payton' }}</button>
+      </div>
+    </div>
 
     <!-- 三指标卡片 -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
