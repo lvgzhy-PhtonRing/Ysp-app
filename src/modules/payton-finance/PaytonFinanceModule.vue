@@ -32,7 +32,9 @@ function submitExpense() {
 }
 function editRecord(record) {
   const amount = Number(prompt('请输入新金额', String(record.amount)))
-  if (Number.isFinite(amount) && amount >= 0) updatePaytonExpense(record.id, { amount })
+  if (!Number.isFinite(amount) || amount < 0) return
+  const note = prompt('编辑备注', record.note || '')
+  if (note !== null) updatePaytonExpense(record.id, { amount, note })
 }
 function submitLoan() {
   if (!loanForm.name.trim() || Number(loanForm.amount) <= 0) return
@@ -85,9 +87,9 @@ function editTransfer(transfer) {
         <button class="btn btn-primary" @click="submitExpense">新增记录</button>
         <button class="btn btn-outline" @click="addMonthlyAllowance(expenseForm.date)">存入本月零花 ¥{{ owner.monthlyAllowance || 200 }}</button>
       </div>
-      <div v-for="record in records" :key="record.id" class="flex items-center justify-between border-t py-3 text-sm">
-        <div><span class="font-medium">{{ record.item }}</span><span class="ml-3 text-gray-400">{{ record.date }} · {{ record.note }}</span></div>
-        <div class="flex items-center gap-3"><span :class="record.type === 'income' ? 'text-green-600' : 'text-red-600'">{{ record.type === 'income' ? '+' : '−' }}¥{{ Number(record.amount).toFixed(2) }}</span><button class="text-blue-600" @click="editRecord(record)">编辑</button><button class="text-red-500" @click="deletePaytonExpense(record.id)">删除</button></div>
+      <div v-for="record in records" :key="record.id" class="border-t py-3 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 items-center text-sm">
+        <div class="min-w-0"><div class="flex flex-wrap items-center gap-2"><span class="font-semibold truncate">{{ record.item }}</span><span class="text-xs rounded-full px-2 py-0.5" :class="record.type === 'income' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'">{{ record.type === 'income' ? '收入' : '支出' }}</span></div><div class="text-xs text-gray-400 mt-1">{{ record.date || '未填写日期' }}<span v-if="record.note"> · {{ record.note }}</span></div></div>
+        <div class="flex items-center gap-3"><span class="font-semibold tabular-nums whitespace-nowrap" :class="record.type === 'income' ? 'text-green-600' : 'text-red-600'">{{ record.type === 'income' ? '+' : '−' }}¥{{ Number(record.amount).toFixed(2) }}</span><button class="text-blue-600" @click="editRecord(record)">编辑</button><button class="text-red-500" @click="deletePaytonExpense(record.id)">删除</button></div>
       </div>
       <div v-if="!records.length" class="py-8 text-center text-gray-400">暂无零花收支</div>
     </section>
