@@ -10,6 +10,10 @@ import {
   setPurchaseItemCost,
   editPurchaseItemCost,
   resolveEditedPreTransferCost,
+  getTransferItemsForRecord,
+  getPurchaseGroupItems,
+  purchaseGroupNeedsFullReprice,
+  getDomesticPurchaseTotal,
 } from './usePurchase'
 import { calcItemCost, calcPreTransferCost, calcTransferCost } from '../../utils/calc'
 import { addOperationLog, clone, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
@@ -22,6 +26,8 @@ const collapsedGroups = reactive({})
 const expandedTransfers = reactive({})
 const selectedItemIds = ref([])
 const purchaseViewCategory = ref('日淘')
+const purchaseGroupView = ref('purchase')
+const purchaseGroupKeyword = ref('')
 const transferCategoryBatch = ref('')
 const purchaseCollapseStorageKey = 'ysp_ui_purchase_collapse'
 const purchaseTransferExpandStorageKey = 'ysp_ui_purchase_transfer_expand'
@@ -88,7 +94,7 @@ const editGroupPriceUnit = computed(() => {
 })
 const editGroupCalculatedTotalRMB = computed(() => {
   if (isDomesticEditGroup.value) {
-    return (editGroupForm.items || []).reduce((sum, line) => sum + Number(line.originalPrice || 0), 0)
+    return getDomesticPurchaseTotal(editGroupForm.items || [])
   }
   return Number(editGroupForm.totalRMB || 0)
 })
@@ -96,7 +102,7 @@ const editGroupCalculatedTotalRMB = computed(() => {
 function createGroupedLine(items) {
   const representative = items[0]
   const { brand, name, originalPrice, domesticShipping, fee, transferCoefficient, transferStatus } = representative
-  const inventoryQty = items.filter((line) => line?.status === 'inventory').length
+  const inventoryQty = items.filter((line) => ['inventory', 'sold', 'unlisted'].includes(line?.status)).length
   return {
     sid: representative.sid,
     brand,
@@ -118,7 +124,9 @@ function getPurchaseGroupKey(item) {
   const paymentBatch = String(item?.purchaseDetails?.paymentBatch || '').trim()
   if (purchaseGroupId && paymentBatch) return `${purchaseGroupId}__${paymentBatch}`
   if (purchaseGroupId) return purchaseGroupId
-  return `${item?.purchaseDetails?.date || ''}__${item?.purchaseDetails?.website || ''}__${paymentBatch}`
+  const date = item?.purchaseDetails?.date || ''
+  const website = item?.purchaseDetails?.website || ''
+  return date || website || paymentBatch ? `${date}__${website}__${paymentBatch}` : `item_${item?.id}`
 }
 
 function isInEditingPurchaseGroup(item) {
@@ -176,9 +184,7 @@ const purchaseCategoryStats = computed(() => {
   return map
 })
 
-const purchaseItemsInView = computed(() =>
-  purchaseItems.value.filter((i) => i?.category === purchaseViewCategory.value),
-)
+const purchaseItemsInView = computed(() => getPurchaseGroupItems(store.items, purchaseViewCategory.value, purchaseGroupView.value))
 
 const stats = computed(() => {
   // 旧版口径：顶部汇总按各tab(默认日淘/美淘/国内)整体汇总，而非当前tab
@@ -248,9 +254,7 @@ const groupedByBatch = computed(() => {
     batchGroup.purchase += Number(item.purchaseDetails?.preTransferCost || 0)
     batchGroup.transfer += Number(item.purchaseDetails?.transferCost || 0)
 
-    const pgKey =
-      item.purchaseDetails?.purchaseGroupId ||
-      `${item.purchaseDetails?.date || ''}__${item.purchaseDetails?.website || ''}__${item.purchaseDetails?.paymentBatch || ''}`
+    const pgKey = getPurchaseGroupKey(item)
 
     if (!batchGroup._purchaseGroupMap.has(pgKey)) {
       batchGroup._purchaseGroupMap.set(pgKey, {
@@ -305,6 +309,17 @@ const groupedByBatch = computed(() => {
       if (x !== y) return x - y
       return String(a.batch).localeCompare(String(b.batch), 'zh-CN')
     })
+})
+const displayedGroupedByBatch = computed(() => {
+  const keyword = purchaseGroupKeyword.value.trim().toLocaleLowerCase()
+  if (!keyword) return groupedByBatch.value
+  return groupedByBatch.value.map((batch) => ({
+    ...batch,
+    purchaseGroups: batch.purchaseGroups.filter((group) =>
+      [group.date, group.website, group.paymentBatch, group.key, ...group.items.flatMap((item) => [item.sid, item.name])]
+        .some((value) => String(value || '').toLocaleLowerCase().includes(keyword)),
+    ),
+  })).filter((batch) => batch.purchaseGroups.length > 0)
 })
 
 const pendingTransferItems = computed(() =>
@@ -645,7 +660,7 @@ function getEditGroupInventoryQtyBySid(sid) {
   const key = String(sid || '').trim()
   if (!key) return 0
   return (editGroupForm.items || []).filter(
-    (line) => String(line?.sid || '').trim() === key && line?.status === 'inventory',
+    (line) => String(line?.sid || '').trim() === key && ['inventory', 'sold', 'unlisted'].includes(line?.status),
   ).length
 }
 
@@ -699,7 +714,7 @@ function adjustEditGroupQtyBySid(sid, targetQty, options = {}) {
     const nextLines = []
     ;(editGroupForm.items || []).forEach((line) => {
       const lineSid = String(line?.sid || '').trim()
-      if (lineSid === key && line?.status !== 'inventory' && removeCount > 0) {
+      if (lineSid === key && line?.status === 'purchase' && removeCount > 0) {
         removeCount -= 1
         return
       }
@@ -707,7 +722,7 @@ function adjustEditGroupQtyBySid(sid, targetQty, options = {}) {
     })
     editGroupForm.items = nextLines
     if (removeCount > 0 && inventoryQty > 0) {
-      alert(`该SID含${inventoryQty}件已入库商品，不能继续减少。`)
+      alert(`该 SID 含 ${inventoryQty} 件已入库、已售或已下架商品，不能继续减少。`)
     }
   } else {
     const template =
@@ -735,7 +750,7 @@ function syncLineField(sourceLine, field) {
   buildEditGroupItemsBySid()
 }
 
-function synchronizeSameSidLines(sourceLine, field = null, originalById = null) {
+function synchronizeSameSidLines(sourceLine, field = null, originalById = null, forceReprice = false) {
   const sid = String(sourceLine?.sid || '').trim()
   if (!sid) return
   editGroupForm.items.forEach((line) => {
@@ -756,11 +771,11 @@ function synchronizeSameSidLines(sourceLine, field = null, originalById = null) 
     if (!originalById || !line.id) return
     const target = originalById.get(line.id)
     if (!target) return
-    applyLineToItem(sourceLine, target)
+    applyLineToItem(sourceLine, target, forceReprice)
   })
 }
 
-function applyLineToItem(line, target) {
+function applyLineToItem(line, target, forceReprice = false) {
   if (!target) return
   const isDomestic = editGroupForm.category === '国内'
   const originalPrice = Number(line.originalPrice || 0)
@@ -774,7 +789,7 @@ function applyLineToItem(line, target) {
       : calcPreTransferCost(originalPrice, exchangeRate, domesticShipping, fee)
   const preTransferCost = resolveEditedPreTransferCost(target, calculatedCost, {
     originalPrice, exchangeRate, domesticShipping, fee,
-  })
+  }, forceReprice)
   const manualCostPreserved = target.purchaseDetails?.manualPreTransferCost !== undefined && preTransferCost !== calculatedCost
 
   target.name = line.name
@@ -1124,19 +1139,8 @@ function deletePurchaseGroup(group) {
   ids.forEach((id) => deletePurchaseItem(id))
 }
 
-function buildSoldItemsDetailText(items = []) {
-  return items
-    .slice(0, 12)
-    .map((item) => {
-      const d = item?.saleDetails?.date || '-'
-      const p = Number(item?.saleDetails?.price || 0).toFixed(2)
-      return `- ${item?.sid || '-'} | ${item?.name || '-'} | ${d} | ¥${p}`
-    })
-    .join('\n')
-}
-
 function openEditPurchaseGroup(group) {
-  const sourceRows = (group?.items || []).filter((i) => i?.status === 'purchase')
+  const sourceRows = (group?.items || []).filter((i) => ['purchase', 'inventory', 'sold', 'unlisted'].includes(i?.status))
   if (sourceRows.length === 0) return
   const first = sourceRows[0]
   const purchaseGroupId = first?.purchaseDetails?.purchaseGroupId || ''
@@ -1144,17 +1148,7 @@ function openEditPurchaseGroup(group) {
   const groupScope = getPurchaseGroupKey(first)
 
   const allGroupRows = store.items.filter((item) => getPurchaseGroupKey(item) === (groupScope || String(group?.key || '')))
-  const soldItems = allGroupRows.filter((item) => item?.status === 'sold')
-  if (soldItems.length > 0) {
-    const details = buildSoldItemsDetailText(soldItems)
-    const more = soldItems.length > 12 ? `\n... 另有 ${soldItems.length - 12} 件` : ''
-    alert(
-      `该购买组含 ${soldItems.length} 件已售出商品，当前不可编辑。\n\n请先在“销售记账”中回滚这些商品到库存，再在“库存管理”中执行同转运批次下架后再编辑：\n${details}${more}`,
-    )
-    return
-  }
-
-  const rows = allGroupRows.filter((item) => item?.status === 'purchase' || item?.status === 'inventory')
+  const rows = allGroupRows.filter((item) => ['purchase', 'inventory', 'sold', 'unlisted'].includes(item?.status))
   if (rows.length === 0) return
   editGroupForm.groupKey = group?.key || ''
   editGroupForm.groupScope = groupScope
@@ -1189,18 +1183,8 @@ function submitEditPurchaseGroup() {
   isSubmittingEditGroup.value = true
   try {
     const allGroupRows = store.items.filter((item) => isInEditingPurchaseGroup(item))
-    const soldItems = allGroupRows.filter((item) => item?.status === 'sold')
-    if (soldItems.length > 0) {
-      const details = buildSoldItemsDetailText(soldItems)
-      const more = soldItems.length > 12 ? `\n... 另有 ${soldItems.length - 12} 件` : ''
-      alert(
-        `该购买组含 ${soldItems.length} 件已售出商品，当前不可编辑。\n\n请先在“销售记账”中回滚这些商品到库存，再在“库存管理”中执行同转运批次下架后再编辑：\n${details}${more}`,
-      )
-      return
-    }
-
     const editableRows = allGroupRows.filter(
-      (item) => item?.status === 'purchase' || item?.status === 'inventory',
+      (item) => ['purchase', 'inventory', 'sold', 'unlisted'].includes(item?.status),
     )
     const paymentBatchSet = new Set(
       editableRows
@@ -1213,6 +1197,11 @@ function submitEditPurchaseGroup() {
 
     const purchaseRows = editableRows.filter((item) => item?.status === 'purchase')
     const originalById = new Map(editableRows.map((r) => [r.id, r]))
+    const repriceAll = purchaseGroupNeedsFullReprice(editableRows, lines, editGroupForm.category, editGroupForm.totalRMB)
+    if (repriceAll && lines.some((line) => {
+      const previous = originalById.get(line.id)?.purchaseDetails
+      return previous && Number(previous.preTransferCost || 0) > 0 && !Number(line.originalPrice || 0)
+    })) return alert('本组有商品缺少原始采购价；请先补全原价，再修改会重算全组成本的金额。')
 
     let coefficientChanged = false
     lines.forEach((line) => {
@@ -1290,8 +1279,8 @@ function submitEditPurchaseGroup() {
     lines.forEach((line) => {
       const src = line.id ? originalById.get(line.id) : null
       if (src) {
-        applyLineToItem(line, src)
-        synchronizeSameSidLines(line, null, originalById)
+        applyLineToItem(line, src, repriceAll)
+        synchronizeSameSidLines(line, null, originalById, repriceAll)
       } else {
         addPurchaseItem({
           sid: line.sid,
@@ -1337,7 +1326,6 @@ function submitEditPurchaseGroup() {
     nextTransferIdSet.forEach((transferId) => {
       const relatedItems = store.items.filter(
         (item) =>
-          item?.status !== 'sold' &&
           item?.purchaseDetails?.transferId === transferId &&
           item?.purchaseDetails?.transferStatus === 'completed',
       )
@@ -1444,22 +1432,16 @@ const transferItemDetails = computed(() => {
   })
   return Array.from(map.values())
 })
+const editTransferHasSold = computed(() => store.items.some((item) =>
+  editTransferForm.itemIds.includes(item.id) && item.status === 'sold',
+))
 
 function editTransferRecord(record) {
-  const soldItems = getTransferItems(record).filter((item) => item?.status === 'sold')
-  if (soldItems.length > 0) {
-    const details = buildSoldItemsDetailText(soldItems)
-    const more = soldItems.length > 12 ? `\n... 另有 ${soldItems.length - 12} 件` : ''
-    alert(
-      `该转运记录含 ${soldItems.length} 件已售出商品，当前不可编辑。\n\n请先在“销售记账”中回滚这些商品到库存，再在“库存管理”中执行同转运批次下架后再编辑：\n${details}${more}`,
-    )
-    return
-  }
   editTransferForm.transferId = record?.transferId || ''
   editTransferForm.date = record?.date || ''
   editTransferForm.totalRMB = Number(record?.totalRMB || 0)
   editTransferForm.paymentAccount = record?.paymentAccount || '支付宝'
-  editTransferForm.itemIds = [...(record?.itemIds || [])]
+  editTransferForm.itemIds = getTransferItems(record).map((item) => item.id)
   editTransferForm.company = record?.company || ''
   showEditTransferModal.value = true
 }
@@ -1469,7 +1451,8 @@ function submitEditTransfer() {
   const record = store.transfers.find((r) => r?.transferId === editTransferForm.transferId)
   if (!record) return
 
-  const relatedItems = store.items.filter((i) => (editTransferForm.itemIds || []).includes(i.id))
+  const relatedItems = getTransferItems(record)
+  if (relatedItems.length === 0) return alert('未找到关联商品，无法分摊转运费。')
   const invalidCoefficient = relatedItems.find(
     (item) => Number(item?.purchaseDetails?.transferCoefficient || 1) <= 0 || Number(item?.purchaseDetails?.transferCoefficient || 1) > 10,
   )
@@ -1484,6 +1467,7 @@ function submitEditTransfer() {
     record.totalRMB = Number(editTransferForm.totalRMB || 0)
     record.paymentAccount = editTransferForm.paymentAccount
     record.company = editTransferForm.company
+    record.itemIds = relatedItems.map((item) => item.id)
 
     const totalCoefficients = relatedItems.reduce(
       (sum, item) => sum + Number(item?.purchaseDetails?.transferCoefficient || 1),
@@ -1517,9 +1501,13 @@ function submitEditTransfer() {
 
 function deleteTransferRecord(record) {
   if (!record) return
+  if (getTransferItems(record).some((item) => item.status !== 'purchase')) {
+    alert('该转运记录关联已入库、已售或已下架商品。请编辑转运费（可改为 0），保留原转运记录。')
+    return
+  }
   if (!confirm('确定删除此转运记录？商品将回归待转运状态。')) return
 
-  const idSet = new Set(record.itemIds || [])
+  const idSet = new Set(getTransferItems(record).map((item) => item.id))
   const affectedItems = []
   store.items.forEach((item) => {
     if (!idSet.has(item.id)) return
@@ -1555,10 +1543,8 @@ function deleteTransferRecord(record) {
 }
 
 function batchMoveToInventoryByRecord(record) {
-  const ids = record?.itemIds || []
-  if (ids.length === 0) return
-
   const items = getTransferItems(record).filter((i) => i?.status === 'purchase')
+  if (items.length === 0) return
   const preview = items
     .slice(0, 12)
     .map((i) => `- ${i?.sid || '-'} | ${i?.name || '-'} | ¥${fmtMoney(i?.cost || 0)}`)
@@ -1571,7 +1557,7 @@ function batchMoveToInventoryByRecord(record) {
 
   const assignments = promptOwnerAssignments(items)
   if (!assignments) return
-  batchMoveToInventory(ids, assignments)
+  batchMoveToInventory(items.map((item) => item.id), assignments)
   record.isInventory = true
 }
 
@@ -1622,11 +1608,7 @@ function submitEdit() {
 }
 
 function getTransferItems(transfer) {
-  const byIds = Array.isArray(transfer.itemIds)
-    ? store.items.filter((i) => transfer.itemIds.includes(i.id))
-    : []
-  if (byIds.length > 0) return byIds
-  return store.items.filter((i) => i?.purchaseDetails?.transferId === transfer.transferId)
+  return getTransferItemsForRecord(transfer)
 }
 
 onMounted(() => {
@@ -1723,7 +1705,12 @@ watch(purchaseViewCategory, () => {
       </div>
     </div>
 
-    <div v-for="batch in groupedByBatch" :key="batch.key" class="mb-4">
+    <div class="flex gap-2 mb-3" aria-label="购买组范围">
+      <button class="btn btn-xs" :class="purchaseGroupView === 'purchase' ? 'btn-primary' : 'btn-outline'" @click="purchaseGroupView = 'purchase'">采购中购买组</button>
+      <button class="btn btn-xs" :class="purchaseGroupView === 'all' ? 'btn-primary' : 'btn-outline'" @click="purchaseGroupView = 'all'">全部购买组（含已入库、已售、已下架）</button>
+    </div>
+    <input v-model="purchaseGroupKeyword" class="apple-input mb-3" type="search" placeholder="搜索购买组、SID 或商品名称" aria-label="搜索购买组" />
+    <div v-for="batch in displayedGroupedByBatch" :key="batch.key" class="mb-4">
       <div class="bg-gray-50 border border-gray-200 rounded-lg overflow-hidden">
         <div
           class="bg-gray-200 px-4 py-2 border-b border-gray-200 font-semibold text-gray-800 cursor-pointer flex items-center gap-2"
@@ -1731,7 +1718,7 @@ watch(purchaseViewCategory, () => {
         >
           <i :class="collapsedGroups[batch.key] ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'" />
           <span class="font-semibold text-gray-800">{{ batch.category }} / {{ batch.batch }}</span>
-          <span class="text-xs text-gray-500 font-normal">- {{ batch.count }}件/采购中{{ fmtNum(batch.purchase) }}/转运中{{ fmtNum(batch.transfer) }}</span>
+          <span class="text-xs text-gray-500 font-normal">- {{ batch.count }}件/采购{{ fmtNum(batch.purchase) }}/转运{{ fmtNum(batch.transfer) }}</span>
         </div>
         <div v-show="collapsedGroups[batch.key] !== true" class="divide-y divide-gray-100">
           <div v-for="group in batch.purchaseGroups" :key="group.key">
@@ -1743,9 +1730,9 @@ watch(purchaseViewCategory, () => {
                 <div class="col-span-2 text-gray-300 text-xs truncate text-right">{{ group.paymentBatch || '-' }}</div>
                 <div class="col-span-2 font-semibold text-gray-700 text-right"><span class="text-xs font-normal">初始购买金额(不含转运)</span> ¥{{ fmtNum(group.totalRMB) }}</div>
                 <div class="col-span-1 flex gap-1 justify-end">
-                  <button v-if="group.category === '国内' || group.category === '2025JAPAN'" @click="batchMovePurchaseGroup(group)" class="btn btn-success btn-xs" title="入库"><i class="fa-solid fa-box"></i></button>
+                  <button v-if="purchaseGroupView === 'purchase' && (group.category === '国内' || group.category === '2025JAPAN')" @click="batchMovePurchaseGroup(group)" class="btn btn-success btn-xs" title="入库"><i class="fa-solid fa-box"></i></button>
                   <button @click="openEditPurchaseGroup(group)" class="btn btn-outline btn-xs"><i class="fa-solid fa-pen"></i></button>
-                  <button @click="deletePurchaseGroup(group)" class="btn btn-danger btn-xs"><i class="fa-solid fa-trash"></i></button>
+                  <button v-if="purchaseGroupView === 'purchase'" @click="deletePurchaseGroup(group)" class="btn btn-danger btn-xs"><i class="fa-solid fa-trash"></i></button>
                 </div>
               </div>
             </div>
@@ -1788,7 +1775,7 @@ watch(purchaseViewCategory, () => {
         </div>
       </div>
     </div>
-    <div v-if="groupedByBatch.length === 0" class="apple-card text-center text-gray-400 py-8">暂无采购记录</div>
+    <div v-if="displayedGroupedByBatch.length === 0" class="apple-card text-center text-gray-400 py-8">暂无匹配的购买组</div>
 
     <!-- 新建购买弹窗（对齐旧版） -->
     <div v-if="showAddModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 glass-modal">
@@ -2079,6 +2066,7 @@ watch(purchaseViewCategory, () => {
       <div class="apple-card w-full max-w-md relative">
         <button @click="showEditTransferModal = false" class="absolute top-4 right-4 text-gray-400 hover:text-gray-800"><i class="fa-solid fa-xmark text-xl"></i></button>
         <h3 class="text-xl font-bold mb-6">编辑转运记录</h3>
+        <div v-if="editTransferHasSold" class="text-xs text-orange-700 mb-3">关联商品含已售记录；修改转运费将同步更新销售利润。已导出的报税工作簿请重新核对。</div>
         <div class="space-y-4">
           <div><label class="block text-sm mb-1 text-gray-600">转运日期</label><input type="date" v-model="editTransferForm.date" class="apple-input"></div>
           <div><label class="block text-sm mb-1 text-gray-600">转运总费用 (¥)</label><input type="number" v-model.number="editTransferForm.totalRMB" class="apple-input"></div>
@@ -2106,6 +2094,7 @@ watch(purchaseViewCategory, () => {
       <div class="apple-card w-full max-w-5xl relative max-h-[90vh] overflow-y-auto">
         <button class="absolute top-4 right-4 text-gray-400 hover:text-gray-800" @click="showEditGroupModal = false"><i class="fa-solid fa-xmark text-xl" /></button>
         <h3 class="text-xl font-bold mb-5">编辑购买组</h3>
+        <div v-if="editGroupForm.items.some((item) => item.status === 'sold')" class="text-xs text-orange-700 mb-3">本组含已售商品；修改成本将同步更新销售利润。已导出的报税工作簿请重新核对。</div>
 
         <div class="grid grid-cols-4 gap-3 mb-4">
           <div><label class="block text-sm mb-1 text-gray-600">大类</label><select v-model="editGroupForm.category" class="apple-select"><option v-for="c in PURCHASE_TABS" :key="c">{{ c }}</option></select></div>
@@ -2213,7 +2202,7 @@ watch(purchaseViewCategory, () => {
                       :value="group.qty"
                       @change="updateEditGroupQty(group, $event.target.value)"
                     />
-                    <div v-if="group.inventoryQty > 0" class="text-[11px] text-gray-400 mt-1">含已入库 {{ group.inventoryQty }} 件，最少保留 {{ group.inventoryQty }} 件</div>
+                    <div v-if="group.inventoryQty > 0" class="text-[11px] text-gray-400 mt-1">含已入库、已售或已下架 {{ group.inventoryQty }} 件，最少保留 {{ group.inventoryQty }} 件</div>
                   </div>
                   <div>
                     <label class="block text-xs text-gray-500 mb-1">状态</label>

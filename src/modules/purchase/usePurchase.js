@@ -1,6 +1,6 @@
 // 采购模块逻辑层（无 UI）
 
-import { calcItemCost, calcTransferCost } from '../../utils/calc'
+import { calcItemCost, calcProfit, calcTransferCost } from '../../utils/calc'
 import { addOperationLog, clone, saveToLocalStorage, state as store } from '../../data/store'
 import { adjustPaytonBalance, getPaytonAccountForItem } from '../payton-finance/usePaytonFinance'
 import {
@@ -47,10 +47,14 @@ function toNumber(value, fallback = 0) {
 
 export function setPurchaseItemCost(item, cost) {
   const nextCost = toNumber(cost)
-  const account = item.status === 'inventory' ? getPaytonAccountForItem(item) : null
+  const account = ['inventory', 'sold', 'unlisted'].includes(item.status) ? getPaytonAccountForItem(item) : null
   const balanceDelta = toNumber(item.cost) - nextCost
   if (account && balanceDelta) adjustPaytonBalance(account, balanceDelta)
   item.cost = nextCost
+  if (item.status === 'sold' && item.saleDetails) {
+    const sale = item.saleDetails
+    sale.profit = calcProfit(sale.price || 0, sale.express || 0, sale.feeRate || 0, sale.deduction || 0, nextCost)
+  }
   return nextCost
 }
 
@@ -62,13 +66,42 @@ export function editPurchaseItemCost(item, cost) {
   return nextCost
 }
 
-export function resolveEditedPreTransferCost(item, calculatedCost, nextDetails) {
+export function resolveEditedPreTransferCost(item, calculatedCost, nextDetails, forceReprice = false) {
   const previous = item.purchaseDetails || {}
-  if (previous.manualPreTransferCost === undefined) return calculatedCost
-  const priceFields = ['originalPrice', 'exchangeRate', 'domesticShipping', 'fee']
-  return priceFields.every((field) => toNumber(previous[field]) === toNumber(nextDetails[field]))
-    ? toNumber(previous.manualPreTransferCost)
+  const priceFields = ['originalPrice', 'domesticShipping', 'fee']
+  return !forceReprice && priceFields.every((field) => toNumber(previous[field]) === toNumber(nextDetails[field]))
+    ? toNumber(previous.manualPreTransferCost ?? previous.preTransferCost, calculatedCost)
     : calculatedCost
+}
+
+export function getTransferItemsForRecord(record, items = store.items) {
+  const ids = new Set(Array.isArray(record?.itemIds) ? record.itemIds : [])
+  return items.filter((item) => (record?.transferId && item?.purchaseDetails?.transferId === record.transferId) || (
+    ids.has(item.id) && !item?.purchaseDetails?.transferId
+  ))
+}
+
+export function getPurchaseGroupItems(items, category, view = 'purchase') {
+  return items.filter((item) => item?.category === category && (
+    view === 'all'
+      ? item.purchaseDetails && ['purchase', 'inventory', 'sold', 'unlisted'].includes(item.status)
+      : item.status === 'purchase'
+  ))
+}
+
+export function purchaseGroupNeedsFullReprice(items, lines, category, totalRMB) {
+  if (items.some((item) => item.category !== category)) return true
+  if (category === '国内') return false
+  if (toNumber(totalRMB) !== toNumber(items[0]?.purchaseDetails?.totalRMB)) return true
+  const originalById = new Map(items.map((item) => [item.id, item.purchaseDetails || {}]))
+  if (items.length !== lines.length || lines.some((line) => !originalById.has(line.id))) return true
+  return lines.some((line) => ['originalPrice', 'domesticShipping', 'fee'].some(
+    (field) => toNumber(originalById.get(line.id)[field]) !== toNumber(line[field]),
+  ))
+}
+
+export function getDomesticPurchaseTotal(lines) {
+  return lines.reduce((sum, line) => sum + (toNumber(line.originalPrice) || toNumber(line.preTransferCost)), 0)
 }
 
 function generateItemId() {

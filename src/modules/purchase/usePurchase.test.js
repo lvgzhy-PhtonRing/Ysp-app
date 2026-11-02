@@ -81,6 +81,88 @@ describe('usePurchase logic', () => {
     expect(store.ownerRegistry.payton.investBalance).toBe(100)
   })
 
+  it('corrects a sold Payton item without changing its sale date or proceeds', () => {
+    loadData({ items: [{ id: 'sold', owner: 'payton', status: 'sold', cost: 50, isLongTerm: false,
+      saleDetails: { date: '2026-10-31', entryDate: '2026-11-01', price: 100, express: 8, feeRate: 0.01, deduction: 0, profit: 41 } }],
+    ownerRegistry: { papa: {}, payton: { pocketBalance: 0, investBalance: 150, loans: [], accountTransfers: [] } } })
+    purchase.setPurchaseItemCost(store.items[0], 60)
+    expect(store.ownerRegistry.payton.investBalance).toBe(140)
+    expect(store.items[0].saleDetails).toMatchObject({ date: '2026-10-31', entryDate: '2026-11-01', price: 100, profit: 31 })
+  })
+
+  it('adjusts Payton funds for an unlisted item whose purchase cost changes', () => {
+    loadData({ items: [{ id: 'off', owner: 'payton', status: 'unlisted', cost: 50, isLongTerm: false }],
+      ownerRegistry: { papa: {}, payton: { pocketBalance: 0, investBalance: 50, loans: [], accountTransfers: [] } } })
+    purchase.setPurchaseItemCost(store.items[0], 60)
+    expect(store.ownerRegistry.payton.investBalance).toBe(40)
+  })
+
+  it('reallocates transfer cost across sold and unsold items without losing Payton funds', () => {
+    loadData({ items: [
+      { id: 'sold', owner: 'payton', status: 'sold', cost: 50, isLongTerm: false, purchaseDetails: { transferId: 'T1', transferCoefficient: 1, preTransferCost: 20, transferCost: 30 }, saleDetails: { price: 100, express: 8, feeRate: 0.01, deduction: 0, profit: 41 } },
+      { id: 'removed', owner: 'papa', status: 'purchase', cost: 50, purchaseDetails: { transferId: 'T1', transferCoefficient: 1, preTransferCost: 20, transferCost: 30 } },
+    ], transfers: [{ transferId: 'T1', totalRMB: 60 }], ownerRegistry: { papa: {}, payton: { pocketBalance: 0, investBalance: 150, loans: [], accountTransfers: [] } } })
+    purchase.deletePurchaseItem('removed')
+    expect(store.items[0].cost).toBe(80)
+    expect(store.items[0].saleDetails.profit).toBe(11)
+    expect(store.ownerRegistry.payton.investBalance).toBe(120)
+  })
+
+  it('finds all transfer items when an old record has missing or partial item IDs', () => {
+    const items = [
+      { id: 'a', purchaseDetails: { transferId: 'T1' } },
+      { id: 'b', purchaseDetails: { transferId: 'T1' } },
+      { id: 'c', purchaseDetails: { transferId: 'T2' } },
+    ]
+    expect(purchase.getTransferItemsForRecord({ transferId: 'T1' }, items).map((item) => item.id)).toEqual(['a', 'b'])
+    expect(purchase.getTransferItemsForRecord({ transferId: 'T1', itemIds: ['a'] }, items).map((item) => item.id)).toEqual(['a', 'b'])
+  })
+
+  it('does not allocate a transfer to an item moved to another transfer record', () => {
+    const items = [
+      { id: 'old', purchaseDetails: { transferId: 'T2' } },
+      { id: 'current', purchaseDetails: { transferId: 'T1' } },
+      { id: 'legacy', purchaseDetails: {} },
+    ]
+    expect(purchase.getTransferItemsForRecord({ transferId: 'T1', itemIds: ['old', 'legacy'] }, items).map((item) => item.id)).toEqual(['current', 'legacy'])
+  })
+
+  it('reprices a foreign group when item count changes despite unchanged RMB total', () => {
+    const items = [
+      { id: 'a', category: '日淘', purchaseDetails: { totalRMB: 100, originalPrice: 100, domesticShipping: 0, fee: 0 } },
+      { id: 'b', category: '日淘', purchaseDetails: { totalRMB: 100, originalPrice: 100, domesticShipping: 0, fee: 0 } },
+    ]
+    expect(purchase.purchaseGroupNeedsFullReprice(items, [{ id: 'a', originalPrice: 100, domesticShipping: 0, fee: 0 }], '日淘', 100)).toBe(true)
+    expect(purchase.purchaseGroupNeedsFullReprice(items, [
+      { id: 'a', originalPrice: 100, domesticShipping: 0, fee: 0 },
+      { id: 'b', originalPrice: 100, domesticShipping: 0, fee: 0 },
+    ], '日淘', 100)).toBe(false)
+  })
+
+  it('preserves a legacy purchase cost when original price is missing and monetary inputs are unchanged', () => {
+    const item = { cost: 80, purchaseDetails: { originalPrice: 0, exchangeRate: 0, domesticShipping: 0, fee: 0, preTransferCost: 80 } }
+    expect(purchase.resolveEditedPreTransferCost(item, 0, { originalPrice: 0, exchangeRate: 0, domesticShipping: 0, fee: 0 })).toBe(80)
+  })
+
+  it('keeps a domestic legacy group total when original prices are absent', () => {
+    expect(purchase.getDomesticPurchaseTotal([
+      { originalPrice: 0, preTransferCost: 80 },
+      { originalPrice: 20, preTransferCost: 20 },
+    ])).toBe(100)
+  })
+
+  it('keeps completed and sold purchase groups discoverable without changing the default purchase list', () => {
+    const items = [
+      { id: 'p', category: '国内', status: 'purchase', purchaseDetails: { purchaseGroupId: 'G1' } },
+      { id: 'i', category: '国内', status: 'inventory', purchaseDetails: { purchaseGroupId: 'G1' } },
+      { id: 's', category: '国内', status: 'sold', purchaseDetails: { purchaseGroupId: 'G1' } },
+      { id: 'off', category: '国内', status: 'unlisted', purchaseDetails: { purchaseGroupId: 'G1' } },
+      { id: 'manual', category: '国内', status: 'inventory' },
+    ]
+    expect(purchase.getPurchaseGroupItems(items, '国内', 'purchase').map((item) => item.id)).toEqual(['p'])
+    expect(purchase.getPurchaseGroupItems(items, '国内', 'all').map((item) => item.id)).toEqual(['p', 'i', 's', 'off'])
+  })
+
   it('keeps purchase and transfer cost components aligned after directly editing total cost', () => {
     loadData({ items: [{ id: 'buy', owner: 'papa', status: 'purchase', cost: 25, purchaseDetails: { originalPrice: 20, exchangeRate: 0, domesticShipping: 0, fee: 0, preTransferCost: 20, transferCost: 5, transferStatus: 'completed' } }] })
     purchase.editPurchaseItemCost(store.items[0], 35)
