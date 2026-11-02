@@ -31,8 +31,17 @@ const baseRows = computed(() => {
 const rows = computed(() => groupInventoryAgingRows(baseRows.value))
 
 const categoryOptions = computed(() => ['全部', ...Array.from(new Set(rows.value.map((r) => r.category))).sort((a, b) => String(a).localeCompare(String(b), 'zh-CN'))])
-const batchOptions = computed(() => ['全部', ...Array.from(new Set(rows.value.map((r) => r.batch))).sort((a, b) => String(a).localeCompare(String(b), 'zh-CN'))])
+const batchOptions = computed(() => {
+  const categoryRows = filterCategory.value === '全部'
+    ? rows.value
+    : rows.value.filter((row) => row.category === filterCategory.value)
+  return ['全部', ...Array.from(new Set(categoryRows.map((row) => row.batch))).sort((a, b) => String(a).localeCompare(String(b), 'zh-CN'))]
+})
 const brandOptions = computed(() => ['全部', ...Array.from(new Set(rows.value.map((r) => r.brand || '其它'))).sort((a, b) => String(a).localeCompare(String(b), 'zh-CN'))])
+
+watch(batchOptions, (options) => {
+  if (!options.includes(filterBatch.value)) filterBatch.value = '全部'
+})
 
 const filteredRows = computed(() =>
   rows.value.filter((r) => {
