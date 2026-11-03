@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import * as XLSX from 'xlsx'
-import { buildTaxWorkbookData, createTaxWorkbook, writeTaxWorkbook } from './buildTaxWorkbook'
+import ExcelJS from 'exceljs'
+import { buildTaxWorkbookData, createPrintReadyTaxWorkbook, createTaxWorkbook } from './buildTaxWorkbook'
 
 vi.mock('xlsx', async (importOriginal) => ({ ...(await importOriginal()), writeFile: vi.fn() }))
 
@@ -75,10 +76,16 @@ describe('buildTaxWorkbookData', () => {
     expect(headers).not.toContain('下单日期')
   })
 
-  it('downloads the generated workbook locally with the selected filename', async () => {
+  it('sets every sheet to A4 landscape with repeated headings, uniform header style, and page numbers', () => {
     const result = buildTaxWorkbookData(payload, period)
-    await writeTaxWorkbook(result, 'YSP报税导出_2026Q4.xlsx')
-    expect(XLSX.writeFile).toHaveBeenCalledWith(expect.objectContaining({ SheetNames: expect.any(Array) }), 'YSP报税导出_2026Q4.xlsx')
+    const workbook = createPrintReadyTaxWorkbook(result, ExcelJS)
+    expect(workbook.worksheets).toHaveLength(result.sheets.length)
+    workbook.worksheets.forEach((worksheet) => {
+      expect(worksheet.pageSetup).toMatchObject({ paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '1:1' })
+      expect(worksheet.headerFooter.oddFooter).toContain('&P')
+      expect(worksheet.headerFooter.oddFooter).toContain('&N')
+      expect(worksheet.getRow(1).font).toMatchObject({ name: 'Microsoft YaHei', size: 11, bold: true })
+    })
   })
 
   it('filters sales by shop across all owners and does not export Owner fields', () => {

@@ -23,6 +23,18 @@ function sheet(name, headers, rows) {
   return { name, headers, rows }
 }
 
+function worksheetRows(name, headers, rows) {
+  return [headers, ...rows.map((row) => {
+    if (name === '阅读说明') return [row.field, row.value]
+    if (name === '申报步骤清单') return [row.process, row.step, row.check]
+    if (name === '增值税核对' || name === 'A表经营数据') return [row.metric, row.amount, row.check]
+    if (name === '销售明细') return [row.entryDate, row.name, row.sid, row.batch, row.price, row.cost, row.platformFee, row.express, row.adjustment, row.referenceProfit]
+    if (name === '收支明细') return [row.date, row.type, row.item, row.amount, row.note, row.taxCategory]
+    if (name === '补差明细') return [row.entryDate, row.name, row.sid, row.adjustment, row.direction]
+    return [row.id, row.sid, row.name || row.item || '', row.issue]
+  })]
+}
+
 export function buildTaxWorkbookData(payload = {}, options = {}) {
   const startDate = options.startDate || ''
   const endDate = options.endDate || ''
@@ -160,22 +172,67 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
 export function createTaxWorkbook(workbookData, XLSX) {
   const workbook = XLSX.utils.book_new()
   workbookData.sheets.forEach(({ name, headers, rows }) => {
-    const sheetRows = [headers, ...rows.map((row) => {
-      if (name === '阅读说明') return [row.field, row.value]
-      if (name === '申报步骤清单') return [row.process, row.step, row.check]
-      if (name === '增值税核对' || name === 'A表经营数据') return [row.metric, row.amount, row.check]
-      if (name === '销售明细') return [row.entryDate, row.name, row.sid, row.batch, row.price, row.cost, row.platformFee, row.express, row.adjustment, row.referenceProfit]
-      if (name === '收支明细') return [row.date, row.type, row.item, row.amount, row.note, row.taxCategory]
-      if (name === '补差明细') return [row.entryDate, row.name, row.sid, row.adjustment, row.direction]
-      return [row.id, row.sid, row.name || row.item || '', row.issue]
-    })]
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(sheetRows), name)
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(worksheetRows(name, headers, rows)), name)
+  })
+  return workbook
+}
+
+export function createPrintReadyTaxWorkbook(workbookData, ExcelJS) {
+  const Library = ExcelJS.Workbook ? ExcelJS : ExcelJS.default
+  const workbook = new Library.Workbook()
+  workbook.creator = 'YSP'
+  workbook.title = '报税导出'
+
+  workbookData.sheets.forEach(({ name, headers, rows }) => {
+    const values = worksheetRows(name, headers, rows)
+    const worksheet = workbook.addWorksheet(name)
+    worksheet.columns = headers.map((header, columnIndex) => {
+      const maxLength = values.reduce((max, row) => Math.max(max, String(row[columnIndex] ?? '').length), String(header).length)
+      return { width: Math.max(10, Math.min(36, maxLength + 2)) }
+    })
+    worksheet.addRows(values)
+    worksheet.pageSetup = {
+      paperSize: 9,
+      orientation: 'landscape',
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      printTitlesRow: '1:1',
+      margins: { left: 0.25, right: 0.25, top: 0.45, bottom: 0.45, header: 0.2, footer: 0.2 },
+    }
+    worksheet.headerFooter.oddFooter = '&C第 &P 页，共 &N 页'
+    worksheet.views = [{ state: 'frozen', ySplit: 1 }]
+
+    worksheet.eachRow((row, rowNumber) => {
+      row.alignment = { vertical: 'middle', wrapText: true }
+      if (rowNumber === 1) {
+        row.height = 24
+        row.font = { name: 'Microsoft YaHei', size: 11, bold: true, color: { argb: 'FFFFFFFF' } }
+        row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E78' } }
+        row.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+        row.eachCell((cell) => {
+          cell.border = { bottom: { style: 'medium', color: { argb: 'FF17365D' } } }
+        })
+      } else {
+        row.font = { name: 'Microsoft YaHei', size: 10 }
+      }
+    })
   })
   return workbook
 }
 
 export async function writeTaxWorkbook(workbookData, filename) {
-  const XLSX = await import('xlsx')
-  const workbook = createTaxWorkbook(workbookData, XLSX)
-  XLSX.writeFile(workbook, filename)
+  const ExcelJS = await import('exceljs')
+  const workbook = createPrintReadyTaxWorkbook(workbookData, ExcelJS)
+  const buffer = await workbook.xlsx.writeBuffer()
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.style.display = 'none'
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

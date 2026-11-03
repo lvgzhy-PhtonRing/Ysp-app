@@ -45,6 +45,25 @@ watch(taxpayerId, (value) => {
   if (match && !taxpayerName.value) taxpayerName.value = match.name
 })
 
+function restoreTaxpayerProfile() {
+  const profiles = taxpayerProfiles.value
+  const current = profiles.find((profile) => (
+    normalizeTaxpayerName(profile.name) === normalizeTaxpayerName(taxpayerName.value) &&
+    normalizeTaxpayerId(profile.taxId) === normalizeTaxpayerId(taxpayerId.value)
+  ))
+  const profile = current || profiles.at(-1)
+  if (!profile) return
+  taxpayerName.value = profile.name
+  taxpayerId.value = profile.taxId
+}
+
+watch(() => props.modelValue, (isOpen) => {
+  if (isOpen) restoreTaxpayerProfile()
+})
+watch(taxpayerProfiles, (profiles) => {
+  if (props.modelValue && profiles.length && (!taxpayerName.value || !taxpayerId.value)) restoreTaxpayerProfile()
+})
+
 function rememberTaxpayer() {
   const name = normalizeTaxpayerName(taxpayerName.value)
   const taxId = normalizeTaxpayerId(taxpayerId.value)
