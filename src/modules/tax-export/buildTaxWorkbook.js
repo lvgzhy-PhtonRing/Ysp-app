@@ -29,6 +29,7 @@ function worksheetRows(name, headers, rows) {
     if (name === '申报步骤清单') return [row.process, row.step, row.check]
     if (name === '增值税核对' || name === 'A表经营数据') return [row.metric, row.amount, row.check]
     if (name === '销售明细') return [row.entryDate, row.name, row.sid, row.batch, row.price, row.cost, row.platformFee, row.express, row.adjustment, row.referenceProfit]
+    if (name === '采购明细') return [row.date, row.name, row.sid, row.category, row.batch, row.paymentBatch, row.website, row.quantity, row.originalPrice, row.exchangeRate, row.preTransferCost, row.transferCost, row.cost, row.note]
     if (name === '收支明细') return [row.date, row.type, row.item, row.amount, row.note, row.taxCategory]
     if (name === '补差明细') return [row.entryDate, row.name, row.sid, row.adjustment, row.direction]
     return [row.id, row.sid, row.name || row.item || '', row.issue]
@@ -83,6 +84,45 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
   })
 
   if (sales.length) issues.push({ id: 'tax-classification', issue: '本期销售没有税务分类、开票类型及开票金额字段，请逐项对照税务系统预填数据核对。' })
+
+  const purchases = []
+  ;(Array.isArray(payload.items) ? payload.items : []).forEach((item) => {
+    const purchase = item?.purchaseDetails
+    if (!purchase || typeof purchase !== 'object') return
+    const hasPurchaseData = ['date', 'paymentBatch', 'purchaseGroupId', 'preTransferCost', 'originalPrice', 'totalRMB']
+      .some((key) => purchase[key] !== undefined && purchase[key] !== '')
+    if (!hasPurchaseData) return
+    if (!isDateOnly(purchase.date)) {
+      issues.push({ id: item.id || '', sid: item.sid || '', name: item.name || '', issue: purchase.date ? '采购日期无效，未计入期间采购明细。' : '采购记录缺少日期，未计入期间采购明细。' })
+      return
+    }
+    if (!periodValid || !inPeriod(purchase.date, startDate, endDate)) return
+    purchases.push({
+      date: purchase.date,
+      name: item.name || '',
+      sid: item.sid || '',
+      category: item.category || '',
+      batch: item.batch || '',
+      paymentBatch: purchase.paymentBatch || '',
+      website: purchase.website || '',
+      quantity: 1,
+      originalPrice: toAmount(purchase.originalPrice),
+      exchangeRate: toAmount(purchase.exchangeRate),
+      preTransferCost: toAmount(purchase.preTransferCost),
+      transferCost: toAmount(purchase.transferCost),
+      cost: toAmount(item.cost),
+      note: purchase.note || '',
+    })
+  })
+  if (purchases.length) {
+    purchases.push({
+      date: '', name: '合计', sid: '', category: '', batch: '', paymentBatch: '', website: '',
+      quantity: purchases.length, originalPrice: '', exchangeRate: '',
+      preTransferCost: purchases.reduce((sum, row) => sum + row.preTransferCost, 0),
+      transferCost: purchases.reduce((sum, row) => sum + row.transferCost, 0),
+      cost: purchases.reduce((sum, row) => sum + row.cost, 0), note: '',
+    })
+  }
 
   const financeRecords = []
   ;(Array.isArray(payload.financeRecords) ? payload.financeRecords : payload.finance?.records || []).forEach((record) => {
@@ -159,6 +199,7 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
         id: row.id, entryDate: row.entryDate, name: row.name, sid: row.sid, batch: row.batch,
         price: row.price, cost: row.cost, platformFee: row.platformFee, express: row.express, adjustment: row.adjustment, referenceProfit: row.referenceProfit,
       }))),
+      sheet('采购明细', ['采购日期', '商品名称', 'SID', '大类', '批次', '付款编号', '采购平台', '件数', '原价（原币）', '汇率', '转运前成本（元）', '分摊转运费（元）', 'YSP系统单位成本（元）', '备注'], purchases),
       sheet('收支明细', ['日期', '类型', '项目', '金额', '备注', '税务归类'], financeRecords),
       sheet('补差明细', ['入账日期', '商品名称', 'SID', '补差金额', '方向说明'], sales.filter((row) => row.adjustment !== 0).map((row) => ({
         entryDate: row.entryDate, name: row.name, sid: row.sid, adjustment: row.adjustment,
@@ -213,6 +254,9 @@ export function createPrintReadyTaxWorkbook(workbookData, ExcelJS) {
         row.eachCell((cell) => {
           cell.border = { bottom: { style: 'medium', color: { argb: 'FF17365D' } } }
         })
+      } else if (name === '采购明细' && rowNumber === worksheet.rowCount) {
+        row.font = { name: 'Microsoft YaHei', size: 10, bold: true }
+        row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEAF2F8' } }
       } else {
         row.font = { name: 'Microsoft YaHei', size: 10 }
       }
