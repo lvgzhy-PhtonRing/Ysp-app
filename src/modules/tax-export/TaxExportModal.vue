@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import GlassModal from '../../components/GlassModal.vue'
 import { buildTaxWorkbookData, writeTaxWorkbook } from './buildTaxWorkbook'
+import { buildPeriodInventoryReceipt, writePeriodInventoryReceipt } from './periodInventoryReceipt'
 import { SALES_CHANNELS } from '../sales/salesChannels'
 import { findTaxpayerProfileConflict, normalizeTaxpayerId, normalizeTaxpayerName } from '../../data/taxpayerProfiles'
 
@@ -24,6 +25,7 @@ const taxpayerId = ref('')
 const taxpayerProfiles = computed(() => Array.isArray(props.payload?.taxpayerProfiles) ? props.payload.taxpayerProfiles : [])
 const taxpayerConflict = computed(() => findTaxpayerProfileConflict(taxpayerProfiles.value, taxpayerName.value, taxpayerId.value))
 const channels = ref(['PhtonRIng'])
+const exportMode = ref('ledger')
 const downloadError = ref('')
 const workbookData = computed(() => buildTaxWorkbookData(props.payload, {
   startDate: startDate.value,
@@ -33,6 +35,7 @@ const workbookData = computed(() => buildTaxWorkbookData(props.payload, {
   channels: channels.value,
 }))
 const previewIssues = computed(() => workbookData.value.issues.slice(0, 8))
+const receiptData = computed(() => buildPeriodInventoryReceipt(props.payload, { startDate: startDate.value, endDate: endDate.value }))
 
 watch(taxpayerName, (value) => {
   const name = normalizeTaxpayerName(value)
@@ -87,9 +90,20 @@ async function download() {
   }
   rememberTaxpayer()
   const safeTaxpayer = (taxpayerName.value.trim() || '主体待确认').replace(/[\\/:*?"<>|]/g, '_')
-  const filename = `YSP报税导出_${safeTaxpayer}_${startDate.value}_${endDate.value}_${localDate()}.xlsx`
+  const filename = exportMode.value === 'ledger'
+    ? `YSP报税导出_${safeTaxpayer}_${startDate.value}_${endDate.value}_${localDate()}.xlsx`
+    : `${startDate.value.replaceAll('-', '')}-${endDate.value.replaceAll('-', '')}期间入库清单.xlsx`
   try {
-    await writeTaxWorkbook(workbookData.value, filename)
+    if (exportMode.value === 'ledger') {
+      await writeTaxWorkbook(workbookData.value, filename)
+    } else {
+      await writePeriodInventoryReceipt(props.payload, {
+        startDate: startDate.value,
+        endDate: endDate.value,
+        taxpayerName: taxpayerName.value,
+        taxpayerId: taxpayerId.value,
+      }, filename)
+    }
     emit('downloaded', filename)
   } catch (error) {
     downloadError.value = `工作簿生成失败：${error?.message || '未知错误'}`
@@ -116,6 +130,14 @@ async function download() {
         <label class="text-sm text-gray-600">期间结束<input v-model="endDate" type="date" class="apple-input mt-1" /></label>
       </div>
       <fieldset class="md:col-span-2">
+        <legend class="mb-2 text-sm font-semibold text-gray-700">导出内容</legend>
+        <div class="inline-flex rounded-full border border-gray-200 bg-gray-50 p-1" role="radiogroup" aria-label="导出内容">
+          <button type="button" role="radio" :aria-checked="exportMode === 'ledger'" class="rounded-full px-4 py-2 text-sm font-medium" :class="exportMode === 'ledger' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500'" @click="exportMode = 'ledger'">台账</button>
+          <button type="button" role="radio" :aria-checked="exportMode === 'receipt'" class="rounded-full px-4 py-2 text-sm font-medium" :class="exportMode === 'receipt' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500'" @click="exportMode = 'receipt'">期间入库清单</button>
+        </div>
+        <p v-if="exportMode === 'receipt'" class="mt-2 text-xs text-gray-500">按采购日期筛选；选定期间发生采购即列入，包括尚未完成 YSP 实际入库的商品。文件使用 A3 横向入库单版式。</p>
+      </fieldset>
+      <fieldset v-if="exportMode === 'ledger'" class="md:col-span-2">
         <legend class="mb-2 text-sm font-semibold text-gray-700">导出前筛选销售</legend>
         <div class="flex flex-wrap gap-5">
           <label v-for="channel in SALES_CHANNELS" :key="channel" class="flex items-center gap-2 text-sm"><input v-model="channels" type="checkbox" :value="channel" />{{ channel }}</label>
@@ -124,7 +146,7 @@ async function download() {
       </fieldset>
     </div>
 
-    <section class="mt-5 rounded-xl border border-blue-100 bg-blue-50/60 p-4" aria-label="导出预览">
+    <section v-if="exportMode === 'ledger'" class="mt-5 rounded-xl border border-blue-100 bg-blue-50/60 p-4" aria-label="导出预览">
       <h3 class="font-semibold text-blue-900">导出预览</h3>
       <div class="mt-3 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
         <div><div class="text-gray-500">确认销售</div><b>{{ workbookData.totals.salesCount }} 笔</b></div>
@@ -138,8 +160,18 @@ async function download() {
       </ul>
     </section>
 
+    <section v-else class="mt-5 rounded-xl border border-blue-100 bg-blue-50/60 p-4" aria-label="期间入库清单预览">
+      <h3 class="font-semibold text-blue-900">期间入库清单预览</h3>
+      <div class="mt-3 grid grid-cols-2 gap-3 text-sm md:grid-cols-3">
+        <div><div class="text-gray-500">采购商品</div><b>{{ receiptData.totals.quantity }} 件</b></div>
+        <div><div class="text-gray-500">系统成本合计</div><b>¥{{ receiptData.totals.cost.toFixed(2) }}</b></div>
+        <div><div class="text-gray-500">尚未实际入库</div><b>{{ receiptData.totals.pendingInventoryCount }} 件</b></div>
+      </div>
+      <p v-if="receiptData.missingDateCount" class="mt-2 text-xs text-amber-800">另有 {{ receiptData.missingDateCount }} 件采购日期缺失，无法判断是否属于该期间，未列入清单。</p>
+    </section>
+
     <p class="mt-4 rounded-lg bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">工作簿用于申报准备和人工复核，不计算应纳税所得额或税额。税务分类、发票数据、纳税主体及费用凭证请以当期电子税务局和实际资料为准。</p>
     <p v-if="downloadError" class="mt-3 text-sm text-red-700" role="alert">{{ downloadError }}</p>
-    <div class="mt-5 flex justify-end gap-3"><button class="btn btn-outline" @click="close">关闭</button><button class="btn btn-primary" :disabled="!startDate || !endDate || startDate > endDate || !channels.length" @click="download">下载 Excel 工作簿</button></div>
+    <div class="mt-5 flex justify-end gap-3"><button class="btn btn-outline" @click="close">关闭</button><button class="btn btn-primary" :disabled="!startDate || !endDate || startDate > endDate || (exportMode === 'ledger' && !channels.length)" @click="download">{{ exportMode === 'ledger' ? '下载 Excel 工作簿' : '下载 A3 期间入库清单' }}</button></div>
   </GlassModal>
 </template>

@@ -70,7 +70,7 @@ describe('buildTaxWorkbookData', () => {
   it('serializes the required workbook sheets without a sale order-date column', () => {
     const result = buildTaxWorkbookData(payload, period)
     const workbook = createTaxWorkbook(result, XLSX)
-    expect(workbook.SheetNames).toEqual(['阅读说明', '申报步骤清单', '增值税核对', 'A表经营数据', '销售明细', '采购明细', '收支明细', '补差明细', '待确认事项'])
+    expect(workbook.SheetNames).toEqual(['阅读说明', '申报步骤清单', '增值税核对', 'A表经营数据', '销售明细', '收支明细', '补差明细', '待确认事项'])
     const headers = XLSX.utils.sheet_to_json(workbook.Sheets['销售明细'], { header: 1 })[1]
     expect(headers).toContain('入账日期')
     expect(headers).not.toContain('下单日期')
