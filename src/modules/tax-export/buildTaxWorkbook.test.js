@@ -71,9 +71,10 @@ describe('buildTaxWorkbookData', () => {
     const result = buildTaxWorkbookData(payload, period)
     const workbook = createTaxWorkbook(result, XLSX)
     expect(workbook.SheetNames).toEqual(['阅读说明', '申报步骤清单', '增值税核对', 'A表经营数据', '销售明细', '采购明细', '收支明细', '补差明细', '待确认事项'])
-    const headers = XLSX.utils.sheet_to_json(workbook.Sheets['销售明细'], { header: 1 })[0]
+    const headers = XLSX.utils.sheet_to_json(workbook.Sheets['销售明细'], { header: 1 })[1]
     expect(headers).toContain('入账日期')
     expect(headers).not.toContain('下单日期')
+    expect(XLSX.utils.sheet_to_json(workbook.Sheets['阅读说明'], { header: 1 })[1]).toEqual(['项目', '内容', '备注'])
   })
 
   it('sets every sheet to A4 landscape with repeated headings, uniform header style, and page numbers', () => {
@@ -81,10 +82,11 @@ describe('buildTaxWorkbookData', () => {
     const workbook = createPrintReadyTaxWorkbook(result, ExcelJS)
     expect(workbook.worksheets).toHaveLength(result.sheets.length)
     workbook.worksheets.forEach((worksheet) => {
-      expect(worksheet.pageSetup).toMatchObject({ paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '1:1' })
+      expect(worksheet.pageSetup).toMatchObject({ paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '1:2' })
       expect(worksheet.headerFooter.oddFooter).toContain('&P')
       expect(worksheet.headerFooter.oddFooter).toContain('&N')
-      expect(worksheet.getRow(1).font).toMatchObject({ name: 'Microsoft YaHei', size: 11, bold: true })
+      expect(worksheet.getRow(1).getCell(1).value).toContain('20261001-20261231')
+      expect(worksheet.getRow(2).font).toMatchObject({ name: 'Microsoft YaHei', size: 11, bold: true })
     })
   })
 

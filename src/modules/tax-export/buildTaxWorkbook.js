@@ -23,9 +23,9 @@ function sheet(name, headers, rows) {
   return { name, headers, rows }
 }
 
-function worksheetRows(name, headers, rows) {
-  return [headers, ...rows.map((row) => {
-    if (name === '阅读说明') return [row.field, row.value]
+function worksheetRows(name, title, headers, rows) {
+  return [[title, ...Array(Math.max(0, headers.length - 1)).fill('')], headers, ...rows.map((row) => {
+    if (name === '阅读说明') return [row.field, row.value, row.note || '']
     if (name === '申报步骤清单') return [row.process, row.step, row.check]
     if (name === '增值税核对' || name === 'A表经营数据') return [row.metric, row.amount, row.check]
     if (name === '销售明细') return [row.entryDate, row.name, row.sid, row.batch, row.price, row.cost, row.platformFee, row.express, row.adjustment, row.referenceProfit]
@@ -34,6 +34,14 @@ function worksheetRows(name, headers, rows) {
     if (name === '补差明细') return [row.entryDate, row.name, row.sid, row.adjustment, row.direction]
     return [row.id, row.sid, row.name || row.item || '', row.issue]
   })]
+}
+
+function titleForSheet(name, taxpayerName, startDate, endDate) {
+  const cleanName = taxpayerName.replace(/[（(]个体工商户[）)]$/, '').trim() || '纳税主体待填写'
+  const period = isDateOnly(startDate) && isDateOnly(endDate)
+    ? `${startDate.replaceAll('-', '')}-${endDate.replaceAll('-', '')}`
+    : '申报期间待确认'
+  return `${cleanName} ${period} 台账${name}`
 }
 
 export function buildTaxWorkbookData(payload = {}, options = {}) {
@@ -186,12 +194,8 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
     { metric: '应纳税所得额/税额', amount: '', check: '不由本工作簿自动计算' },
   ]
 
-  return {
-    issues,
-    period: { startDate, endDate, taxpayerName, taxpayerId },
-    totals: { ...totals, salesCount: sales.length, expenseRows: financeRecords.length },
-    sheets: [
-      sheet('阅读说明', ['项目', '内容'], readingRows),
+  const sheets = [
+      sheet('阅读说明', ['项目', '内容', '备注'], readingRows),
       sheet('申报步骤清单', ['申报流程', '步骤', '核对状态'], steps),
       sheet('增值税核对', ['核对项目', '金额/数量', '人工核对/补录'], vatRows),
       sheet('A表经营数据', ['经营参考项目', '金额', '人工核对'], aRows),
@@ -206,14 +210,22 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
         direction: row.adjustment > 0 ? '卖方补给买家' : '买家补给卖方',
       }))),
       sheet('待确认事项', ['记录ID', 'SID', '名称/项目', '待确认原因'], issues),
-    ],
+    ].map((entry) => ({ ...entry, title: titleForSheet(entry.name, taxpayerName, startDate, endDate) }))
+
+  return {
+    issues,
+    period: { startDate, endDate, taxpayerName, taxpayerId },
+    totals: { ...totals, salesCount: sales.length, expenseRows: financeRecords.length },
+    sheets,
   }
 }
 
 export function createTaxWorkbook(workbookData, XLSX) {
   const workbook = XLSX.utils.book_new()
-  workbookData.sheets.forEach(({ name, headers, rows }) => {
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(worksheetRows(name, headers, rows)), name)
+  workbookData.sheets.forEach(({ name, title, headers, rows }) => {
+    const worksheet = XLSX.utils.aoa_to_sheet(worksheetRows(name, title, headers, rows))
+    worksheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }]
+    XLSX.utils.book_append_sheet(workbook, worksheet, name)
   })
   return workbook
 }
@@ -224,30 +236,36 @@ export function createPrintReadyTaxWorkbook(workbookData, ExcelJS) {
   workbook.creator = 'YSP'
   workbook.title = '报税导出'
 
-  workbookData.sheets.forEach(({ name, headers, rows }) => {
-    const values = worksheetRows(name, headers, rows)
+  workbookData.sheets.forEach(({ name, title, headers, rows }) => {
+    const values = worksheetRows(name, title, headers, rows)
     const worksheet = workbook.addWorksheet(name)
     worksheet.columns = headers.map((header, columnIndex) => {
       const maxLength = values.reduce((max, row) => Math.max(max, String(row[columnIndex] ?? '').length), String(header).length)
       return { width: Math.max(10, Math.min(36, maxLength + 2)) }
     })
+    if (name === '阅读说明') worksheet.columns = [{ width: 24 }, { width: 90 }, { width: 42 }]
     worksheet.addRows(values)
+    worksheet.mergeCells(1, 1, 1, headers.length)
     worksheet.pageSetup = {
       paperSize: 9,
       orientation: 'landscape',
       fitToPage: true,
       fitToWidth: 1,
       fitToHeight: 0,
-      printTitlesRow: '1:1',
+      printTitlesRow: '1:2',
       margins: { left: 0.25, right: 0.25, top: 0.45, bottom: 0.45, header: 0.2, footer: 0.2 },
     }
     worksheet.headerFooter.oddFooter = '&C第 &P 页，共 &N 页'
-    worksheet.views = [{ state: 'frozen', ySplit: 1 }]
+    worksheet.views = [{ state: 'frozen', ySplit: 2 }]
 
     worksheet.eachRow((row, rowNumber) => {
       row.alignment = { vertical: 'middle', wrapText: true }
       if (rowNumber === 1) {
-        row.height = 24
+        row.height = 32
+        row.font = { name: 'Microsoft YaHei', size: 14, bold: true, color: { argb: 'FF17365D' } }
+        row.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+      } else if (rowNumber === 2) {
+        row.height = 30
         row.font = { name: 'Microsoft YaHei', size: 11, bold: true, color: { argb: 'FFFFFFFF' } }
         row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E78' } }
         row.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
@@ -255,9 +273,11 @@ export function createPrintReadyTaxWorkbook(workbookData, ExcelJS) {
           cell.border = { bottom: { style: 'medium', color: { argb: 'FF17365D' } } }
         })
       } else if (name === '采购明细' && rowNumber === worksheet.rowCount) {
+        row.height = 28
         row.font = { name: 'Microsoft YaHei', size: 10, bold: true }
         row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEAF2F8' } }
       } else {
+        row.height = name === '阅读说明' ? 38 : 27
         row.font = { name: 'Microsoft YaHei', size: 10 }
       }
     })
