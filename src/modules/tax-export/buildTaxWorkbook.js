@@ -133,12 +133,16 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
   }
 
   const financeRecords = []
+  let publicExpense = 0
   ;(Array.isArray(payload.financeRecords) ? payload.financeRecords : payload.finance?.records || []).forEach((record) => {
     if (!isDateOnly(record?.date)) {
       issues.push({ id: record?.id || '', name: record?.item || '', issue: '收支记录缺少有效日期，未计入期间明细。' })
       return
     }
     if (!periodValid || !inPeriod(record.date, startDate, endDate)) return
+    if ((!record.owner || record.owner === 'papa') && (record.type === 'expense' || record.type === 'income')) {
+      publicExpense += record.type === 'expense' ? toAmount(record.amount) : -toAmount(record.amount)
+    }
     financeRecords.push({
       id: record.id || '', date: record.date, type: record.type || '',
       item: record.item || '', amount: toAmount(record.amount), note: record.note || '', taxCategory: '待人工确认',
@@ -154,6 +158,8 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
     adjustment: sum.adjustment + row.adjustment,
     referenceProfit: sum.referenceProfit + row.referenceProfit,
   }), { revenue: 0, cost: 0, platformFee: 0, express: 0, adjustment: 0, referenceProfit: 0 })
+  totals.publicExpense = publicExpense
+  totals.storeProfitReference = totals.referenceProfit - publicExpense
   const createdAt = new Date().toISOString()
   const readingRows = [
     { field: '纳税主体名称', value: taxpayerName || '待填写' },
@@ -162,7 +168,9 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
     { field: '生成时间', value: createdAt },
     { field: '用途', value: '仅用于申报准备与人工复核；不自动判断税额、不提交、不缴税。' },
     { field: '销售期间口径', value: '仅按已确认销售的入账日期归期。' },
-    { field: '经营利润参考', value: '售价 − 单品成本 − 平台手续费 − 快递费 − 补差；不等于应纳税所得额或税额。' },
+    { field: '单品利润参考', value: '售价 − 单品成本 − 平台手续费 − 快递费 − 补差。' },
+    { field: '店面整体利润参考', value: '本期已确认销售单品利润合计 − 本期公共支出净额（支出 − 收入）；不等于应纳税所得额或税额。' },
+    { field: '公共支出口径', value: '取自 YSP 公共收支中 Papa 或未标 Owner 的本期收入与支出；税务性质及凭证需人工核实。' },
     { field: '税务复核', value: '以当期电子税务局预填数据、适用政策及实际凭证为准。' },
   ]
   const steps = [
@@ -188,7 +196,9 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
     { metric: '平台手续费参考', amount: totals.platformFee, check: '核对凭证及费用性质' },
     { metric: '快递费参考', amount: totals.express, check: '核对凭证及费用性质' },
     { metric: '补差合计（单列核对）', amount: totals.adjustment, check: '不可默认与费用或收入抵销' },
-    { metric: '经营利润参考（非应纳税所得额）', amount: totals.referenceProfit, check: '仅经营参考，不代表税务计算结果' },
+    { metric: '销售单品利润合计（未扣公共支出）', amount: totals.referenceProfit, check: '售价 − 单品成本 − 平台手续费 − 快递费 − 补差' },
+    { metric: '公共支出净额（支出 − 收入）', amount: totals.publicExpense, check: '取自 YSP 公共收支；税务性质与凭证待人工核实' },
+    { metric: '店面整体经营利润参考（已扣公共支出）', amount: totals.storeProfitReference, check: '不等于应纳税所得额或税额' },
     { metric: '以前年度亏损弥补', amount: '', check: '待人工核对填写' },
     { metric: '减除费用/专项扣除/减免项目', amount: '', check: '按税务系统页面和实际情况人工核对' },
     { metric: '应纳税所得额/税额', amount: '', check: '不由本工作簿自动计算' },
