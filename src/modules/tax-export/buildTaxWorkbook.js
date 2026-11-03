@@ -249,11 +249,15 @@ export function createPrintReadyTaxWorkbook(workbookData, ExcelJS) {
   workbookData.sheets.forEach(({ name, title, headers, rows }) => {
     const values = worksheetRows(name, title, headers, rows)
     const worksheet = workbook.addWorksheet(name)
-    worksheet.columns = headers.map((header, columnIndex) => {
+    const columns = headers.map((header, columnIndex) => {
       const maxLength = values.reduce((max, row) => Math.max(max, String(row[columnIndex] ?? '').length), String(header).length)
       return { width: Math.max(10, Math.min(36, maxLength + 2)) }
     })
-    if (name === '阅读说明') worksheet.columns = [{ width: 24 }, { width: 90 }, { width: 42 }]
+    if (name === '阅读说明') columns.splice(0, columns.length, { width: 24 }, { width: 90 }, { width: 42 })
+    const totalWidth = columns.reduce((sum, column) => sum + column.width, 0)
+    const printWidth = Math.max(1, totalWidth, 154)
+    const widthScale = printWidth / totalWidth
+    worksheet.columns = columns.map((column) => ({ width: column.width * widthScale }))
     worksheet.addRows(values)
     worksheet.mergeCells(1, 1, 1, headers.length)
     worksheet.pageSetup = {
@@ -271,11 +275,11 @@ export function createPrintReadyTaxWorkbook(workbookData, ExcelJS) {
     worksheet.eachRow((row, rowNumber) => {
       row.alignment = { vertical: 'middle', wrapText: true }
       if (rowNumber === 1) {
-        row.height = 32
+        row.height = 36
         row.font = { name: 'Microsoft YaHei', size: 14, bold: true, color: { argb: 'FF17365D' } }
         row.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
       } else if (rowNumber === 2) {
-        row.height = 30
+        row.height = 32
         row.font = { name: 'Microsoft YaHei', size: 11, bold: true, color: { argb: 'FFFFFFFF' } }
         row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E78' } }
         row.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
@@ -283,11 +287,11 @@ export function createPrintReadyTaxWorkbook(workbookData, ExcelJS) {
           cell.border = { bottom: { style: 'medium', color: { argb: 'FF17365D' } } }
         })
       } else if (name === '采购明细' && rowNumber === worksheet.rowCount) {
-        row.height = 28
+        row.height = 32
         row.font = { name: 'Microsoft YaHei', size: 10, bold: true }
         row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEAF2F8' } }
       } else {
-        row.height = name === '阅读说明' ? 38 : 27
+        row.height = name === '阅读说明' ? 40 : 32
         row.font = { name: 'Microsoft YaHei', size: 10 }
       }
     })
