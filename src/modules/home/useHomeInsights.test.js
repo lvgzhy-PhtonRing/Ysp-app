@@ -26,4 +26,18 @@ describe('home insights owner-independent views', () => {
     expect(result.find((row) => row.category === 'payton库存' && row.batch === '2026年10月导入').revenue).toBe(18)
     expect(result.find((row) => row.isSummary).revenue).toBe(38)
   })
+
+  it('counts every sold item as net proceeds regardless of confirmation status', () => {
+    const items = [
+      { id: 'pending-plus', owner: 'papa', status: 'sold', category: '日淘', batch: '26a批', cost: 10, saleDetails: { price: 100, feeRate: 0.01, express: 8, deduction: 10, isConfirmed: false } },
+      { id: 'confirmed-minus', owner: 'payton', status: 'sold', category: '日淘', batch: '26a批', cost: 10, saleDetails: { price: 50, feeRate: 0.02, express: 5, deduction: -4, isConfirmed: true } },
+      { id: 'not-sold', owner: 'papa', status: 'inventory', category: '日淘', batch: '26a批', cost: 10, saleDetails: { price: 500, feeRate: 0.1, express: 10, deduction: 10, isConfirmed: true } },
+    ]
+
+    const result = getBatchReturnStats(items)
+
+    expect(result.find((row) => row.category === '日淘' && row.batch === '26a批').revenue).toBe(129)
+    expect(result.find((row) => row.isCategory && row.category === '日淘').revenue).toBe(129)
+    expect(result.find((row) => row.isSummary).revenue).toBe(129)
+  })
 })

@@ -1,3 +1,5 @@
+import { getSaleNetProceeds } from '../sales/saleAccounting'
+
 export function getMonthStats(items = [], now = new Date()) {
   const y = now.getFullYear()
   const m = now.getMonth() + 1
@@ -93,31 +95,17 @@ export function getBatchReturnStats(items = []) {
     }
   })
 
-  // 销售额按 sid+日期 去重分组，同组累加每条的 totalPrice 或 saleDetails.price
-  const saleGroups = {}
+  // 已售即计入批次净回款；到账确认仅用于税务归期，不参与此处统计。
   items.forEach((item) => {
-    if (item?.status !== 'sold') return
-    const groupKey = `${item?.owner || 'papa'}|${item?.sid || ''}|${item?.saleDetails?.date || ''}`
-    if (!saleGroups[groupKey]) {
-      saleGroups[groupKey] = {
-        sid: item?.sid,
-        category: item?.category,
-        batch: item?.batch,
-        price: 0,
-      }
-    }
-    saleGroups[groupKey].price += Number(item?.totalPrice || item?.saleDetails?.price || 0)
-  })
-
-  Object.values(saleGroups).forEach((sale) => {
-    const key = `${sale.category}|${sale.batch}`
+    if (item?.status !== 'sold' || !item?.saleDetails) return
+    const key = `${item?.category}|${item?.batch}`
     if (!batchMap[key]) {
-      batchMap[key] = { category: sale.category, batch: sale.batch, totalCost: 0, revenue: 0 }
+      batchMap[key] = { category: item?.category, batch: item?.batch, totalCost: 0, revenue: 0 }
     }
-    batchMap[key].revenue += sale.price
+    batchMap[key].revenue += getSaleNetProceeds(item.saleDetails)
 
-    if (categoryMap[sale.category]) {
-      categoryMap[sale.category].revenue += sale.price
+    if (categoryMap[item?.category]) {
+      categoryMap[item.category].revenue += getSaleNetProceeds(item.saleDetails)
     }
   })
 

@@ -234,10 +234,10 @@ function statusText(status) {
     </div>
 
     <div class="apple-card dashboard-panel">
-      <h3 class="text-lg font-semibold mb-4 text-gray-800 cursor-pointer select-none" @click="batchStatsCollapsed = !batchStatsCollapsed"><i class="fa-solid fa-chart-line text-blue-500 mr-2"></i>各批次回款统计 <span class="text-xs font-normal text-gray-400">跨 Owner</span> <span class="text-xs text-gray-400">{{ batchStatsCollapsed ? '▼' : '▲' }}</span></h3>
+      <h3 class="text-lg font-semibold mb-4 text-gray-800 cursor-pointer select-none" @click="batchStatsCollapsed = !batchStatsCollapsed"><i class="fa-solid fa-chart-line text-blue-500 mr-2"></i>各批次回款统计 <span class="text-xs font-normal text-gray-400">跨 Owner · 已售即计入，不看到账确认</span> <span class="text-xs text-gray-400">{{ batchStatsCollapsed ? '▼' : '▲' }}</span></h3>
       <div class="overflow-x-auto" v-show="!batchStatsCollapsed">
         <table class="apple-table text-sm w-full">
-          <thead><tr><th>批次</th><th class="text-right">总成本</th><th class="text-right">回款</th><th class="text-right">回款比例</th></tr></thead>
+          <thead><tr><th>批次</th><th class="text-right">总成本</th><th class="text-right">净回款</th><th class="text-right">净回款比例</th></tr></thead>
           <tbody><template v-for="b in batchReturnStats" :key="b.category + b.batch"><tr v-if="b.isSummary" class="bg-blue-50 font-bold border-t-2 border-blue-200"><td class="text-blue-700">汇总</td><td class="text-right text-blue-700">{{ fmtMoney(b.totalCost) }}</td><td class="text-right text-blue-700">{{ fmtMoney(b.revenue) }}</td><td class="text-right text-blue-700">{{ fmtNum(b.rate) }}%</td></tr><tr v-else-if="b.isCategory" class="bg-gray-100 font-bold"><td style="color:#9ca3af">{{ b.category }}</td><td class="text-right" style="color:#9ca3af">{{ fmtMoney(b.totalCost) }}</td><td class="text-right" style="color:#9ca3af">{{ fmtMoney(b.revenue) }}</td><td class="text-right" :style="returnRateStyle(b.rate)">{{ fmtNum(b.rate) }}%</td></tr><tr v-else><td class="pl-6" style="color:#9ca3af">{{ b.batch }}</td><td class="text-right" style="color:#9ca3af">{{ fmtMoney(b.totalCost) }}</td><td class="text-right" style="color:#9ca3af">{{ fmtMoney(b.revenue) }}</td><td class="text-right font-medium" :style="returnRateStyle(b.rate)">{{ fmtNum(b.rate) }}%</td></tr></template></tbody>
         </table>
       </div>
