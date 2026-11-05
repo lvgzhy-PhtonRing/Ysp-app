@@ -15,6 +15,7 @@ const salesFiltersStorageKey = 'ysp_ui_sales_filters'
 const filters = reactive({
   category: '全部',
   batch: '全部',
+  brand: '全部',
   keyword: '',
 })
 const selectedShop = ref('全部')
@@ -68,7 +69,15 @@ const saleBatchOptions = computed(() => {
   }
   const set = new Set(['全部'])
   shopFilteredItems.value.forEach((item) => {
-    if (item?.category === filters.category && item?.batch) set.add(item.batch)
+    if (item?.category === filters.category && (filters.brand === '全部' || item?.brand === filters.brand) && item?.batch) set.add(item.batch)
+  })
+  return Array.from(set)
+})
+
+const saleBrandOptions = computed(() => {
+  const set = new Set(['全部'])
+  shopFilteredItems.value.forEach((item) => {
+    if (item?.brand) set.add(item.brand)
   })
   return Array.from(set)
 })
@@ -83,6 +92,9 @@ const filteredSoldItems = computed(() => {
   let list = shopFilteredItems.value
   if (filters.category !== '全部') {
     list = list.filter((item) => item?.category === filters.category)
+  }
+  if (filters.brand !== '全部') {
+    list = list.filter((item) => item?.brand === filters.brand)
   }
   if (filters.batch !== '全部') {
     list = list.filter((item) => item?.batch === filters.batch)
@@ -293,6 +305,7 @@ function resetSalesViewState() {
   ownerScope.value = 'current'
   filters.category = '全部'
   filters.batch = '全部'
+  filters.brand = '全部'
   filters.keyword = ''
   Object.keys(collapsedSalesGroups).forEach((k) => {
     delete collapsedSalesGroups[k]
@@ -312,6 +325,7 @@ onMounted(() => {
       if (parsed && typeof parsed === 'object') {
         filters.category = parsed.category || '全部'
         filters.batch = parsed.batch || '全部'
+        filters.brand = parsed.brand || '全部'
         filters.keyword = parsed.keyword || ''
       }
     }
@@ -342,6 +356,13 @@ watch(
     filters.batch = '全部'
   },
 )
+
+watch(
+  () => filters.brand,
+  () => {
+    filters.batch = '全部'
+  },
+)
 </script>
 
 <template>
@@ -362,7 +383,7 @@ watch(
           <div class="mt-2 grid grid-cols-2 gap-3">
             <div><div class="text-[11px] text-gray-400">成交额</div><div class="text-sm font-bold text-gray-700">{{ fmtMoney(summary.totalRevenue) }}</div></div>
             <div><div class="text-[11px] text-gray-400">销售利润</div><div class="text-sm font-bold" :class="summary.totalProfit >= 0 ? 'text-success' : 'text-danger'">{{ fmtMoney(summary.totalProfit) }}</div></div>
-            <div class="col-span-2 flex items-center justify-between border-t border-gray-200 pt-2"><span class="text-[11px] text-gray-400">毛利率（不含公共支出）</span><span class="text-sm font-bold" :class="summary.profitMargin >= 0 ? 'text-success' : 'text-danger'">{{ Number(summary.profitMargin || 0).toFixed(2) }}%</span></div>
+            <div class="col-span-2 flex items-center justify-between border-t border-gray-200 pt-2"><span class="text-[11px] text-gray-400">毛利率（不含公共支出）</span><span class="text-sm font-bold" :class="summary.profitMargin >= 0 ? 'text-success' : 'text-danger'">{{ (Number(summary.profitMargin || 0) * 100).toFixed(2) }}%</span></div>
           </div>
         </article>
       </div>
@@ -391,6 +412,9 @@ watch(
         </select>
         <select v-model="filters.batch" class="apple-select py-1.5 w-32">
           <option v-for="b in saleBatchOptions" :key="b" :value="b">{{ b === '全部' ? '所有批次' : b }}</option>
+        </select>
+        <select v-model="filters.brand" class="apple-select py-1.5 w-32">
+          <option v-for="b in saleBrandOptions" :key="b" :value="b">{{ b === '全部' ? '所有品牌' : b }}</option>
         </select>
         <input v-model="filters.keyword" placeholder="搜索名称、SID..." class="apple-input py-1.5 w-64 text-sm" />
       </div>

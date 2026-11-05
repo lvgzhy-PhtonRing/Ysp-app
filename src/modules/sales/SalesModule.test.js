@@ -37,6 +37,7 @@ describe('SalesModule owner scope', () => {
   it('shows the three shop summaries for the selected owner and categorizes undated legacy sales as Other', async () => {
     loadData({ items: [
       { id: 'phton', owner: 'papa', status: 'sold', cost: 20, saleDetails: { price: 40, profit: 20, date: '2026-10-15' } },
+      { id: 'brand-sale', owner: 'papa', status: 'sold', brand: 'Hotwheels', cost: 25, saleDetails: { price: 50, profit: 25, date: '2026-10-14' } },
       { id: 'side', owner: 'papa', status: 'sold', cost: 30, saleDetails: { shop: '侧空翻棉', price: 60, profit: 30, date: '2026-10-16' } },
       { id: 'legacy', owner: 'papa', status: 'sold', cost: 10, saleDetails: { price: 25, profit: 15 } },
       { id: 'payton', owner: 'payton', status: 'sold', cost: 50, saleDetails: { shop: 'PhtonRIng', price: 100, profit: 50 } },
@@ -45,6 +46,9 @@ describe('SalesModule owner scope', () => {
     store.currentOwner = 'papa'
     const papaHtml = await renderToString(h(SalesModule))
     expect(papaHtml).toContain('data-shop-summary="PhtonRIng"')
+    expect(papaHtml).toContain('所有品牌')
+    expect(papaHtml).toContain('Hotwheels')
+    expect(papaHtml).toMatch(/data-shop-summary="PhtonRIng"[\s\S]*?毛利率（不含公共支出）<\/span><span[^>]*>100\.00%<\/span>/)
     expect(papaHtml).toContain('data-shop-summary="侧空翻棉"')
     expect(papaHtml).toContain('data-shop-summary="其它"')
     expect(store.items.find((item) => item.id === 'legacy').saleDetails.shop).toBe('其它')
