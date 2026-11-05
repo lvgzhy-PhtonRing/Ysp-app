@@ -45,6 +45,27 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(n) ? n : fallback
 }
 
+export function normalizeTransferFeeBreakdown(data = {}) {
+  const logisticsRMB = Math.max(0, toNumber(data.logisticsRMB, data.totalRMB == null ? 0 : toNumber(data.totalRMB)))
+  const customsDutyRMB = Math.max(0, toNumber(data.customsDutyRMB, 0))
+  return {
+    logisticsRMB,
+    customsDutyRMB,
+    totalRMB: logisticsRMB + customsDutyRMB,
+  }
+}
+
+export function splitTransferFeeByCoefficient(data = {}, coefficient = 0, totalCoefficients = 1) {
+  const { logisticsRMB, customsDutyRMB } = normalizeTransferFeeBreakdown(data)
+  const logisticsCost = calcTransferCost(logisticsRMB, coefficient, totalCoefficients)
+  const customsDutyCost = calcTransferCost(customsDutyRMB, coefficient, totalCoefficients)
+  return {
+    logisticsCost,
+    customsDutyCost,
+    transferCost: logisticsCost + customsDutyCost,
+  }
+}
+
 export function setPurchaseItemCost(item, cost) {
   const nextCost = toNumber(cost)
   const account = ['inventory', 'sold', 'unlisted'].includes(item.status) ? getPaytonAccountForItem(item) : null
@@ -176,8 +197,10 @@ function recalcTransferItemsByTransferId(transferId) {
   sameTransferItems.forEach((item) => {
     const coefficient = toNumber(item?.purchaseDetails?.transferCoefficient, 1)
     const preTransferCost = toNumber(item?.purchaseDetails?.preTransferCost, 0)
-    const transferCost = calcTransferCost(transfer.totalRMB, coefficient, totalCoefficients || 1)
+    const { logisticsCost, customsDutyCost, transferCost } = splitTransferFeeByCoefficient(transfer, coefficient, totalCoefficients || 1)
 
+    item.purchaseDetails.transferLogisticsCost = logisticsCost
+    item.purchaseDetails.customsDutyCost = customsDutyCost
     item.purchaseDetails.transferCost = transferCost
     setPurchaseItemCost(item, calcItemCost(preTransferCost, transferCost))
   })
@@ -217,6 +240,8 @@ export function addPurchaseItem(itemData = {}, options = {}) {
     purchaseDetails: {
       transferStatus: 'pending',
       transferCoefficient: 1,
+      transferLogisticsCost: 0,
+      customsDutyCost: 0,
       transferCost: 0,
       ...purchaseDetails,
       preTransferCost,
@@ -253,8 +278,10 @@ export function submitTransfer(transferData = {}, selectedItemIds = []) {
     String(transferData.transferBatch || '').trim() ||
     generateUniqueTransferBatch(transferData, selectedItems)
 
+  const transferFee = normalizeTransferFeeBreakdown(transferData)
   const transferRecord = {
     ...transferData,
+    ...transferFee,
     transferId,
     transferBatch,
     itemIds: selectedItems.map((item) => item.id),
@@ -269,13 +296,15 @@ export function submitTransfer(transferData = {}, selectedItemIds = []) {
   selectedItems.forEach((item) => {
     const coefficient = toNumber(item?.purchaseDetails?.transferCoefficient, 1)
     const preTransferCost = toNumber(item?.purchaseDetails?.preTransferCost, 0)
-    const transferCost = calcTransferCost(transferRecord.totalRMB, coefficient, totalCoefficients || 1)
+    const { logisticsCost, customsDutyCost, transferCost } = splitTransferFeeByCoefficient(transferRecord, coefficient, totalCoefficients || 1)
 
     item.purchaseDetails = {
       ...(item.purchaseDetails || {}),
       transferId,
       transferBatch: transferRecord.transferBatch,
       transferStatus: 'completed',
+      transferLogisticsCost: logisticsCost,
+      customsDutyCost,
       transferCost,
     }
 

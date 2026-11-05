@@ -306,7 +306,7 @@ function statusText(status) {
           </div>
         </div>
 
-        <div v-if="selectedItem.purchaseDetails && (selectedItem.purchaseDetails.date || selectedItem.purchaseDetails.website || selectedItem.purchaseDetails.originalPrice)" class="bg-blue-50 p-3 rounded-lg border border-blue-100">
+        <div v-if="selectedItem.purchaseDetails && (selectedItem.purchaseDetails.date || selectedItem.purchaseDetails.website || selectedItem.purchaseDetails.originalPrice || selectedItem.purchaseDetails.transferLogisticsCost != null || selectedItem.purchaseDetails.customsDutyCost != null || selectedItem.purchaseDetails.transferCost)" class="bg-blue-50 p-3 rounded-lg border border-blue-100">
           <div class="font-medium text-blue-700 mb-2">采购信息</div>
           <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
             <div v-if="selectedItem.purchaseDetails.date"><span class="text-gray-500">采购日期：</span>{{ selectedItem.purchaseDetails.date }}</div>
@@ -317,7 +317,11 @@ function statusText(status) {
             <div v-if="selectedItem.purchaseDetails.fee"><span class="text-gray-500">手续费：</span>{{ fmtMoney(selectedItem.purchaseDetails.fee) }}</div>
             <div v-if="selectedItem.purchaseDetails.exchangeRate"><span class="text-gray-500">汇率：</span>{{ Number(selectedItem.purchaseDetails.exchangeRate).toFixed(4) }}</div>
             <div v-if="selectedItem.purchaseDetails.preTransferCost"><span class="text-gray-500">转运前成本：</span>{{ fmtMoney(selectedItem.purchaseDetails.preTransferCost) }}</div>
-            <div v-if="selectedItem.purchaseDetails.transferCost"><span class="text-gray-500">转运费：</span>{{ fmtMoney(selectedItem.purchaseDetails.transferCost) }}</div>
+            <template v-if="selectedItem.purchaseDetails.transferLogisticsCost != null || selectedItem.purchaseDetails.customsDutyCost != null">
+              <div><span class="text-gray-500">转运物流：</span>{{ fmtMoney(selectedItem.purchaseDetails.transferLogisticsCost || 0) }}</div>
+              <div><span class="text-gray-500">海关关税：</span>{{ fmtMoney(selectedItem.purchaseDetails.customsDutyCost || 0) }}</div>
+            </template>
+            <div v-else-if="selectedItem.purchaseDetails.transferCost"><span class="text-gray-500">转运费：</span>{{ fmtMoney(selectedItem.purchaseDetails.transferCost) }}</div>
             <div v-if="selectedItem.purchaseDetails.transferBatch"><span class="text-gray-500">转运批次：</span>{{ selectedItem.purchaseDetails.transferBatch }}</div>
             <div v-if="selectedItem.purchaseDetails.totalRMB" class="col-span-full"><span class="text-gray-500">总人民币：</span><span class="font-bold text-orange-600">{{ fmtMoney(selectedItem.purchaseDetails.totalRMB) }}</span></div>
             <div v-if="selectedItem.purchaseDetails.paymentAccount"><span class="text-gray-500">付款账号：</span>{{ selectedItem.purchaseDetails.paymentAccount }}</div>

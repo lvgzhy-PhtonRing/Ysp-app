@@ -18,6 +18,37 @@ describe('usePurchase logic', () => {
     vi.stubGlobal('localStorage', localStorageMock)
   })
 
+  it('splits transfer totals into logistics and customs duty', () => {
+    expect(purchase.normalizeTransferFeeBreakdown({ logisticsRMB: 80, customsDutyRMB: 20 })).toEqual({
+      logisticsRMB: 80,
+      customsDutyRMB: 20,
+      totalRMB: 100,
+    })
+    expect(purchase.splitTransferFeeByCoefficient({ logisticsRMB: 80, customsDutyRMB: 20 }, 2, 4)).toEqual({
+      logisticsCost: 40,
+      customsDutyCost: 10,
+      transferCost: 50,
+    })
+    expect(purchase.normalizeTransferFeeBreakdown({ totalRMB: 100 })).toEqual({
+      logisticsRMB: 100,
+      customsDutyRMB: 0,
+      totalRMB: 100,
+    })
+  })
+
+  it('stores transfer fee components and applies their combined cost to items', () => {
+    loadData({ items: [
+      { id: 'a', status: 'purchase', cost: 100, purchaseDetails: { preTransferCost: 100, transferCoefficient: 1 } },
+      { id: 'b', status: 'purchase', cost: 200, purchaseDetails: { preTransferCost: 200, transferCoefficient: 1 } },
+    ] })
+
+    const record = purchase.submitTransfer({ transferBatch: 'T-BREAKDOWN', logisticsRMB: 80, customsDutyRMB: 20 }, ['a', 'b'])
+
+    expect(record).toMatchObject({ logisticsRMB: 80, customsDutyRMB: 20, totalRMB: 100 })
+    expect(store.items[0].purchaseDetails).toMatchObject({ transferLogisticsCost: 40, customsDutyCost: 10, transferCost: 50 })
+    expect(store.items[0].cost).toBe(150)
+  })
+
   it('test1 addPurchaseItem', () => {
     loadData(sampleData)
     const before = store.items.length

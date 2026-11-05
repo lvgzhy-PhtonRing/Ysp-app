@@ -14,8 +14,10 @@ import {
   getPurchaseGroupItems,
   purchaseGroupNeedsFullReprice,
   getDomesticPurchaseTotal,
+  normalizeTransferFeeBreakdown,
+  splitTransferFeeByCoefficient,
 } from './usePurchase'
-import { calcItemCost, calcPreTransferCost, calcTransferCost } from '../../utils/calc'
+import { calcItemCost, calcPreTransferCost } from '../../utils/calc'
 import { addOperationLog, clone, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
 import { CATEGORY_BATCHES } from './purchaseOptions'
 import { getPurchaseGroupKey } from './purchaseGrouping'
@@ -62,7 +64,8 @@ const transferGroupExpanded = reactive({ 日淘: false, 美淘: false })
 const editTransferForm = reactive({
   transferId: '',
   date: '',
-  totalRMB: 0,
+  logisticsRMB: 0,
+  customsDutyRMB: 0,
   paymentAccount: '支付宝',
   itemIds: [],
   company: '',
@@ -166,9 +169,13 @@ const transferForm = reactive({
   transferBatch: '',
   date: new Date().toISOString().slice(0, 10),
   paymentAccount: '支付宝',
-  totalRMB: 0,
+  logisticsRMB: 0,
+  customsDutyRMB: 0,
   company: '',
 })
+
+const transferFormTotalRMB = computed(() => normalizeTransferFeeBreakdown(transferForm).totalRMB)
+const editTransferFormTotalRMB = computed(() => normalizeTransferFeeBreakdown(editTransferForm).totalRMB)
 
 const purchaseItems = computed(() => store.items.filter((i) => i?.status === 'purchase'))
 
@@ -992,6 +999,8 @@ function submitAdd() {
             preTransferCost,
             transferStatus: addForm.category === '国内' ? 'completed' : 'pending',
             transferCoefficient: Number(line.transferCoefficient || 1),
+            transferLogisticsCost: 0,
+            customsDutyCost: 0,
             transferCost: 0,
             transferSelected: false,
           },
@@ -1054,7 +1063,9 @@ function submitTransferBatch() {
         transferBatch: transferForm.transferBatch,
         date: transferForm.date,
         paymentAccount: transferForm.paymentAccount,
-        totalRMB: Number(transferForm.totalRMB || 0),
+        logisticsRMB: Number(transferForm.logisticsRMB || 0),
+        customsDutyRMB: Number(transferForm.customsDutyRMB || 0),
+        totalRMB: transferFormTotalRMB.value,
       },
       selectedItemIds.value,
     )
@@ -1074,7 +1085,8 @@ function handleNewTransfer() {
   transferForm.transferBatch = ''
   transferForm.date = new Date().toISOString().slice(0, 10)
   transferForm.paymentAccount = '支付宝'
-  transferForm.totalRMB = 0
+  transferForm.logisticsRMB = 0
+  transferForm.customsDutyRMB = 0
   transferForm.company = ''
   transferCategoryBatch.value = transferBatchOptions.value[0] || ''
   selectedItemIds.value = filteredTransferItems.value.map((i) => i.id)
@@ -1353,6 +1365,8 @@ function submitEditPurchaseGroup() {
                 ),
             transferStatus: editGroupForm.category === '国内' ? 'completed' : 'pending',
             transferCoefficient: Number(line.transferCoefficient || 1),
+            transferLogisticsCost: 0,
+            customsDutyCost: 0,
             transferCost: 0,
             transferSelected: false,
           },
@@ -1376,7 +1390,9 @@ function submitEditPurchaseGroup() {
       relatedItems.forEach((item) => {
         const pre = Number(item?.purchaseDetails?.preTransferCost || 0)
         const c = Number(item?.purchaseDetails?.transferCoefficient || 1)
-        const tc = calcTransferCost(Number(transferRecord.totalRMB || 0), c, totalCoefficients || 1)
+        const { logisticsCost, customsDutyCost, transferCost: tc } = splitTransferFeeByCoefficient(transferRecord, c, totalCoefficients || 1)
+        item.purchaseDetails.transferLogisticsCost = logisticsCost
+        item.purchaseDetails.customsDutyCost = customsDutyCost
         item.purchaseDetails.transferCost = tc
         setPurchaseItemCost(item, calcItemCost(pre, tc))
       })
@@ -1476,7 +1492,8 @@ const editTransferHasSold = computed(() => store.items.some((item) =>
 function editTransferRecord(record) {
   editTransferForm.transferId = record?.transferId || ''
   editTransferForm.date = record?.date || ''
-  editTransferForm.totalRMB = Number(record?.totalRMB || 0)
+  editTransferForm.logisticsRMB = Number(record?.logisticsRMB ?? record?.totalRMB ?? 0)
+  editTransferForm.customsDutyRMB = Number(record?.customsDutyRMB ?? 0)
   editTransferForm.paymentAccount = record?.paymentAccount || '支付宝'
   editTransferForm.itemIds = getTransferItems(record).map((item) => item.id)
   editTransferForm.company = record?.company || ''
@@ -1496,12 +1513,22 @@ function submitEditTransfer() {
   if (invalidCoefficient) return alert('存在非法转运系数（需在 0~10 之间），请先编辑购买组修正')
 
   // 捕获修改前的原始值
-  const beforeRecord = { date: record.date, totalRMB: record.totalRMB, paymentAccount: record.paymentAccount, company: record.company }
+  const beforeRecord = {
+    date: record.date,
+    totalRMB: record.totalRMB,
+    logisticsRMB: record.logisticsRMB,
+    customsDutyRMB: record.customsDutyRMB,
+    paymentAccount: record.paymentAccount,
+    company: record.company,
+  }
 
   isSubmittingEditTransfer.value = true
   try {
     record.date = editTransferForm.date
-    record.totalRMB = Number(editTransferForm.totalRMB || 0)
+    const transferFee = normalizeTransferFeeBreakdown(editTransferForm)
+    record.logisticsRMB = transferFee.logisticsRMB
+    record.customsDutyRMB = transferFee.customsDutyRMB
+    record.totalRMB = transferFee.totalRMB
     record.paymentAccount = editTransferForm.paymentAccount
     record.company = editTransferForm.company
     record.itemIds = relatedItems.map((item) => item.id)
@@ -1513,7 +1540,9 @@ function submitEditTransfer() {
     relatedItems.forEach((item) => {
       const coefficient = Number(item?.purchaseDetails?.transferCoefficient || 1)
       const preTransferCost = Number(item?.purchaseDetails?.preTransferCost || 0)
-      const transferCost = calcTransferCost(record.totalRMB, coefficient, totalCoefficients || 1)
+      const { logisticsCost, customsDutyCost, transferCost } = splitTransferFeeByCoefficient(record, coefficient, totalCoefficients || 1)
+      item.purchaseDetails.transferLogisticsCost = logisticsCost
+      item.purchaseDetails.customsDutyCost = customsDutyCost
       item.purchaseDetails.transferCost = transferCost
       setPurchaseItemCost(item, calcItemCost(preTransferCost, transferCost))
     })
@@ -1522,6 +1551,8 @@ function submitEditTransfer() {
     const changes = {}
     if (beforeRecord.date !== record.date) changes.日期 = { before: beforeRecord.date, after: record.date }
     if (Number(beforeRecord.totalRMB) !== record.totalRMB) changes.总费用RMB = { before: beforeRecord.totalRMB, after: record.totalRMB }
+    if (Number(beforeRecord.logisticsRMB) !== record.logisticsRMB) changes.转运物流 = { before: beforeRecord.logisticsRMB, after: record.logisticsRMB }
+    if (Number(beforeRecord.customsDutyRMB) !== record.customsDutyRMB) changes.海关关税 = { before: beforeRecord.customsDutyRMB, after: record.customsDutyRMB }
     if (beforeRecord.paymentAccount !== record.paymentAccount) changes.支付账户 = { before: beforeRecord.paymentAccount, after: record.paymentAccount }
     if (beforeRecord.company !== record.company) changes.转运公司 = { before: beforeRecord.company, after: record.company }
     var changesText = formatChangesSummary(changes)
@@ -1557,11 +1588,15 @@ function deleteTransferRecord(record) {
       transferBatch: item.purchaseDetails?.transferBatch,
       transferStatus: item.purchaseDetails?.transferStatus,
       transferCost: Number(item.purchaseDetails?.transferCost || 0),
+      transferLogisticsCost: Number(item.purchaseDetails?.transferLogisticsCost || 0),
+      customsDutyCost: Number(item.purchaseDetails?.customsDutyCost || 0),
     })
     if (!item.purchaseDetails) item.purchaseDetails = {}
     item.purchaseDetails.transferStatus = 'pending'
     item.purchaseDetails.transferId = undefined
     item.purchaseDetails.transferBatch = undefined
+    item.purchaseDetails.transferLogisticsCost = 0
+    item.purchaseDetails.customsDutyCost = 0
     item.purchaseDetails.transferCost = 0
     setPurchaseItemCost(item, Number(item.purchaseDetails.preTransferCost || 0))
   })
@@ -2022,8 +2057,12 @@ watch(purchaseViewCategory, () => {
         <div class="border-t border-gray-200 pt-3.5 mb-4">
           <div class="grid grid-cols-3 gap-4">
             <div>
-              <label class="block text-[12px] mb-1.5 text-gray-600">转运总费用 (¥)</label>
-              <input type="number" v-model.number="transferForm.totalRMB" class="apple-input h-9 text-[13px]" placeholder="转运总费用">
+              <label class="block text-[12px] mb-1.5 text-gray-600">转运物流 (¥)</label>
+              <input type="number" min="0" v-model.number="transferForm.logisticsRMB" class="apple-input h-9 text-[13px]" placeholder="转运物流">
+            </div>
+            <div>
+              <label class="block text-[12px] mb-1.5 text-gray-600">海关关税 (¥)</label>
+              <input type="number" min="0" v-model.number="transferForm.customsDutyRMB" class="apple-input h-9 text-[13px]" placeholder="海关关税">
             </div>
             <div>
               <label class="block text-[12px] mb-1.5 text-gray-600">付款账户</label>
@@ -2038,7 +2077,7 @@ watch(purchaseViewCategory, () => {
             </div>
           </div>
           <div class="mt-2 text-[12px] text-gray-500" v-if="totalSelectedCoefficient > 0">
-            每系数分摊: {{ fmtMoney(transferForm.totalRMB / totalSelectedCoefficient) }} ¥
+            转运总费用: {{ fmtMoney(transferFormTotalRMB) }} ¥ · 每系数分摊: {{ fmtMoney(transferFormTotalRMB / totalSelectedCoefficient) }} ¥
           </div>
         </div>
 
@@ -2123,7 +2162,9 @@ watch(purchaseViewCategory, () => {
         <div v-if="editTransferHasSold" class="text-xs text-orange-700 mb-3">关联商品含已售记录；修改转运费将同步更新销售利润。已导出的报税工作簿请重新核对。</div>
         <div class="space-y-4">
           <div><label class="block text-sm mb-1 text-gray-600">转运日期</label><input type="date" v-model="editTransferForm.date" class="apple-input"></div>
-          <div><label class="block text-sm mb-1 text-gray-600">转运总费用 (¥)</label><input type="number" v-model.number="editTransferForm.totalRMB" class="apple-input"></div>
+          <div><label class="block text-sm mb-1 text-gray-600">转运物流 (¥)</label><input type="number" min="0" v-model.number="editTransferForm.logisticsRMB" class="apple-input"></div>
+          <div><label class="block text-sm mb-1 text-gray-600">海关关税 (¥)</label><input type="number" min="0" v-model.number="editTransferForm.customsDutyRMB" class="apple-input"></div>
+          <div class="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">转运总费用：<span class="font-semibold text-gray-800">¥{{ fmtNum(editTransferFormTotalRMB) }}</span></div>
           <div><label class="block text-sm mb-1 text-gray-600">付款账户</label><select v-model="editTransferForm.paymentAccount" class="apple-select"><option>支付宝</option><option>信用卡</option><option>微信</option><option>现金</option></select></div>
           <div><label class="block text-sm mb-1 text-gray-600">转运公司</label><select v-model="editTransferForm.company" class="apple-select"><option value="">未指定</option><option v-for="c in TRANSFER_COMPANIES" :key="c" :value="c">{{ c }}</option></select></div>
           <div class="bg-gray-50 p-3 rounded-lg">

@@ -287,6 +287,8 @@ const INVERSE_HANDLERS = {
       if (!item.purchaseDetails) item.purchaseDetails = {}
       item.purchaseDetails.transferStatus = 'pending'
       item.purchaseDetails.transferCost = 0
+      item.purchaseDetails.transferLogisticsCost = 0
+      item.purchaseDetails.customsDutyCost = 0
       delete item.purchaseDetails.transferId
       delete item.purchaseDetails.transferBatch
       item.cost = entry.costBefore
@@ -299,6 +301,8 @@ const INVERSE_HANDLERS = {
     applyChangesTo(record, d.changes, {
       日期: 'date',
       总费用RMB: 'totalRMB',
+      转运物流: 'logisticsRMB',
+      海关关税: 'customsDutyRMB',
       支付账户: 'paymentAccount',
       转运公司: 'company',
     })
@@ -317,6 +321,8 @@ const INVERSE_HANDLERS = {
       item.cost = entry.cost
       item.purchaseDetails.transferStatus = entry.transferStatus
       item.purchaseDetails.transferCost = entry.transferCost
+      item.purchaseDetails.transferLogisticsCost = entry.transferLogisticsCost
+      item.purchaseDetails.customsDutyCost = entry.customsDutyCost
       if (entry.transferId) item.purchaseDetails.transferId = entry.transferId
       else delete item.purchaseDetails.transferId
       if (entry.transferBatch) item.purchaseDetails.transferBatch = entry.transferBatch
