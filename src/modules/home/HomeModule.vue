@@ -162,13 +162,13 @@ function statusText(status) {
 </script>
 
 <template>
-  <div class="home-dashboard space-y-3">
-    <div class="flex items-baseline gap-3 mb-3">
+  <div class="home-dashboard flex flex-col space-y-3">
+    <div class="order-0 flex items-baseline gap-3 mb-3">
       <h2 class="text-3xl leading-10 font-extrabold">数据透视</h2>
       <span class="text-base text-gray-400 font-light">Data Insights</span>
     </div>
 
-    <div class="apple-card dashboard-panel bg-gradient-to-br from-white to-gray-50 border-blue-100">
+    <div class="order-1 apple-card dashboard-panel bg-gradient-to-br from-white to-gray-50 border-blue-100" data-home-order="1">
       <div class="bg-white px-4 py-3 rounded-xl shadow-sm border border-blue-50">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
           <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
@@ -212,7 +212,7 @@ function statusText(status) {
       </div>
     </div>
 
-    <div class="apple-card dashboard-panel">
+    <div class="order-3 apple-card dashboard-panel" data-home-order="3">
       <h3 class="text-lg font-semibold mb-4 text-gray-800"><i class="fa-solid fa-magnifying-glass text-blue-500 mr-2"></i>商品查询器 <span class="text-xs font-normal text-gray-400">跨 Owner</span></h3>
       <div class="mb-4"><input type="text" v-model="searchKeyword" placeholder="输入SID/名称/品牌搜索（不区分大小写）" class="apple-input" /></div>
       <div v-if="searchResults.length > 0" class="mt-4">
@@ -233,7 +233,7 @@ function statusText(status) {
       </div>
     </div>
 
-    <div class="apple-card dashboard-panel">
+    <div class="order-4 apple-card dashboard-panel" data-home-order="4">
       <h3 class="text-lg font-semibold mb-4 text-gray-800 cursor-pointer select-none" @click="batchStatsCollapsed = !batchStatsCollapsed"><i class="fa-solid fa-chart-line text-blue-500 mr-2"></i>各批次回款统计 <span class="text-xs font-normal text-gray-400">跨 Owner · 已售即计入，不看到账确认</span> <span class="text-xs text-gray-400">{{ batchStatsCollapsed ? '▼' : '▲' }}</span></h3>
       <div class="overflow-x-auto" v-show="!batchStatsCollapsed">
         <table class="apple-table text-sm w-full">
@@ -243,7 +243,7 @@ function statusText(status) {
       </div>
     </div>
 
-    <section class="apple-card dashboard-panel bg-white space-y-4">
+    <section class="order-2 apple-card dashboard-panel bg-white space-y-4" data-home-order="2">
         <div class="flex flex-wrap items-center justify-between gap-3">
         <div><h3 class="text-lg font-bold text-gray-800">Owner 经营数据</h3><p class="text-xs text-gray-400">以下四个模块按所选 Owner 展示</p></div>
         <div class="inline-flex h-9 items-center rounded-xl border border-blue-200 bg-white p-1 shadow-sm" aria-label="选择数据 Owner">
@@ -281,7 +281,7 @@ function statusText(status) {
 
     </section>
 
-    <CashflowMonitor @update-owner="emit('update-owner', $event)" />
+    <CashflowMonitor class="order-5" data-home-order="5" @update-owner="emit('update-owner', $event)" />
 
     <GlassModal v-model="showItemDetailModal" panel-class="w-full max-w-2xl p-5">
       <div class="mb-4 text-lg font-semibold">商品详情</div>

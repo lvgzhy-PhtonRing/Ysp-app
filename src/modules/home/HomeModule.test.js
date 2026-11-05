@@ -20,12 +20,13 @@ describe('HomeModule owner layout and balance display', () => {
     })
   })
 
-  it('places global modules before the current-owner group and shows live Payton formula', async () => {
+  it('places homepage modules in the requested top-to-bottom order and shows live Payton formula', async () => {
     const html = await renderToString(h(HomeModule))
-    const positions = ['应有支付宝余额', '商品查询器', '各批次回款统计', 'Owner 经营数据', '本月数据', '近三个月销售数据', '现金流与负债监控'].map((text) => html.indexOf(text))
-
-    expect(positions.every((position) => position >= 0)).toBe(true)
-    expect(positions).toEqual([...positions].sort((a, b) => a - b))
+    expect(html).toMatch(/data-home-order="1"[\s\S]*?应有支付宝余额/)
+    expect(html).toMatch(/data-home-order="2"[\s\S]*?Owner 经营数据/)
+    expect(html).toMatch(/data-home-order="3"[\s\S]*?商品查询器/)
+    expect(html).toMatch(/data-home-order="4"[\s\S]*?各批次回款统计/)
+    expect(html).toMatch(/data-home-order="5"[\s\S]*?现金流与负债监控/)
     expect(html).toContain('实际支付宝余额')
     const actualBalanceTitle = html.indexOf('实际支付宝余额')
     const actualBalanceDifference = html.indexOf('较应有余额扣除：转运公司余额 ¥0.00 · 皮蛋手表账户余额 ¥218.87')
