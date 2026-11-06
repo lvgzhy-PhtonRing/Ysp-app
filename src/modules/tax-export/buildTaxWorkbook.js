@@ -31,7 +31,7 @@ function worksheetRows(name, title, headers, rows) {
     if (name === '销售明细') return [row.entryDate, row.name, row.sid, row.batch, row.price, row.cost, row.platformFee, row.express, row.adjustment, row.referenceProfit]
     if (name === '收支明细') return [row.date, row.type, row.item, row.amount, row.note, row.taxCategory]
     if (name === '补差明细') return [row.entryDate, row.name, row.sid, row.adjustment, row.direction]
-    return [row.id, text(row.sid), row.name || row.item || '', row.issue]
+    return [row.id, row.sid === undefined || row.sid === null ? '' : String(row.sid), row.name || row.item || '', row.issue]
   })]
 }
 
