@@ -358,10 +358,16 @@ function tsToEpoch(t) {
 }
 
 function formatConflictTime(t) {
-  if (!t || t === '-') return '-'
+  if (!t || t === '-') return ''
   const d = new Date(t)
   if (isNaN(d.getTime())) return String(t)
   return d.toLocaleString()
+}
+
+function conflictDataTime(t, side) {
+  const formatted = formatConflictTime(t)
+  if (formatted) return formatted
+  return side === 'local' ? '无本机修改记录' : '云端未提供时间'
 }
 
 function conflictMoney(value) {
@@ -1181,6 +1187,7 @@ watch(
         </button>
       </div>
       <p class="mb-4 text-sm text-gray-600">先核对两边的数据；下方的选择只作用于列出的模块。</p>
+      <p class="-mt-2 mb-4 text-xs text-gray-500">下方时间是数据载荷记录的修改时间，不代表设备最近使用或最近同步时间。</p>
 
       <!-- 内容风险提示：本地时间戳较新但内容更少/更旧 → 默认方向已改偏云端 -->
       <div v-if="slotConflictInfo.uploadRisk && slotConflictInfo.uploadRisk.shouldWarn" class="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
@@ -1197,7 +1204,7 @@ watch(
         <div v-for="side in ['cloud', 'local']" :key="side" class="rounded-xl border p-4" :class="side === 'cloud' ? 'border-blue-200 bg-blue-50/50' : 'border-slate-200 bg-slate-50'">
           <div class="flex items-baseline justify-between gap-2">
             <strong class="text-base text-gray-900">{{ side === 'cloud' ? '云端数据' : '本地数据' }}</strong>
-            <span class="text-xs text-gray-500">{{ formatConflictTime(side === 'cloud' ? slotConflictInfo.cloudAt : slotConflictInfo.localAt) }}</span>
+            <span class="text-xs text-gray-500">数据修改时间：{{ conflictDataTime(side === 'cloud' ? slotConflictInfo.cloudAt : slotConflictInfo.localAt, side) }}</span>
           </div>
           <dl class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
             <div><dt class="text-xs text-gray-500">商品总件数</dt><dd class="font-semibold text-gray-900">{{ slotConflictInfo[side + 'Summary'].itemCount }} 件</dd></div>
@@ -1215,14 +1222,14 @@ watch(
                   :aria-pressed="quickChoice === 'cloud'" @click="quickChoice = 'cloud'">
             <span v-if="recommendedChoice === 'cloud'" class="absolute -top-2 right-2 rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white">推荐</span>
             <span class="font-bold text-gray-800">用云端</span>
-            <span class="text-xs text-gray-500 mt-1">{{ relativeLabel(slotConflictInfo.cloudAt) }}</span>
+            <span class="text-xs text-gray-500 mt-1">数据时间：{{ conflictDataTime(slotConflictInfo.cloudAt, 'cloud') }}</span>
           </button>
           <button type="button" class="pick-card relative rounded-xl p-3 flex flex-col items-center text-center transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
                   :class="quickChoice === 'local' ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-100' : 'border-gray-300 bg-gray-50 hover:bg-blue-50'"
                   :aria-pressed="quickChoice === 'local'" @click="quickChoice = 'local'">
             <span v-if="recommendedChoice === 'local'" class="absolute -top-2 right-2 rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white">推荐</span>
             <span class="font-bold text-gray-800">用本地</span>
-            <span class="text-xs text-gray-500 mt-1">{{ relativeLabel(slotConflictInfo.localAt) }}</span>
+            <span class="text-xs text-gray-500 mt-1">数据时间：{{ conflictDataTime(slotConflictInfo.localAt, 'local') }}</span>
           </button>
         </div>
         <div class="mt-3 flex flex-col sm:flex-row gap-2">
