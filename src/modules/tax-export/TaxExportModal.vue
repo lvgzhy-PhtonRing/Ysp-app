@@ -5,6 +5,7 @@ import { buildTaxWorkbookData, writeTaxWorkbook } from './buildTaxWorkbook'
 import { buildPeriodInventoryReceipt, writePeriodInventoryReceipt } from './periodInventoryReceipt'
 import { SALES_CHANNELS } from '../sales/salesChannels'
 import { findTaxpayerProfileConflict, normalizeTaxpayerId, normalizeTaxpayerName } from '../../data/taxpayerProfiles'
+import { loadTaxExportPeriod, saveTaxExportPeriod } from './periodStorage'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -18,8 +19,11 @@ function localDate(date = new Date()) {
 
 const now = new Date()
 const quarterMonth = Math.floor(now.getMonth() / 3) * 3
-const startDate = ref(localDate(new Date(now.getFullYear(), quarterMonth, 1)))
-const endDate = ref(localDate(new Date(now.getFullYear(), quarterMonth + 3, 0)))
+const defaultStartDate = localDate(new Date(now.getFullYear(), quarterMonth, 1))
+const defaultEndDate = localDate(new Date(now.getFullYear(), quarterMonth + 3, 0))
+const savedPeriod = loadTaxExportPeriod()
+const startDate = ref(savedPeriod?.startDate || defaultStartDate)
+const endDate = ref(savedPeriod?.endDate || defaultEndDate)
 const taxpayerName = ref('')
 const taxpayerId = ref('')
 const taxpayerProfiles = computed(() => Array.isArray(props.payload?.taxpayerProfiles) ? props.payload.taxpayerProfiles : [])
@@ -47,6 +51,7 @@ watch(taxpayerId, (value) => {
   const match = taxpayerProfiles.value.find((profile) => normalizeTaxpayerId(profile.taxId) === taxId)
   if (match && !taxpayerName.value) taxpayerName.value = match.name
 })
+watch([startDate, endDate], ([start, end]) => saveTaxExportPeriod(start, end))
 
 function restoreTaxpayerProfile() {
   const profiles = taxpayerProfiles.value
