@@ -116,13 +116,31 @@ describe('buildTaxWorkbookData', () => {
     }, { ...period, owners: ['papa'], channels: ['PhtonRIng'] })
 
     expect(result.sheets.find((sheet) => sheet.name === '销售明细').rows.map((row) => row.id)).toEqual(['papa-pr', 'payton-pr'])
-    expect(result.sheets.find((sheet) => sheet.name === '收支明细').rows).toHaveLength(2)
+    expect(result.sheets.find((sheet) => sheet.name === '收支明细').rows.map((row) => row.id)).toEqual(['papa-expense'])
     expect(result.period).not.toHaveProperty('owners')
     expect(result.period).not.toHaveProperty('channels')
     expect(result.sheets.every((sheet) => !sheet.headers.includes('Owner'))).toBe(true)
     expect(result.sheets.every((sheet) => !sheet.headers.includes('销售渠道'))).toBe(true)
     expect(result.sheets.find((sheet) => sheet.name === '销售明细').rows.every((row) => !('shop' in row) && !('owner' in row))).toBe(true)
     expect(result.sheets.find((sheet) => sheet.name === '阅读说明').rows.some((row) => /Owner|销售渠道|PhtonRIng|侧空翻棉|其它/.test(`${row.field} ${row.value}`))).toBe(false)
+  })
+
+  it('adds blank user remark columns to VAT and income A ledgers', () => {
+    const result = buildTaxWorkbookData(payload, period)
+    expect(result.sheets.find((sheet) => sheet.name === '增值税核对')).toMatchObject({ headers: ['核对项目', '金额/数量', '人工核对/补录', '备注'] })
+    expect(result.sheets.find((sheet) => sheet.name === 'A表经营数据')).toMatchObject({ headers: ['经营参考项目', '金额', '人工核对', '备注'] })
+    const workbook = createPrintReadyTaxWorkbook(result, ExcelJS)
+    expect(workbook.getWorksheet('增值税核对').getColumn(4).values.slice(3).every((value) => value === '')).toBe(true)
+    expect(workbook.getWorksheet('A表经营数据').getColumn(4).values.slice(3).every((value) => value === '')).toBe(true)
+  })
+
+  it('formats all sales detail money columns to two decimals in Excel', () => {
+    const result = buildTaxWorkbookData(payload, period)
+    const workbook = createPrintReadyTaxWorkbook(result, ExcelJS)
+    const worksheet = workbook.getWorksheet('销售明细')
+    expect([5, 6, 7, 8, 9, 10].map((index) => worksheet.getColumn(index).numFmt)).toEqual([
+      '0.00', '0.00', '0.00', '0.00', '0.00', '0.00',
+    ])
   })
 
   it('exports taxpayer name and tax ID as separate reading fields', () => {

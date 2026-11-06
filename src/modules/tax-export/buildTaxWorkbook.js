@@ -27,7 +27,7 @@ function worksheetRows(name, title, headers, rows) {
   return [[title, ...Array(Math.max(0, headers.length - 1)).fill('')], headers, ...rows.map((row) => {
     if (name === '阅读说明') return [row.field, row.value, row.note || '']
     if (name === '申报步骤清单') return [row.process, row.step, row.check]
-    if (name === '增值税核对' || name === 'A表经营数据') return [row.metric, row.amount, row.check]
+    if (name === '增值税核对' || name === 'A表经营数据') return [row.metric, row.amount, row.check, row.note || '']
     if (name === '销售明细') return [row.entryDate, row.name, row.sid, row.batch, row.price, row.cost, row.platformFee, row.express, row.adjustment, row.referenceProfit]
     if (name === '收支明细') return [row.date, row.type, row.item, row.amount, row.note, row.taxCategory]
     if (name === '补差明细') return [row.entryDate, row.name, row.sid, row.adjustment, row.direction]
@@ -95,6 +95,7 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
   const financeRecords = []
   let publicExpense = 0
   ;(Array.isArray(payload.financeRecords) ? payload.financeRecords : payload.finance?.records || []).forEach((record) => {
+    if (record?.owner && record.owner !== 'papa') return
     if (!isDateOnly(record?.date)) {
       issues.push({ id: record?.id || '', name: record?.item || '', issue: '收支记录缺少有效日期，未计入期间明细。' })
       return
@@ -167,8 +168,8 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
   const sheets = [
       sheet('阅读说明', ['项目', '内容', '备注'], readingRows),
       sheet('申报步骤清单', ['申报流程', '步骤', '核对状态'], steps),
-      sheet('增值税核对', ['核对项目', '金额/数量', '人工核对/补录'], vatRows),
-      sheet('A表经营数据', ['经营参考项目', '金额', '人工核对'], aRows),
+      sheet('增值税核对', ['核对项目', '金额/数量', '人工核对/补录', '备注'], vatRows),
+      sheet('A表经营数据', ['经营参考项目', '金额', '人工核对', '备注'], aRows),
       sheet('销售明细', ['入账日期', '商品名称', 'SID', '批次', '成交总价', '单品成本', '平台手续费', '快递费', '补差（正数为卖方支出）', '经营利润参考'], sales.map((row) => ({
         id: row.id, entryDate: row.entryDate, name: row.name, sid: row.sid, batch: row.batch,
         price: row.price, cost: row.cost, platformFee: row.platformFee, express: row.express, adjustment: row.adjustment, referenceProfit: row.referenceProfit,
@@ -219,6 +220,11 @@ export function createPrintReadyTaxWorkbook(workbookData, ExcelJS) {
     const widthScale = printWidth / totalWidth
     worksheet.columns = columns.map((column) => ({ width: column.width * widthScale }))
     if (name === '待确认事项') worksheet.getColumn(2).numFmt = '@'
+    if (name === '销售明细') {
+      ;[5, 6, 7, 8, 9, 10].forEach((columnIndex) => {
+        worksheet.getColumn(columnIndex).numFmt = '0.00'
+      })
+    }
     worksheet.addRows(values)
     worksheet.mergeCells(1, 1, 1, headers.length)
     worksheet.pageSetup = {
