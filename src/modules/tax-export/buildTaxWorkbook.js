@@ -31,7 +31,7 @@ function worksheetRows(name, title, headers, rows) {
     if (name === '销售明细') return [row.entryDate, row.name, row.sid, row.batch, row.price, row.cost, row.platformFee, row.express, row.adjustment, row.referenceProfit]
     if (name === '收支明细') return [row.date, row.type, row.item, row.amount, row.note, row.taxCategory]
     if (name === '补差明细') return [row.entryDate, row.name, row.sid, row.adjustment, row.direction]
-    return [row.id, row.sid, row.name || row.item || '', row.issue]
+    return [row.id, text(row.sid), row.name || row.item || '', row.issue]
   })]
 }
 
@@ -210,13 +210,15 @@ export function createPrintReadyTaxWorkbook(workbookData, ExcelJS) {
     const worksheet = workbook.addWorksheet(name)
     const columns = headers.map((header, columnIndex) => {
       const maxLength = values.reduce((max, row) => Math.max(max, String(row[columnIndex] ?? '').length), String(header).length)
-      return { width: Math.max(10, Math.min(36, maxLength + 2)) }
+      const maxColumnWidth = name === '待确认事项' && columnIndex === 1 ? 80 : 36
+      return { width: Math.max(10, Math.min(maxColumnWidth, maxLength + 2)) }
     })
     if (name === '阅读说明') columns.splice(0, columns.length, { width: 24 }, { width: 90 }, { width: 42 })
     const totalWidth = columns.reduce((sum, column) => sum + column.width, 0)
     const printWidth = Math.max(1, totalWidth, 154)
     const widthScale = printWidth / totalWidth
     worksheet.columns = columns.map((column) => ({ width: column.width * widthScale }))
+    if (name === '待确认事项') worksheet.getColumn(2).numFmt = '@'
     worksheet.addRows(values)
     worksheet.mergeCells(1, 1, 1, headers.length)
     worksheet.pageSetup = {

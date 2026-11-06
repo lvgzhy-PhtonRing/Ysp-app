@@ -77,6 +77,18 @@ describe('buildTaxWorkbookData', () => {
     expect(XLSX.utils.sheet_to_json(workbook.Sheets['阅读说明'], { header: 1 })[1]).toEqual(['项目', '内容', '备注'])
   })
 
+  it('preserves full SID text on the pending-issues sheet', () => {
+    const sid = 'JP-20261106-VERY-LONG-000123'
+    const result = buildTaxWorkbookData({
+      items: [{ id: 'pending-sid', sid, name: '待确认商品', status: 'sold', cost: 10, saleDetails: { isConfirmed: false } }],
+    }, period)
+    const workbook = createPrintReadyTaxWorkbook(result, ExcelJS)
+    const worksheet = workbook.getWorksheet('待确认事项')
+
+    expect(worksheet.getRow(3).getCell(2).value).toBe(sid)
+    expect(worksheet.getColumn(2).numFmt).toBe('@')
+  })
+
   it('sets every sheet to A4 landscape with repeated headings, uniform header style, and page numbers', () => {
     const result = buildTaxWorkbookData(payload, period)
     const workbook = createPrintReadyTaxWorkbook(result, ExcelJS)
