@@ -88,6 +88,8 @@ const STATUS_VALUE_MAP = {
   expense: '支出', income: '收入',
   // 借贷类型
   borrow: '借入', lend: '借出',
+  // 贷款状态
+  active: '未还清', repaid: '已还清',
 }
 
 // 值→人类可读文本映射
@@ -1009,7 +1011,7 @@ const CONFLICT_MONEY_FIELDS = new Set([
   'cost', 'totalCost', 'price', 'profit', 'amount', 'debt', 'wechat', 'publicExp',
   'unconfirmed', 'fund', 'forwarderBalance', 'watchBalance', 'pocketBalance',
   'investBalance', 'remaining', 'monthlyAllowance', 'transferCost', 'preTransferCost',
-  'totalRMB', 'express', 'deduction', 'fee',
+  'totalRMB', 'transferRMB', 'express', 'deduction', 'fee',
 ])
 
 const CONFLICT_FIELD_LABELS = {
@@ -1018,11 +1020,44 @@ const CONFLICT_FIELD_LABELS = {
   forwarderBalance: '转运公司余额', watchBalance: '皮蛋手表账户余额',
   monthlyAllowance: '每月零花钱', profit: '销售利润', owner: 'Owner',
   loans: '贷款', accountTransfers: '账户互转', timestamp: '记录时间',
+  isConfirmed: '到账状态', entryDate: '入账日期', feeRate: '平台费率',
+  transferStatus: '转运状态', transferCost: '转运费', preTransferCost: '转运前成本',
+  websiteAccount: '网站账号', purchaseGroupId: '购买组编号', transferId: '转运编号',
+  transferRMB: '转运金额', transferAccount: '转运账户', transferSelected: '转运选择',
+  originalPrice: '原价（原币）', maxQty: '原可售数量', soldAt: '销售记录时间',
+  beforeSaleState: '销售前状态', isLongTerm: '长线／自留标记',
+  stock: '库存数量', isManual: '手动入库', inventoryDetails: '入库信息',
+  itemIds: '商品记录编号', unlistDetails: '下架信息', reason: '原因',
+  lineKey: '商品行编号', shipping: '运费', holder: '持卡人', lines: '商品明细',
+  cardId: '支付卡编号', browser: '浏览器', vpnNode: 'VPN 节点', totalUSD: '总金额（美元）',
+  username: '用户名', cardLabel: '支付卡名称', createdAt: '创建时间', updatedAt: '更新时间',
+  recipient: '收件人', cardRemark: '支付卡备注', consumeUSD: '消费金额（美元）',
+  networkEnv: '网络环境', refundTime: '退款时间', recipientId: '收件人编号',
+  purchaseDate: '购买日期', refundStatus: '退款状态', shopQuickPay: 'Shop 快捷支付',
+  chargeDiffUSD: '扣款差额（美元）', failureReason: '失败原因', purchaseDevice: '购买设备',
+  purchaseStatus: '购买状态', sourceGroupKey: '来源购买组编号', virtualMachine: '虚拟机',
+  actualChargeUSD: '实际扣款（美元）', forwarderAccount: '转运账号', forwarderCompany: '转运公司',
+  sourceWebsiteRaw: '来源网站', accountSyncStatus: '账号同步状态', failureNotifiedAt: '失败通知时间',
+  syncedWebsiteAccount: '已同步网站账号', saleDate: '销售日期', totalPrice: '总售价',
+  totalProfit: '总利润', purchaseGroupIds: '购买组编号', loginUsername: '登录账号',
+  passwordPrefix: '密码前缀', companyName: '公司名称', recipientName: '收件人姓名',
+  domesticReceiver: '国内收件人', bank: '银行', label: '名称', remark: '备注',
+  tailNo: '卡号尾号', cardType: '卡片类型', identifier: '标识', forwarderIds: '转运公司编号',
+  mattelDisplayName: '美泰显示名称',
 }
 
 function formatConflictValue(field, value) {
   if (value === null || value === undefined || value === '') return '无'
   if (field === 'owner') return { papa: 'Papa', payton: 'Payton' }[value] || String(value)
+  if (field === 'isConfirmed' && typeof value === 'boolean') return value ? '已确认' : '未确认'
+  if (field === 'isDefect' && typeof value === 'boolean') return value ? '残次品' : '正常'
+  if (field === 'transferSelected' && typeof value === 'boolean') return value ? '已选择' : '未选择'
+  if (field === 'transferStatus') return { pending: '待转运', completed: '已转运' }[value] || String(value)
+  if (field === 'purchaseStatus') return { success: '成功', failed: '失败' }[value] || String(value)
+  if (field === 'accountSyncStatus') return { ok: '一致', mismatch: '不一致', ignored: '已忽略' }[value] || String(value)
+  if (field === 'feeRate' && Number.isFinite(Number(value))) return `${Number((Number(value) * 100).toFixed(6))}%`
+  if (['totalUSD', 'consumeUSD', 'actualChargeUSD', 'chargeDiffUSD'].includes(field) && Number.isFinite(Number(value))) return `$${Number(value).toFixed(2)}`
+  if (field === 'soldAt' && Number.isFinite(Number(value)) && Number(value) > 0) return new Date(Number(value)).toLocaleString()
   if (CONFLICT_MONEY_FIELDS.has(field) && (typeof value === 'number' || (typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value.trim())))) {
     const amount = Number(value)
     return `${amount < 0 ? '-' : ''}¥${Math.abs(amount).toFixed(2)}`
@@ -1041,6 +1076,7 @@ function conflictFieldLabel(path, includePath = false) {
     return Number(parts[1]) > 0 ? `市场价格（历史第 ${Number(parts[1]) + 1} 条）` : '市场价格'
   }
   const label = (part) => /^\d+$/.test(part) ? `第 ${Number(part) + 1} 条` : CONFLICT_FIELD_LABELS[part] || FIELD_LABEL_MAP[part] || part
+  if (parts.includes('beforeSaleState')) return `销售前 · ${label(parts.at(-1))}`
   return (includePath ? parts : parts.slice(-1)).map(label).join(' · ')
 }
 

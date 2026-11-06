@@ -411,6 +411,23 @@ describe('computeConflictDiff', () => {
     expect(entries.every((entry) => entry.recordLabel.includes(longName))).toBe(true)
   })
 
+  it('shows confirmation and purchase differences in readable terms', () => {
+    const item = { id: 1, name: '银保时捷', sid: 'JP-01A0' }
+    const { entries } = computeConflictDiff(
+      { items: [{ ...item, saleDetails: { isConfirmed: true, entryDate: '2026-11-06', feeRate: 0.01 }, purchaseDetails: { transferStatus: 'completed', transferCost: 12.5, purchaseGroupId: 'B1', websiteAccount: 'A' } }] },
+      { items: [{ ...item, saleDetails: { isConfirmed: false, entryDate: '', feeRate: 0.02 }, purchaseDetails: { transferStatus: 'pending', transferCost: 10, purchaseGroupId: 'B2', websiteAccount: 'B' } }] },
+    )
+    expect(entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ fieldName: '到账状态', cloudValue: '未确认', localValue: '已确认' }),
+      expect.objectContaining({ fieldName: '入账日期', cloudValue: '无', localValue: '2026-11-06' }),
+      expect.objectContaining({ fieldName: '转运状态', cloudValue: '待转运', localValue: '已转运' }),
+      expect.objectContaining({ fieldName: '转运费', cloudValue: '¥10.00', localValue: '¥12.50' }),
+      expect.objectContaining({ fieldName: '购买组编号', cloudValue: 'B2', localValue: 'B1' }),
+      expect.objectContaining({ fieldName: '网站账号', cloudValue: 'B', localValue: 'A' }),
+      expect.objectContaining({ fieldName: '平台费率', cloudValue: '2%', localValue: '1%' }),
+    ]))
+  })
+
   it('keeps zero and numeric-string prices distinct from missing values', () => {
     const { entries } = computeConflictDiff(
       { items: [{ id: 1, cost: '0.00' }] },
