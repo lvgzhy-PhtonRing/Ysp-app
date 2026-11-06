@@ -49,6 +49,7 @@ export const LOG_TYPE_META = {
   calc_update: { label: '计算器', color: 'text-blue-600', icon: 'fa-solid fa-calculator', pillClass: 'bg-blue-100 text-blue-700' },
   home_calc: { label: '计算器', color: 'text-blue-600', icon: 'fa-solid fa-calculator', pillClass: 'bg-blue-100 text-blue-700' },
   market_price_update: { label: '市价更新', color: 'text-blue-600', icon: 'fa-solid fa-chart-line', pillClass: 'bg-blue-100 text-blue-700' },
+  market_price_backfill: { label: '市价补齐', color: 'text-indigo-600', icon: 'fa-solid fa-link', pillClass: 'bg-indigo-100 text-indigo-700' },
 }
 
 const FALLBACK_META = { label: '未知', color: 'text-gray-500', icon: 'fa-solid fa-circle-info', pillClass: 'bg-gray-100 text-gray-700' }
@@ -191,6 +192,7 @@ const BRIEF_BUILDERS = {
   finance_repaid: (d) => '借贷归还：' + (d.counterparty || '-'),
   calc_update: (d) => '更新参数：' + fieldLabel(d.field) + ' ' + moneyText(d.before) + '→' + moneyText(d.after),
   market_price_update: (d) => '更新市价：' + (d.name || d.sid || '-') + ' ' + moneyText(d.price),
+  market_price_backfill: (d) => '一键补齐市价：补齐 ' + (d.updatedCount || 0) + ' 件，跳过 ' + (d.conflictCount || 0) + ' 款冲突',
 }
 
 function briefDelete(d, kind) {

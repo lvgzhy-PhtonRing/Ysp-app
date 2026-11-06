@@ -55,6 +55,10 @@ describe('getLogBrief', () => {
         '提交转运：T-001（3件）',
       ],
       [
+        { type: 'market_price_backfill', detail: { updatedCount: 4, conflictCount: 2 } },
+        '一键补齐市价：补齐 4 件，跳过 2 款冲突',
+      ],
+      [
         { type: 'purchase_add', detail: { purchaseGroupId: 'PG-1', totalItems: 4, totalSids: 2 } },
         '新增购买组：PG-1（4件/2个SID）',
       ],

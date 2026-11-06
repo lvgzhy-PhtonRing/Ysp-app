@@ -157,6 +157,65 @@ export function updateMarketPrice(item, newPrice) {
   return { updatedCount: linked.length }
 }
 
+/** 将已有的同款市价补给未标价长线商品；冲突款整组跳过 */
+export function syncMissingMarketPrices() {
+  const groups = new Map()
+  for (const item of store.items) {
+    if (item?.isLongTerm !== true) continue
+    const key = JSON.stringify([item?.name || '', item?.brand || ''])
+    if (!groups.has(key)) groups.set(key, { name: item?.name || '', brand: item?.brand || '', items: [] })
+    groups.get(key).items.push(item)
+  }
+
+  let updatedCount = 0
+  let updatedGroupCount = 0
+  const conflicts = []
+  const now = new Date().toISOString()
+
+  for (const group of groups.values()) {
+    const priced = group.items.filter(isPriced)
+    const unpriced = group.items.filter(item => !isPriced(item))
+    if (!priced.length || !unpriced.length) continue
+
+    const sources = new Map()
+    for (const item of priced) {
+      const rawPrice = getCurrentPrice(item)
+      const price = Number(rawPrice)
+      const key = Number.isFinite(price) ? price.toFixed(2) : 'invalid'
+      const sourceKey = JSON.stringify([item?.owner || 'papa', key])
+      const source = sources.get(sourceKey) || {
+        owner: item?.owner || 'papa',
+        price: Number.isFinite(price) ? price : null,
+        count: 0,
+      }
+      source.count += 1
+      sources.set(sourceKey, source)
+    }
+
+    const distinctPrices = new Set([...sources.values()].map(source => Number.isFinite(source.price) ? source.price.toFixed(2) : 'invalid'))
+    if (distinctPrices.size > 1 || distinctPrices.has('invalid')) {
+      conflicts.push({ name: group.name, brand: group.brand, unpricedCount: unpriced.length, sources: [...sources.values()] })
+      continue
+    }
+
+    const price = Number(priced[0].marketPrices[0].price)
+    for (const item of unpriced) item.marketPrices = [{ price, timestamp: now }]
+    updatedCount += unpriced.length
+    updatedGroupCount += 1
+  }
+
+  if (updatedCount || conflicts.length) {
+    if (updatedCount) saveToLocalStorage()
+    addOperationLog(
+      'market_price_backfill',
+      `一键同步已有标价：补齐 ${updatedCount} 件，跳过 ${conflicts.length} 款冲突`,
+      { owner: 'all', updatedCount, updatedGroupCount, conflictCount: conflicts.length },
+    )
+  }
+
+  return { updatedCount, updatedGroupCount, conflicts }
+}
+
 /**
  * 聚合函数：返回所有工具函数
  * 保持与 useInventory.js 一致的导出模式
@@ -173,5 +232,6 @@ export function useMarketPrice() {
     getTopChanges,
     getLinkedItems,
     updateMarketPrice,
+    syncMissingMarketPrices,
   }
 }

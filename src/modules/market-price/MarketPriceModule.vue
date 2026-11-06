@@ -11,6 +11,7 @@ import {
   getGlobalStats,
   getLinkedItems,
   updateMarketPrice,
+  syncMissingMarketPrices,
 } from './useMarketPrice'
 
 // ===== 数据 =====
@@ -193,6 +194,14 @@ function confirmPrice() {
   }
 }
 
+const showBackfillResult = ref(false)
+const backfillResult = ref(null)
+
+function runMarketPriceBackfill() {
+  backfillResult.value = syncMissingMarketPrices()
+  showBackfillResult.value = true
+}
+
 // ===== 历史展开 =====
 const expandedItemId = ref(null)
 
@@ -246,6 +255,16 @@ function formatAmount(v) {
 
 <template>
   <div class="space-y-4">
+    <div class="flex items-center justify-between">
+      <div class="flex items-baseline gap-3">
+        <h2 class="text-3xl leading-10 font-extrabold">市场价格</h2>
+        <span class="text-base text-gray-400 font-light">Market Price</span>
+      </div>
+      <button class="btn btn-outline btn-sm" title="跨 Owner 补齐同款未标价商品，不覆盖已有价格" @click="runMarketPriceBackfill">
+        <i class="fa-solid fa-link mr-1.5"></i>一键同步已有标价
+      </button>
+    </div>
+
     <!-- ===== 空状态 ===== -->
     <div v-if="allItems.length === 0" class="apple-card p-12 text-center">
       <i class="fa-solid fa-chart-line text-4xl text-gray-300 mb-4"></i>
@@ -254,14 +273,6 @@ function formatAmount(v) {
     </div>
 
     <template v-else>
-      <!-- ===== 页面标题 ===== -->
-      <div class="flex items-center justify-between">
-        <div class="flex items-baseline gap-3">
-          <h2 class="text-3xl leading-10 font-extrabold">市场价格</h2>
-          <span class="text-base text-gray-400 font-light">Market Price</span>
-        </div>
-      </div>
-
       <!-- ===== 1. 统计摘要卡片 ===== -->
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div class="bg-gray-50 p-4 rounded-xl border-l-4 border-primary">
@@ -600,6 +611,34 @@ function formatAmount(v) {
       <div class="flex justify-end gap-2 mt-4">
         <button class="btn btn-outline" @click="showPriceModal = false">取消</button>
         <button class="btn btn-primary" @click="confirmPrice">确认更新</button>
+      </div>
+    </GlassModal>
+
+    <GlassModal v-model="showBackfillResult" panel-class="w-full max-w-xl p-6 relative" :close-on-overlay="true">
+      <div class="text-lg font-bold mb-1">标价同步结果</div>
+      <div v-if="backfillResult" class="text-sm text-gray-600 mb-4">
+        已补齐 <strong class="text-gray-900">{{ backfillResult.updatedCount }}</strong> 件 / {{ backfillResult.updatedGroupCount }} 款
+        <span class="mx-1">·</span>
+        跳过冲突 <strong class="text-amber-700">{{ backfillResult.conflicts.length }}</strong> 款
+      </div>
+
+      <div v-if="backfillResult?.conflicts.length" class="max-h-80 overflow-y-auto space-y-2">
+        <div v-for="conflict in backfillResult.conflicts" :key="conflict.brand + conflict.name" class="rounded-xl border border-amber-200 bg-amber-50/70 p-3">
+          <div class="font-semibold text-gray-800">{{ conflict.name }}</div>
+          <div class="text-xs text-gray-500 mb-2">{{ conflict.brand }} · {{ conflict.unpricedCount }} 件未标价商品未修改</div>
+          <div class="flex flex-wrap gap-2">
+            <span v-for="source in conflict.sources" :key="source.owner + source.price" class="rounded-full bg-white px-2.5 py-1 text-xs text-gray-700">
+              {{ source.owner === 'payton' ? 'Payton' : source.owner === 'papa' ? 'Papa' : source.owner }}：{{ formatPrice(source.price) }}<span v-if="source.count > 1"> × {{ source.count }}件</span>
+            </span>
+          </div>
+        </div>
+      </div>
+      <div v-else-if="backfillResult?.updatedCount === 0" class="rounded-xl bg-gray-50 px-4 py-5 text-center text-sm text-gray-500">
+        没有需要补齐的商品；已有价格不会被覆盖。
+      </div>
+
+      <div class="flex justify-end mt-5">
+        <button class="btn btn-primary" @click="showBackfillResult = false">完成</button>
       </div>
     </GlassModal>
   </div>

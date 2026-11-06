@@ -217,4 +217,59 @@ describe('useMarketPrice', () => {
       expect(store.items[0].marketPrices[0].price).toBe(999)
     })
   })
+
+  describe('syncMissingMarketPrices', () => {
+    it('应将跨 Owner 一致的已有价格补给所有未标价同款，不覆盖已有价格', () => {
+      store.currentOwner = 'payton'
+      const source = makeItem({ id: 'source', owner: 'papa', name: 'GT-R', brand: 'TLV', marketPrices: [{ price: 250, timestamp: '2026-11-01T00:00:00Z' }] })
+      const alreadyPriced = makeItem({ id: 'priced', owner: 'payton', name: 'GT-R', brand: 'TLV', marketPrices: [{ price: 250, timestamp: '2026-11-02T00:00:00Z' }] })
+      const missingPayton = makeItem({ id: 'missing-payton', owner: 'payton', name: 'GT-R', brand: 'TLV' })
+      const missingPapa = makeItem({ id: 'missing-papa', owner: 'papa', name: 'GT-R', brand: 'TLV' })
+      const differentName = makeItem({ id: 'different-name', owner: 'payton', name: 'Supra', brand: 'TLV' })
+      const differentBrand = makeItem({ id: 'different-brand', owner: 'payton', name: 'GT-R', brand: 'MINIGT' })
+      const shortTerm = makeItem({ id: 'short-term', owner: 'payton', name: 'GT-R', brand: 'TLV', isLongTerm: false })
+      resetItems([source, alreadyPriced, missingPayton, missingPapa, differentName, differentBrand, shortTerm])
+      store.operationLogs.splice(0)
+
+      const result = mod.syncMissingMarketPrices()
+
+      expect(result).toEqual({ updatedCount: 2, updatedGroupCount: 1, conflicts: [] })
+      expect(missingPayton.marketPrices).toHaveLength(1)
+      expect(missingPayton.marketPrices[0].price).toBe(250)
+      expect(missingPapa.marketPrices[0].price).toBe(250)
+      expect(alreadyPriced.marketPrices).toEqual([{ price: 250, timestamp: '2026-11-02T00:00:00Z' }])
+      expect(source.marketPrices).toEqual([{ price: 250, timestamp: '2026-11-01T00:00:00Z' }])
+      expect(differentName.marketPrices).toEqual([])
+      expect(differentBrand.marketPrices).toEqual([])
+      expect(shortTerm.marketPrices).toEqual([])
+      expect(store.operationLogs[0]).toMatchObject({ type: 'market_price_backfill', detail: { owner: 'all', updatedCount: 2 } })
+    })
+
+    it('遇到同款不同价格应整组跳过并返回各 Owner 价格', () => {
+      const papa = makeItem({ id: 'papa', owner: 'papa', name: 'GT-R', brand: 'TLV', marketPrices: [{ price: 250, timestamp: '2026-11-01T00:00:00Z' }] })
+      const payton = makeItem({ id: 'payton', owner: 'payton', name: 'GT-R', brand: 'TLV', marketPrices: [{ price: 260, timestamp: '2026-11-02T00:00:00Z' }] })
+      const missing = makeItem({ id: 'missing', owner: 'payton', name: 'GT-R', brand: 'TLV' })
+      resetItems([papa, payton, missing])
+      store.operationLogs.splice(0)
+
+      const result = mod.syncMissingMarketPrices()
+
+      expect(result.updatedCount).toBe(0)
+      expect(result.updatedGroupCount).toBe(0)
+      expect(result.conflicts).toEqual([{ name: 'GT-R', brand: 'TLV', unpricedCount: 1, sources: [{ owner: 'papa', price: 250, count: 1 }, { owner: 'payton', price: 260, count: 1 }] }])
+      expect(missing.marketPrices).toEqual([])
+      expect(store.operationLogs[0]).toMatchObject({ type: 'market_price_backfill', detail: { owner: 'all', conflictCount: 1 } })
+    })
+
+    it('没有价格来源或未标价目标时不写入商品或操作日志', () => {
+      const unpriced = makeItem({ id: 'unpriced', name: 'No source', brand: 'TLV' })
+      const priced = makeItem({ id: 'priced', name: 'No target', brand: 'TLV', marketPrices: [{ price: 100, timestamp: '2026-11-01T00:00:00Z' }] })
+      resetItems([unpriced, priced])
+      store.operationLogs.splice(0)
+
+      expect(mod.syncMissingMarketPrices()).toEqual({ updatedCount: 0, updatedGroupCount: 0, conflicts: [] })
+      expect(unpriced.marketPrices).toEqual([])
+      expect(store.operationLogs).toHaveLength(0)
+    })
+  })
 })
