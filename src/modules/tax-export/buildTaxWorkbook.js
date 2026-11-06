@@ -42,15 +42,20 @@ function isMoneyCell(name, rowNumber, columnNumber) {
   return !(name === '增值税核对' && rowNumber === 3)
 }
 
+function displaySid(value) {
+  const sid = value === undefined || value === null ? '' : String(value)
+  return sid.length > 20 ? `${sid.slice(0, 8)}…${sid.slice(-4)}` : sid
+}
+
 function worksheetRows(name, title, headers, rows) {
   return [[title, ...Array(Math.max(0, headers.length - 1)).fill('')], headers, ...rows.map((row) => {
     if (name === '阅读说明') return [row.field, row.value, row.note || '']
     if (name === '申报步骤清单') return [row.process, row.step, row.check]
     if (name === '增值税核对' || name === 'A表经营数据') return [row.metric, row.amount, row.check, row.note || '']
-    if (name === '销售明细') return [row.entryDate, row.name, row.sid === undefined || row.sid === null ? '' : String(row.sid), row.batch, row.price, row.cost, row.platformFee, row.express, row.adjustment, row.referenceProfit]
+    if (name === '销售明细') return [row.entryDate, row.name, displaySid(row.sid), row.batch, row.price, row.cost, row.platformFee, row.express, row.adjustment, row.referenceProfit]
     if (name === '收支明细') return [row.date, row.type, row.item, row.amount, row.note, row.taxCategory]
-    if (name === '补差明细') return [row.entryDate, row.name, row.sid === undefined || row.sid === null ? '' : String(row.sid), row.adjustment, row.direction]
-    return [row.id, row.sid === undefined || row.sid === null ? '' : String(row.sid), row.name || row.item || '', row.issue]
+    if (name === '补差明细') return [row.entryDate, row.name, displaySid(row.sid), row.adjustment, row.direction]
+    return [row.id, displaySid(row.sid), row.name || row.item || '', row.issue]
   })]
 }
 

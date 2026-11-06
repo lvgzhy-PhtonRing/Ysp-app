@@ -77,7 +77,7 @@ describe('buildTaxWorkbookData', () => {
     expect(XLSX.utils.sheet_to_json(workbook.Sheets['阅读说明'], { header: 1 })[1]).toEqual(['项目', '内容', '备注'])
   })
 
-  it('preserves full SID text on the pending-issues sheet', () => {
+  it('shortens long SID text consistently on the pending-issues sheet', () => {
     const sid = 'JP-20261106-VERY-LONG-000123'
     const result = buildTaxWorkbookData({
       items: [{ id: 'pending-sid', sid, name: '待确认商品', status: 'sold', cost: 10, saleDetails: { isConfirmed: false } }],
@@ -85,18 +85,18 @@ describe('buildTaxWorkbookData', () => {
     const workbook = createPrintReadyTaxWorkbook(result, ExcelJS)
     const worksheet = workbook.getWorksheet('待确认事项')
 
-    expect(worksheet.getRow(3).getCell(2).value).toBe(sid)
+    expect(worksheet.getRow(3).getCell(2).value).toBe('JP-20261…0123')
     expect(worksheet.getColumn(2).numFmt).toBe('@')
   })
 
-  it('preserves SID text across every worksheet that contains a SID column', () => {
+  it('preserves SID text format across every worksheet that contains a SID column', () => {
     const sid = '001234567890123456789'
     const result = buildTaxWorkbookData({
       items: [{ id: 'sid-sale', sid, name: '商品', status: 'sold', cost: 10, saleDetails: { shop: 'PhtonRIng', isConfirmed: true, entryDate: '2026-10-10', price: 30, deduction: 1 } }],
     }, period)
     const workbook = createPrintReadyTaxWorkbook(result, ExcelJS)
 
-    expect(workbook.getWorksheet('销售明细').getCell('C3').value).toBe(sid)
+    expect(workbook.getWorksheet('销售明细').getCell('C3').value).toBe('00123456…6789')
     expect(workbook.getWorksheet('销售明细').getColumn(3).numFmt).toBe('@')
     expect(workbook.getWorksheet('补差明细').getColumn(3).numFmt).toBe('@')
     expect(workbook.getWorksheet('待确认事项').getColumn(2).numFmt).toBe('@')
