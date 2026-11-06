@@ -89,6 +89,19 @@ describe('buildTaxWorkbookData', () => {
     expect(worksheet.getColumn(2).numFmt).toBe('@')
   })
 
+  it('preserves SID text across every worksheet that contains a SID column', () => {
+    const sid = '001234567890123456789'
+    const result = buildTaxWorkbookData({
+      items: [{ id: 'sid-sale', sid, name: '商品', status: 'sold', cost: 10, saleDetails: { shop: 'PhtonRIng', isConfirmed: true, entryDate: '2026-10-10', price: 30, deduction: 1 } }],
+    }, period)
+    const workbook = createPrintReadyTaxWorkbook(result, ExcelJS)
+
+    expect(workbook.getWorksheet('销售明细').getCell('C3').value).toBe(sid)
+    expect(workbook.getWorksheet('销售明细').getColumn(3).numFmt).toBe('@')
+    expect(workbook.getWorksheet('补差明细').getColumn(3).numFmt).toBe('@')
+    expect(workbook.getWorksheet('待确认事项').getColumn(2).numFmt).toBe('@')
+  })
+
   it('sets every sheet to A4 landscape with repeated headings, uniform header style, and page numbers', () => {
     const result = buildTaxWorkbookData(payload, period)
     const workbook = createPrintReadyTaxWorkbook(result, ExcelJS)

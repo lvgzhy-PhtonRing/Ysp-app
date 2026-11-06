@@ -31,6 +31,12 @@ const moneyColumnsBySheet = {
   '补差明细': [4],
 }
 
+const sidColumnsBySheet = {
+  '销售明细': [3],
+  '补差明细': [3],
+  '待确认事项': [2],
+}
+
 function isMoneyCell(name, rowNumber, columnNumber) {
   if (!moneyColumnsBySheet[name]?.includes(columnNumber) || rowNumber < 3) return false
   return !(name === '增值税核对' && rowNumber === 3)
@@ -41,9 +47,9 @@ function worksheetRows(name, title, headers, rows) {
     if (name === '阅读说明') return [row.field, row.value, row.note || '']
     if (name === '申报步骤清单') return [row.process, row.step, row.check]
     if (name === '增值税核对' || name === 'A表经营数据') return [row.metric, row.amount, row.check, row.note || '']
-    if (name === '销售明细') return [row.entryDate, row.name, row.sid, row.batch, row.price, row.cost, row.platformFee, row.express, row.adjustment, row.referenceProfit]
+    if (name === '销售明细') return [row.entryDate, row.name, row.sid === undefined || row.sid === null ? '' : String(row.sid), row.batch, row.price, row.cost, row.platformFee, row.express, row.adjustment, row.referenceProfit]
     if (name === '收支明细') return [row.date, row.type, row.item, row.amount, row.note, row.taxCategory]
-    if (name === '补差明细') return [row.entryDate, row.name, row.sid, row.adjustment, row.direction]
+    if (name === '补差明细') return [row.entryDate, row.name, row.sid === undefined || row.sid === null ? '' : String(row.sid), row.adjustment, row.direction]
     return [row.id, row.sid === undefined || row.sid === null ? '' : String(row.sid), row.name || row.item || '', row.issue]
   })]
 }
@@ -213,6 +219,13 @@ export function createTaxWorkbook(workbookData, XLSX) {
           const cell = worksheet[XLSX.utils.encode_cell({ r: rowNumber - 1, c: columnNumber - 1 })]
           if (cell) cell.z = '0.00'
         }
+        if (sidColumnsBySheet[name]?.includes(columnNumber)) {
+          const cell = worksheet[XLSX.utils.encode_cell({ r: rowNumber - 1, c: columnNumber - 1 })]
+          if (cell) {
+            cell.t = 's'
+            cell.v = String(cell.v ?? '')
+          }
+        }
       }
     }
     worksheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }]
@@ -250,6 +263,7 @@ export function createPrintReadyTaxWorkbook(workbookData, ExcelJS) {
     worksheet.eachRow((row, rowNumber) => {
       row.eachCell((cell, columnNumber) => {
         if (isMoneyCell(name, rowNumber, columnNumber)) cell.numFmt = '0.00'
+        if (sidColumnsBySheet[name]?.includes(columnNumber)) cell.numFmt = '@'
       })
     })
     worksheet.mergeCells(1, 1, 1, headers.length)
