@@ -1,5 +1,6 @@
 import JSZip from 'jszip'
 import templateUrl from './templates/period-inventory-intake-a3-template.xlsx?url'
+import { resolvePurchaseDate } from './purchaseDate'
 
 function amount(value) {
   const number = Number(value)
@@ -36,10 +37,10 @@ function statusNote(status, inStockDate) {
 
 export function buildPeriodInventoryReceipt(payload = {}, { startDate = '', endDate = '' } = {}) {
   const items = Array.isArray(payload.items) ? payload.items : []
-  const missingDateCount = items.filter((item) => hasPurchaseData(item?.purchaseDetails) && !dateOnly(item.purchaseDetails.date)).length
+  const missingDateCount = items.filter((item) => hasPurchaseData(item?.purchaseDetails) && !resolvePurchaseDate(item)).length
   const rows = items.flatMap((item) => {
     const purchase = item?.purchaseDetails
-    const purchaseDate = dateOnly(purchase?.date)
+    const purchaseDate = resolvePurchaseDate(item)
     if (!purchaseDate || purchaseDate < startDate || purchaseDate > endDate) return []
     const inStockDate = dateOnly(item?.inventoryDetails?.inStockDate)
     const unitCost = amount(item.cost) || amount(purchase.preTransferCost)

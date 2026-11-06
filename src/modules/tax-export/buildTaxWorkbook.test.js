@@ -31,6 +31,15 @@ describe('buildTaxWorkbookData', () => {
     expect(rows[0]).not.toHaveProperty('下单日期')
   })
 
+  it('adds the purchase date after the entry date using the shared purchase-date rule', () => {
+    const result = buildTaxWorkbookData({
+      items: [{ id: 'sale-with-purchase-date', owner: 'papa', name: '商品', sid: 'S-PURCHASE', batch: '预订', category: '日淘', cost: 10, status: 'sold', purchaseDetails: { date: '' }, saleDetails: { shop: 'PhtonRIng', isConfirmed: true, entryDate: '2026-10-10', price: 30 } }],
+    }, period)
+    const sheet = result.sheets.find((entry) => entry.name === '销售明细')
+    expect(sheet.headers.slice(0, 3)).toEqual(['入账日期', '采购日期', '商品名称'])
+    expect(sheet.rows[0].purchaseDate).toBe('2025-12-15')
+  })
+
   it('excludes unconfirmed rows and lists them as issues', () => {
     const result = buildTaxWorkbookData(payload, period)
     expect(result.sheets.find((sheet) => sheet.name === '销售明细').rows.some((row) => row.sid === 'S3')).toBe(false)
@@ -89,6 +98,16 @@ describe('buildTaxWorkbookData', () => {
     expect(worksheet.getColumn(2).numFmt).toBe('@')
   })
 
+  it('keeps pending issue record IDs as readable text', () => {
+    const result = buildTaxWorkbookData({
+      items: [{ id: 1769567174735, sid: 'S-ID', name: '待确认商品', status: 'sold', cost: 10, saleDetails: { isConfirmed: false } }],
+    }, period)
+    const worksheet = createPrintReadyTaxWorkbook(result, ExcelJS).getWorksheet('待确认事项')
+
+    expect(worksheet.getRow(3).getCell(1).value).toBe('1769567174735')
+    expect(worksheet.getColumn(1).numFmt).toBe('@')
+  })
+
   it('preserves SID text format across every worksheet that contains a SID column', () => {
     const sid = '001234567890123456789'
     const result = buildTaxWorkbookData({
@@ -96,8 +115,8 @@ describe('buildTaxWorkbookData', () => {
     }, period)
     const workbook = createPrintReadyTaxWorkbook(result, ExcelJS)
 
-    expect(workbook.getWorksheet('销售明细').getCell('C3').value).toBe('00123456…6789')
-    expect(workbook.getWorksheet('销售明细').getColumn(3).numFmt).toBe('@')
+    expect(workbook.getWorksheet('销售明细').getCell('D3').value).toBe('00123456…6789')
+    expect(workbook.getWorksheet('销售明细').getColumn(4).numFmt).toBe('@')
     expect(workbook.getWorksheet('补差明细').getColumn(3).numFmt).toBe('@')
     expect(workbook.getWorksheet('待确认事项').getColumn(2).numFmt).toBe('@')
   })
@@ -151,7 +170,7 @@ describe('buildTaxWorkbookData', () => {
     const result = buildTaxWorkbookData(payload, period)
     const workbook = createPrintReadyTaxWorkbook(result, ExcelJS)
     const worksheet = workbook.getWorksheet('销售明细')
-    expect([5, 6, 7, 8, 9, 10].map((index) => worksheet.getColumn(index).numFmt)).toEqual([
+    expect([6, 7, 8, 9, 10, 11].map((index) => worksheet.getColumn(index).numFmt)).toEqual([
       '0.00', '0.00', '0.00', '0.00', '0.00', '0.00',
     ])
   })

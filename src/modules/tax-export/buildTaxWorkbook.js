@@ -1,4 +1,5 @@
 import { DEFAULT_SALES_CHANNEL, inferLegacySalesChannel, isSalesChannel } from '../sales/salesChannels'
+import { resolvePurchaseDate } from './purchaseDate'
 
 function toAmount(value) {
   const amount = Number(value)
@@ -26,15 +27,20 @@ function sheet(name, headers, rows) {
 const moneyColumnsBySheet = {
   '增值税核对': [2],
   'A表经营数据': [2],
-  '销售明细': [5, 6, 7, 8, 9, 10],
+  '销售明细': [6, 7, 8, 9, 10, 11],
   '收支明细': [4],
   '补差明细': [4],
 }
 
 const sidColumnsBySheet = {
-  '销售明细': [3],
+  '销售明细': [4],
   '补差明细': [3],
   '待确认事项': [2],
+}
+
+const textColumnsBySheet = {
+  ...sidColumnsBySheet,
+  '待确认事项': [1, 2],
 }
 
 function isMoneyCell(name, rowNumber, columnNumber) {
@@ -52,10 +58,10 @@ function worksheetRows(name, title, headers, rows) {
     if (name === '阅读说明') return [row.field, row.value, row.note || '']
     if (name === '申报步骤清单') return [row.process, row.step, row.check]
     if (name === '增值税核对' || name === 'A表经营数据') return [row.metric, row.amount, row.check, row.note || '']
-    if (name === '销售明细') return [row.entryDate, row.name, displaySid(row.sid), row.batch, row.price, row.cost, row.platformFee, row.express, row.adjustment, row.referenceProfit]
+    if (name === '销售明细') return [row.entryDate, row.purchaseDate, row.name, displaySid(row.sid), row.batch, row.price, row.cost, row.platformFee, row.express, row.adjustment, row.referenceProfit]
     if (name === '收支明细') return [row.date, row.type, row.item, row.amount, row.note, row.taxCategory]
     if (name === '补差明细') return [row.entryDate, row.name, displaySid(row.sid), row.adjustment, row.direction]
-    return [row.id, displaySid(row.sid), row.name || row.item || '', row.issue]
+    return [row.id === undefined || row.id === null ? '' : String(row.id), displaySid(row.sid), row.name || row.item || '', row.issue]
   })]
 }
 
@@ -102,6 +108,7 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
     sales.push({
       id: item.id,
       entryDate: sale.entryDate,
+      purchaseDate: resolvePurchaseDate(item),
       name: item.name || '',
       sid: item.sid || '',
       batch: item.batch || '',
@@ -194,8 +201,8 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
       sheet('申报步骤清单', ['申报流程', '步骤', '核对状态'], steps),
       sheet('增值税核对', ['核对项目', '金额/数量', '人工核对/补录', '备注'], vatRows),
       sheet('A表经营数据', ['经营参考项目', '金额', '人工核对', '备注'], aRows),
-      sheet('销售明细', ['入账日期', '商品名称', 'SID', '批次', '成交总价', '单品成本', '平台手续费', '快递费', '补差（正数为卖方支出）', '经营利润参考'], sales.map((row) => ({
-        id: row.id, entryDate: row.entryDate, name: row.name, sid: row.sid, batch: row.batch,
+      sheet('销售明细', ['入账日期', '采购日期', '商品名称', 'SID', '批次', '成交总价', '单品成本', '平台手续费', '快递费', '补差（正数为卖方支出）', '经营利润参考'], sales.map((row) => ({
+        id: row.id, entryDate: row.entryDate, purchaseDate: row.purchaseDate, name: row.name, sid: row.sid, batch: row.batch,
         price: row.price, cost: row.cost, platformFee: row.platformFee, express: row.express, adjustment: row.adjustment, referenceProfit: row.referenceProfit,
       }))),
       sheet('收支明细', ['日期', '类型', '项目', '金额', '备注', '税务归类'], financeRecords),
@@ -224,7 +231,7 @@ export function createTaxWorkbook(workbookData, XLSX) {
           const cell = worksheet[XLSX.utils.encode_cell({ r: rowNumber - 1, c: columnNumber - 1 })]
           if (cell) cell.z = '0.00'
         }
-        if (sidColumnsBySheet[name]?.includes(columnNumber)) {
+        if (textColumnsBySheet[name]?.includes(columnNumber)) {
           const cell = worksheet[XLSX.utils.encode_cell({ r: rowNumber - 1, c: columnNumber - 1 })]
           if (cell) {
             cell.t = 's'
@@ -260,15 +267,16 @@ export function createPrintReadyTaxWorkbook(workbookData, ExcelJS) {
     worksheet.columns = columns.map((column) => ({ width: column.width * widthScale }))
     if (name === '待确认事项') worksheet.getColumn(2).numFmt = '@'
     if (name === '销售明细') {
-      ;[5, 6, 7, 8, 9, 10].forEach((columnIndex) => {
+      ;[6, 7, 8, 9, 10, 11].forEach((columnIndex) => {
         worksheet.getColumn(columnIndex).numFmt = '0.00'
       })
     }
+    if (name === '待确认事项') worksheet.getColumn(1).numFmt = '@'
     worksheet.addRows(values)
     worksheet.eachRow((row, rowNumber) => {
       row.eachCell((cell, columnNumber) => {
         if (isMoneyCell(name, rowNumber, columnNumber)) cell.numFmt = '0.00'
-        if (sidColumnsBySheet[name]?.includes(columnNumber)) cell.numFmt = '@'
+        if (textColumnsBySheet[name]?.includes(columnNumber)) cell.numFmt = '@'
       })
     })
     worksheet.mergeCells(1, 1, 1, headers.length)
