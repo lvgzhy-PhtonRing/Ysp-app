@@ -143,6 +143,17 @@ describe('buildTaxWorkbookData', () => {
     ])
   })
 
+  it('formats every ledger amount column to two decimals while keeping counts unchanged', () => {
+    const result = buildTaxWorkbookData(payload, period)
+    const workbook = createPrintReadyTaxWorkbook(result, ExcelJS)
+
+    expect(workbook.getWorksheet('增值税核对').getCell('B4').numFmt).toBe('0.00')
+    expect(workbook.getWorksheet('增值税核对').getCell('B3').numFmt).not.toBe('0.00')
+    expect(workbook.getWorksheet('A表经营数据').getCell('B3').numFmt).toBe('0.00')
+    expect(workbook.getWorksheet('收支明细').getCell('D3').numFmt).toBe('0.00')
+    expect(workbook.getWorksheet('补差明细').getCell('D3').numFmt).toBe('0.00')
+  })
+
   it('exports taxpayer name and tax ID as separate reading fields', () => {
     const result = buildTaxWorkbookData(payload, period)
     const notes = result.sheets.find((sheet) => sheet.name === '阅读说明').rows

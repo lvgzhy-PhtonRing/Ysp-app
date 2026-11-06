@@ -23,6 +23,19 @@ function sheet(name, headers, rows) {
   return { name, headers, rows }
 }
 
+const moneyColumnsBySheet = {
+  '增值税核对': [2],
+  'A表经营数据': [2],
+  '销售明细': [5, 6, 7, 8, 9, 10],
+  '收支明细': [4],
+  '补差明细': [4],
+}
+
+function isMoneyCell(name, rowNumber, columnNumber) {
+  if (!moneyColumnsBySheet[name]?.includes(columnNumber) || rowNumber < 3) return false
+  return !(name === '增值税核对' && rowNumber === 3)
+}
+
 function worksheetRows(name, title, headers, rows) {
   return [[title, ...Array(Math.max(0, headers.length - 1)).fill('')], headers, ...rows.map((row) => {
     if (name === '阅读说明') return [row.field, row.value, row.note || '']
@@ -194,6 +207,14 @@ export function createTaxWorkbook(workbookData, XLSX) {
   const workbook = XLSX.utils.book_new()
   workbookData.sheets.forEach(({ name, title, headers, rows }) => {
     const worksheet = XLSX.utils.aoa_to_sheet(worksheetRows(name, title, headers, rows))
+    for (let rowNumber = 3; rowNumber <= rows.length + 2; rowNumber += 1) {
+      for (let columnNumber = 1; columnNumber <= headers.length; columnNumber += 1) {
+        if (isMoneyCell(name, rowNumber, columnNumber)) {
+          const cell = worksheet[XLSX.utils.encode_cell({ r: rowNumber - 1, c: columnNumber - 1 })]
+          if (cell) cell.z = '0.00'
+        }
+      }
+    }
     worksheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }]
     XLSX.utils.book_append_sheet(workbook, worksheet, name)
   })
@@ -226,6 +247,11 @@ export function createPrintReadyTaxWorkbook(workbookData, ExcelJS) {
       })
     }
     worksheet.addRows(values)
+    worksheet.eachRow((row, rowNumber) => {
+      row.eachCell((cell, columnNumber) => {
+        if (isMoneyCell(name, rowNumber, columnNumber)) cell.numFmt = '0.00'
+      })
+    })
     worksheet.mergeCells(1, 1, 1, headers.length)
     worksheet.pageSetup = {
       paperSize: 9,
