@@ -115,8 +115,7 @@ export function getLinkedItems(item) {
   return store.items.filter(i =>
     i?.isLongTerm === true &&
     i?.name === item.name &&
-    i?.brand === item.brand &&
-    (i?.owner || 'papa') === (item?.owner || 'papa')
+    i?.brand === item.brand
   )
 }
 

@@ -100,12 +100,13 @@ describe('useMarketPrice', () => {
       expect(result.map(i => i.id)).toEqual(['1', '3'])
     })
 
-    it('restricts linked price updates to the current Owner', () => {
+    it('links matching price updates across Owners without changing current Owner display filtering', () => {
       store.currentOwner = 'payton'
       const papa = makeItem({ id: 'papa', owner: 'papa', name: 'same', brand: 'same' })
       const payton = makeItem({ id: 'payton', owner: 'payton', name: 'same', brand: 'same' })
       resetItems([papa, payton])
-      expect(mod.getLinkedItems(payton).map((item) => item.id)).toEqual(['payton'])
+      expect(mod.getLinkedItems(payton).map((item) => item.id)).toEqual(['papa', 'payton'])
+      expect(mod.getMarketPriceItems().map((item) => item.id)).toEqual(['payton'])
     })
   })
 
@@ -176,15 +177,14 @@ describe('useMarketPrice', () => {
   describe('getLinkedItems', () => {
     it('应返回同 name+brand 的长线货品', () => {
       resetItems([
-        makeItem({ id: '1', name: 'GT-R', brand: 'TLV', isLongTerm: true }),
-        makeItem({ id: '2', name: 'GT-R', brand: 'TLV', isLongTerm: true }),
-        makeItem({ id: '3', name: 'GT-R', brand: 'MINIGT', isLongTerm: true }),
-        makeItem({ id: '4', name: 'Supra', brand: 'TLV', isLongTerm: true }),
-        makeItem({ id: '5', name: 'GT-R', brand: 'TLV', isLongTerm: false }),
+        makeItem({ id: '1', name: 'GT-R', brand: 'TLV', owner: 'papa', isLongTerm: true }),
+        makeItem({ id: '2', name: 'GT-R', brand: 'TLV', owner: 'payton', isLongTerm: true }),
+        makeItem({ id: '3', name: 'GT-R', brand: 'MINIGT', owner: 'payton', isLongTerm: true }),
+        makeItem({ id: '4', name: 'Supra', brand: 'TLV', owner: 'payton', isLongTerm: true }),
+        makeItem({ id: '5', name: 'GT-R', brand: 'TLV', owner: 'payton', isLongTerm: false }),
       ])
-      const source = makeItem({ name: 'GT-R', brand: 'TLV', isLongTerm: true })
+      const source = makeItem({ name: 'GT-R', brand: 'TLV', owner: 'papa', isLongTerm: true })
       const linked = mod.getLinkedItems(source)
-      expect(linked).toHaveLength(2)
       expect(linked.map(i => i.id)).toEqual(['1', '2'])
     })
   })
@@ -192,8 +192,8 @@ describe('useMarketPrice', () => {
   describe('updateMarketPrice', () => {
     it('应追加价格记录到所有联动货品', () => {
       resetItems([
-        makeItem({ id: '1', name: 'GT-R', brand: 'TLV', cost: 100, marketPrices: [] }),
-        makeItem({ id: '2', name: 'GT-R', brand: 'TLV', cost: 100, marketPrices: [] }),
+        makeItem({ id: '1', name: 'GT-R', brand: 'TLV', owner: 'papa', cost: 100, marketPrices: [] }),
+        makeItem({ id: '2', name: 'GT-R', brand: 'TLV', owner: 'payton', cost: 100, marketPrices: [] }),
       ])
       const source = store.items[0]
       const result = mod.updateMarketPrice(source, 250)
