@@ -88,23 +88,31 @@ describe('useMarketPrice', () => {
   })
 
   describe('getMarketPriceItems', () => {
-    it('应只返回 isLongTerm=true 且 status=inventory 的货品', () => {
+    it('Papa只取长线，Payton只取投资，且都只取在库商品', () => {
       resetItems([
         makeItem({ id: '1', isLongTerm: true, status: 'inventory' }),
-        makeItem({ id: '2', isLongTerm: false, status: 'inventory' }),
+        makeItem({ id: '2', owner: 'payton', isLongTerm: false, status: 'inventory' }),
         makeItem({ id: '3', isLongTerm: true, status: 'inventory' }),
         makeItem({ id: '4', isLongTerm: true, status: 'sold' }),
+        makeItem({ id: '5', owner: 'payton', isLongTerm: false, status: 'inventory' }),
+        makeItem({ id: '6', owner: 'payton', isLongTerm: true, status: 'inventory' }),
+        makeItem({ id: '7', owner: 'payton', isLongTerm: false, status: 'inventory' }),
+        makeItem({ id: '8', owner: 'papa', isLongTerm: false, status: 'inventory' }),
       ])
       const result = mod.getMarketPriceItems()
       expect(result).toHaveLength(2)
       expect(result.map(i => i.id)).toEqual(['1', '3'])
+      store.currentOwner = 'payton'
+      expect(mod.getMarketPriceItems().map(i => i.id)).toEqual(['2', '5', '7'])
     })
 
-    it('links matching price updates across Owners without changing current Owner display filtering', () => {
+    it('同款仅联动Owner对应的长线或投资在库货品', () => {
       store.currentOwner = 'payton'
       const papa = makeItem({ id: 'papa', owner: 'papa', name: 'same', brand: 'same' })
-      const payton = makeItem({ id: 'payton', owner: 'payton', name: 'same', brand: 'same' })
-      resetItems([papa, payton])
+      const payton = makeItem({ id: 'payton', owner: 'payton', name: 'same', brand: 'same', isLongTerm: false })
+      const selfRetain = makeItem({ id: 'self', owner: 'payton', name: 'same', brand: 'same', isLongTerm: true })
+      const sold = makeItem({ id: 'sold', owner: 'payton', name: 'same', brand: 'same', isLongTerm: false, status: 'sold' })
+      resetItems([papa, payton, selfRetain, sold])
       expect(mod.getLinkedItems(payton).map((item) => item.id)).toEqual(['papa', 'payton'])
       expect(mod.getMarketPriceItems().map((item) => item.id)).toEqual(['payton'])
     })
@@ -175,13 +183,14 @@ describe('useMarketPrice', () => {
   })
 
   describe('getLinkedItems', () => {
-    it('应返回同 name+brand 的长线货品', () => {
+    it('应返回同 name+brand 且符合各自Owner规则的在库货品', () => {
       resetItems([
         makeItem({ id: '1', name: 'GT-R', brand: 'TLV', owner: 'papa', isLongTerm: true }),
-        makeItem({ id: '2', name: 'GT-R', brand: 'TLV', owner: 'payton', isLongTerm: true }),
+        makeItem({ id: '2', name: 'GT-R', brand: 'TLV', owner: 'payton', isLongTerm: false }),
         makeItem({ id: '3', name: 'GT-R', brand: 'MINIGT', owner: 'payton', isLongTerm: true }),
         makeItem({ id: '4', name: 'Supra', brand: 'TLV', owner: 'payton', isLongTerm: true }),
-        makeItem({ id: '5', name: 'GT-R', brand: 'TLV', owner: 'payton', isLongTerm: false }),
+        makeItem({ id: '5', name: 'GT-R', brand: 'TLV', owner: 'payton', isLongTerm: true }),
+        makeItem({ id: '6', name: 'GT-R', brand: 'TLV', owner: 'payton', isLongTerm: false, status: 'sold' }),
       ])
       const source = makeItem({ name: 'GT-R', brand: 'TLV', owner: 'papa', isLongTerm: true })
       const linked = mod.getLinkedItems(source)
@@ -193,7 +202,7 @@ describe('useMarketPrice', () => {
     it('应追加价格记录到所有联动货品', () => {
       resetItems([
         makeItem({ id: '1', name: 'GT-R', brand: 'TLV', owner: 'papa', cost: 100, marketPrices: [] }),
-        makeItem({ id: '2', name: 'GT-R', brand: 'TLV', owner: 'payton', cost: 100, marketPrices: [] }),
+        makeItem({ id: '2', name: 'GT-R', brand: 'TLV', owner: 'payton', isLongTerm: false, cost: 100, marketPrices: [] }),
       ])
       const source = store.items[0]
       const result = mod.updateMarketPrice(source, 250)
@@ -223,12 +232,12 @@ describe('useMarketPrice', () => {
       store.currentOwner = 'payton'
       const source = makeItem({ id: 'source', owner: 'papa', name: 'GT-R', brand: 'TLV', marketPrices: [{ price: 250, timestamp: '2026-11-01T00:00:00Z' }] })
       const alreadyPriced = makeItem({ id: 'priced', owner: 'payton', name: 'GT-R', brand: 'TLV', marketPrices: [{ price: 250, timestamp: '2026-11-02T00:00:00Z' }] })
-      const missingPayton = makeItem({ id: 'missing-payton', owner: 'payton', name: 'GT-R', brand: 'TLV' })
+      const missingPayton = makeItem({ id: 'missing-payton', owner: 'payton', isLongTerm: false, name: 'GT-R', brand: 'TLV' })
       const missingPapa = makeItem({ id: 'missing-papa', owner: 'papa', name: 'GT-R', brand: 'TLV' })
       const differentName = makeItem({ id: 'different-name', owner: 'payton', name: 'Supra', brand: 'TLV' })
       const differentBrand = makeItem({ id: 'different-brand', owner: 'payton', name: 'GT-R', brand: 'MINIGT' })
-      const shortTerm = makeItem({ id: 'short-term', owner: 'payton', name: 'GT-R', brand: 'TLV', isLongTerm: false })
-      resetItems([source, alreadyPriced, missingPayton, missingPapa, differentName, differentBrand, shortTerm])
+      const selfRetain = makeItem({ id: 'self-retain', owner: 'payton', name: 'GT-R', brand: 'TLV', isLongTerm: true })
+      resetItems([source, alreadyPriced, missingPayton, missingPapa, differentName, differentBrand, selfRetain])
       store.operationLogs.splice(0)
 
       const result = mod.syncMissingMarketPrices()
@@ -241,14 +250,14 @@ describe('useMarketPrice', () => {
       expect(source.marketPrices).toEqual([{ price: 250, timestamp: '2026-11-01T00:00:00Z' }])
       expect(differentName.marketPrices).toEqual([])
       expect(differentBrand.marketPrices).toEqual([])
-      expect(shortTerm.marketPrices).toEqual([])
+      expect(selfRetain.marketPrices).toEqual([])
       expect(store.operationLogs[0]).toMatchObject({ type: 'market_price_backfill', detail: { owner: 'all', updatedCount: 2 } })
     })
 
     it('遇到同款不同价格应整组跳过并返回各 Owner 价格', () => {
       const papa = makeItem({ id: 'papa', owner: 'papa', name: 'GT-R', brand: 'TLV', marketPrices: [{ price: 250, timestamp: '2026-11-01T00:00:00Z' }] })
-      const payton = makeItem({ id: 'payton', owner: 'payton', name: 'GT-R', brand: 'TLV', marketPrices: [{ price: 260, timestamp: '2026-11-02T00:00:00Z' }] })
-      const missing = makeItem({ id: 'missing', owner: 'payton', name: 'GT-R', brand: 'TLV' })
+      const payton = makeItem({ id: 'payton', owner: 'payton', isLongTerm: false, name: 'GT-R', brand: 'TLV', marketPrices: [{ price: 260, timestamp: '2026-11-02T00:00:00Z' }] })
+      const missing = makeItem({ id: 'missing', owner: 'payton', isLongTerm: false, name: 'GT-R', brand: 'TLV' })
       resetItems([papa, payton, missing])
       store.operationLogs.splice(0)
 

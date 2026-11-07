@@ -29,11 +29,17 @@ export function isPriced(item) {
   return Array.isArray(item?.marketPrices) && item.marketPrices.length > 0
 }
 
-/**
- * 获取所有应参与市场价格计算的长线货品（isLongTerm===true）
- */
+/** Owner-specific inventory classification used consistently by display and price linking. */
+export function isMarketPriceEligible(item) {
+  if (item?.status !== 'inventory') return false
+  const owner = item?.owner || 'papa'
+  if (owner === 'papa') return item?.isLongTerm === true
+  if (owner === 'payton') return item?.isLongTerm !== true
+  return false
+}
+
 export function getMarketPriceItems() {
-  return store.items.filter(i => (i?.owner || 'papa') === store.currentOwner && i?.isLongTerm === true && i?.status === 'inventory')
+  return store.items.filter(i => (i?.owner || 'papa') === store.currentOwner && isMarketPriceEligible(i))
 }
 
 /**
@@ -109,11 +115,11 @@ export function getTopChanges(items, n = 5) {
 }
 
 /**
- * 查找与指定 item 同 name+brand 的长线货品（包括自身）
+ * 查找与指定 item 同 name+brand 且各自符合 Owner 分类规则的在库货品（包括自身）
  */
 export function getLinkedItems(item) {
   return store.items.filter(i =>
-    i?.isLongTerm === true &&
+    isMarketPriceEligible(i) &&
     i?.name === item.name &&
     i?.brand === item.brand
   )
@@ -157,11 +163,11 @@ export function updateMarketPrice(item, newPrice) {
   return { updatedCount: linked.length }
 }
 
-/** 将已有的同款市价补给未标价长线商品；冲突款整组跳过 */
+/** 将已有的同款市价补给未标价的合资格在库商品；冲突款整组跳过 */
 export function syncMissingMarketPrices() {
   const groups = new Map()
   for (const item of store.items) {
-    if (item?.isLongTerm !== true) continue
+    if (!isMarketPriceEligible(item)) continue
     const key = JSON.stringify([item?.name || '', item?.brand || ''])
     if (!groups.has(key)) groups.set(key, { name: item?.name || '', brand: item?.brand || '', items: [] })
     groups.get(key).items.push(item)

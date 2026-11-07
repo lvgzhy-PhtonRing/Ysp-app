@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import GlassModal from '../../components/GlassModal.vue'
+import { state as store } from '../../data/store'
 import {
   getCurrentPrice,
   getChangeRate,
@@ -16,6 +17,7 @@ import {
 
 // ===== 数据 =====
 const allItems = computed(() => getMarketPriceItems())
+const currentInventoryLabel = computed(() => store.currentOwner === 'payton' ? '投资货品' : '长线货品')
 const globalStats = computed(() => getGlobalStats(allItems.value))
 const brandStats = computed(() => getBrandStats(allItems.value))
 
@@ -260,7 +262,7 @@ function formatAmount(v) {
         <h2 class="text-3xl leading-10 font-extrabold">市场价格</h2>
         <span class="text-base text-gray-400 font-light">Market Price</span>
       </div>
-      <button class="btn btn-outline btn-sm" title="跨 Owner 补齐同款未标价商品，不覆盖已有价格" @click="runMarketPriceBackfill">
+      <button class="btn btn-outline btn-sm" title="跨 Owner 补齐同款未标价库存商品，不覆盖已有价格；有冲突时跳过" @click="runMarketPriceBackfill">
         <i class="fa-solid fa-link mr-1.5"></i>一键同步已有标价
       </button>
     </div>
@@ -268,8 +270,8 @@ function formatAmount(v) {
     <!-- ===== 空状态 ===== -->
     <div v-if="allItems.length === 0" class="apple-card p-12 text-center">
       <i class="fa-solid fa-chart-line text-4xl text-gray-300 mb-4"></i>
-      <div class="text-gray-500 text-base">暂无长线库存货品</div>
-      <div class="text-gray-400 text-sm mt-2">请先在库存管理中将货品标记为长线</div>
+      <div class="text-gray-500 text-base">暂无{{ currentInventoryLabel }}</div>
+      <div class="text-gray-400 text-sm mt-2">请在库存管理中检查该 Owner 的库存分类</div>
     </div>
 
     <template v-else>
@@ -281,7 +283,7 @@ function formatAmount(v) {
           <div class="text-xs text-gray-500 mt-1">基于最新市场价格</div>
         </div>
         <div class="bg-gray-50 p-4 rounded-xl border-l-4 border-gray-400">
-          <div class="text-xs text-gray-500 mb-1">长线货品</div>
+          <div class="text-xs text-gray-500 mb-1">{{ currentInventoryLabel }}</div>
           <div class="text-2xl font-bold text-gray-800">{{ globalStats.totalCount }} <span class="text-sm font-normal text-gray-500">件</span></div>
           <div class="text-xs text-gray-500 mt-1">已标价 {{ globalStats.pricedCount }} · 未标价 {{ globalStats.unPricedCount }}</div>
         </div>
