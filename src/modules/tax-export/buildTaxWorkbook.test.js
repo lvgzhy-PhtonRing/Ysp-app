@@ -31,6 +31,23 @@ describe('buildTaxWorkbookData', () => {
     expect(rows[0]).not.toHaveProperty('下单日期')
   })
 
+  it('sorts sales, finance, and adjustment details by date ascending with stable ties', () => {
+    const result = buildTaxWorkbookData({
+      items: [
+        { id: 'sale-late', name: '晚', sid: 'L', cost: 1, status: 'sold', saleDetails: { shop: 'PhtonRIng', isConfirmed: true, entryDate: '2026-10-20', price: 2 } },
+        { id: 'sale-early', name: '早', sid: 'E', cost: 1, status: 'sold', saleDetails: { shop: 'PhtonRIng', isConfirmed: true, entryDate: '2026-10-10', price: 2, deduction: 1 } },
+        { id: 'sale-tie', name: '同日', sid: 'T', cost: 1, status: 'sold', saleDetails: { shop: 'PhtonRIng', isConfirmed: true, entryDate: '2026-10-10', price: 3, deduction: -1 } },
+      ],
+      financeRecords: [
+        { id: 'finance-late', date: '2026-10-20', type: 'expense', item: '晚', amount: 1 },
+        { id: 'finance-early', date: '2026-10-05', type: 'expense', item: '早', amount: 1 },
+      ],
+    }, period)
+    expect(result.sheets.find((sheet) => sheet.name === '销售明细').rows.map((row) => row.id)).toEqual(['sale-early', 'sale-tie', 'sale-late'])
+    expect(result.sheets.find((sheet) => sheet.name === '收支明细').rows.map((row) => row.id)).toEqual(['finance-early', 'finance-late'])
+    expect(result.sheets.find((sheet) => sheet.name === '补差明细').rows.map((row) => row.sid)).toEqual(['E', 'T'])
+  })
+
   it('adds the purchase date after the entry date using the shared purchase-date rule', () => {
     const result = buildTaxWorkbookData({
       items: [{ id: 'sale-with-purchase-date', owner: 'papa', name: '商品', sid: 'S-PURCHASE', batch: '预订', category: '日淘', cost: 10, status: 'sold', purchaseDetails: { date: '' }, saleDetails: { shop: 'PhtonRIng', isConfirmed: true, entryDate: '2026-10-10', price: 30 } }],
@@ -173,6 +190,18 @@ describe('buildTaxWorkbookData', () => {
     expect([6, 7, 8, 9, 10, 11].map((index) => worksheet.getColumn(index).numFmt)).toEqual([
       '0.00', '0.00', '0.00', '0.00', '0.00', '0.00',
     ])
+  })
+
+  it('adds tax-category dropdowns and gives the product-name column extra width', () => {
+    const result = buildTaxWorkbookData(payload, period)
+    const workbook = createPrintReadyTaxWorkbook(result, ExcelJS)
+    const finance = workbook.getWorksheet('收支明细')
+    expect(finance.getCell('F3').value).toBe('待人工确认')
+    expect(finance.getCell('F3').dataValidation).toMatchObject({ type: 'list', allowBlank: false, showErrorMessage: true })
+    expect(finance.getCell('F3').dataValidation.formulae[0]).toContain('经营费用')
+    const sales = workbook.getWorksheet('销售明细')
+    expect(sales.getColumn(1).width).toBe(sales.getColumn(2).width)
+    expect(sales.getColumn(3).width).toBeGreaterThan(sales.getColumn(1).width)
   })
 
   it('formats every ledger amount column to two decimals while keeping counts unchanged', () => {

@@ -43,6 +43,24 @@ const textColumnsBySheet = {
   '待确认事项': [1, 2],
 }
 
+export const TAX_CATEGORY_OPTIONS = [
+  '待人工确认',
+  '经营费用',
+  '采购成本',
+  '平台服务费',
+  '快递费',
+  '个人支出',
+  '借贷或资金往来',
+  '不允许税前扣除的项目',
+]
+
+function sortByDateAscending(rows, field) {
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((a, b) => String(a.row[field] || '').localeCompare(String(b.row[field] || '')) || a.index - b.index)
+    .map(({ row }) => row)
+}
+
 function isMoneyCell(name, rowNumber, columnNumber) {
   if (!moneyColumnsBySheet[name]?.includes(columnNumber) || rowNumber < 3) return false
   return !(name === '增值税核对' && rowNumber === 3)
@@ -122,6 +140,7 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
   })
 
   if (sales.length) issues.push({ id: 'tax-classification', issue: '本期销售没有税务分类、开票类型及开票金额字段，请逐项对照税务系统预填数据核对。' })
+  const sortedSales = sortByDateAscending(sales, 'entryDate')
 
   const financeRecords = []
   let publicExpense = 0
@@ -142,6 +161,7 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
     issues.push({ id: record.id || '', name: record.item || '', issue: '收支税务性质与凭证状态未分类；请人工核实后再决定是否用于申报。' })
   })
 
+  const sortedFinanceRecords = sortByDateAscending(financeRecords, 'date')
   const totals = sales.reduce((sum, row) => ({
     revenue: sum.revenue + row.price,
     cost: sum.cost + row.cost,
@@ -162,7 +182,7 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
     { field: '销售期间口径', value: '仅按已确认销售的入账日期归期。' },
     { field: '单品利润参考', value: '售价 − 单品成本 − 平台手续费 − 快递费 − 补差。' },
     { field: '店面整体利润参考', value: '本期已确认销售单品利润合计 − 本期公共支出净额（支出 − 收入）；不等于应纳税所得额或税额。' },
-    { field: '公共支出口径', value: '取自 YSP 公共收支中 Papa 或未标 Owner 的本期收入与支出；税务性质及凭证需人工核实。' },
+    { field: '公共支出口径', value: '取自 YSP 公共收支中 Papa 或未标归属的本期收入与支出；税务性质及凭证需人工核实。' },
     { field: '税务复核', value: '以当期电子税务局预填数据、适用政策及实际凭证为准。' },
   ]
   const steps = [
@@ -201,12 +221,12 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
       sheet('申报步骤清单', ['申报流程', '步骤', '核对状态'], steps),
       sheet('增值税核对', ['核对项目', '金额/数量', '人工核对/补录', '备注'], vatRows),
       sheet('A表经营数据', ['经营参考项目', '金额', '人工核对', '备注'], aRows),
-      sheet('销售明细', ['入账日期', '采购日期', '商品名称', 'SID', '批次', '成交总价', '单品成本', '平台手续费', '快递费', '补差（正数为卖方支出）', '经营利润参考'], sales.map((row) => ({
+      sheet('销售明细', ['入账日期', '采购日期', '商品名称', 'SID', '批次', '成交总价', '单品成本', '平台手续费', '快递费', '补差（正数为卖方支出）', '经营利润参考'], sortedSales.map((row) => ({
         id: row.id, entryDate: row.entryDate, purchaseDate: row.purchaseDate, name: row.name, sid: row.sid, batch: row.batch,
         price: row.price, cost: row.cost, platformFee: row.platformFee, express: row.express, adjustment: row.adjustment, referenceProfit: row.referenceProfit,
       }))),
-      sheet('收支明细', ['日期', '类型', '项目', '金额', '备注', '税务归类'], financeRecords),
-      sheet('补差明细', ['入账日期', '商品名称', 'SID', '补差金额', '方向说明'], sales.filter((row) => row.adjustment !== 0).map((row) => ({
+      sheet('收支明细', ['日期', '类型', '项目', '金额', '备注', '税务归类'], sortedFinanceRecords),
+      sheet('补差明细', ['入账日期', '商品名称', 'SID', '补差金额', '方向说明'], sortedSales.filter((row) => row.adjustment !== 0).map((row) => ({
         entryDate: row.entryDate, name: row.name, sid: row.sid, adjustment: row.adjustment,
         direction: row.adjustment > 0 ? '卖方补给买家' : '买家补给卖方',
       }))),
@@ -261,6 +281,11 @@ export function createPrintReadyTaxWorkbook(workbookData, ExcelJS) {
       return { width: Math.max(10, Math.min(maxColumnWidth, maxLength + 2)) }
     })
     if (name === '阅读说明') columns.splice(0, columns.length, { width: 24 }, { width: 90 }, { width: 42 })
+    if (name === '销售明细') {
+      columns[0] = { width: 12 }
+      columns[1] = { width: 12 }
+      columns[2] = { width: 48 }
+    }
     const totalWidth = columns.reduce((sum, column) => sum + column.width, 0)
     const printWidth = Math.max(1, totalWidth, 154)
     const widthScale = printWidth / totalWidth
@@ -273,11 +298,27 @@ export function createPrintReadyTaxWorkbook(workbookData, ExcelJS) {
     }
     if (name === '待确认事项') worksheet.getColumn(1).numFmt = '@'
     worksheet.addRows(values)
+    if (name === '收支明细' && rows.length > 0) {
+      const formula = `"${TAX_CATEGORY_OPTIONS.join(',')}"`
+      for (let rowNumber = 3; rowNumber <= rows.length + 2; rowNumber += 1) {
+        worksheet.getCell(rowNumber, 6).dataValidation = {
+          type: 'list',
+          allowBlank: false,
+          formulae: [formula],
+          showErrorMessage: true,
+          errorTitle: '请选择税务归类',
+          error: '请从下拉菜单选择税务归类。',
+        }
+      }
+    }
     worksheet.eachRow((row, rowNumber) => {
       row.eachCell((cell, columnNumber) => {
         if (isMoneyCell(name, rowNumber, columnNumber)) cell.numFmt = '0.00'
         if (textColumnsBySheet[name]?.includes(columnNumber)) cell.numFmt = '@'
       })
+    })
+    textColumnsBySheet[name]?.forEach((columnNumber) => {
+      worksheet.getColumn(columnNumber).numFmt = '@'
     })
     worksheet.mergeCells(1, 1, 1, headers.length)
     worksheet.pageSetup = {
