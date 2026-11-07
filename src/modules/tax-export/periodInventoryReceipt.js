@@ -35,6 +35,14 @@ function statusNote(status, inStockDate) {
   return 'YSP未记录实际入库日期'
 }
 
+export function combineInventoryNote(statusText, purchaseNote) {
+  const status = String(statusText || '').trim()
+  const note = String(purchaseNote || '').trim()
+  if (!status) return note ? `购买组备注：${note}` : ''
+  if (!note) return status
+  return `${status}；购买组备注：${note}`
+}
+
 export function buildPeriodInventoryReceipt(payload = {}, { startDate = '', endDate = '' } = {}) {
   const items = Array.isArray(payload.items) ? payload.items : []
   const missingDateCount = items.filter((item) => hasPurchaseData(item?.purchaseDetails) && !resolvePurchaseDate(item)).length
@@ -49,7 +57,7 @@ export function buildPeriodInventoryReceipt(payload = {}, { startDate = '', endD
       name: item.name || '',
       purchaseDate,
       supplier: purchase.website || '',
-      note: statusNote(item.status, inStockDate),
+      note: combineInventoryNote(statusNote(item.status, inStockDate), purchase.note),
       paymentBatch: purchase.paymentBatch || '',
       batch: [item.category, item.batch].filter(Boolean).join('\\'),
       brand: item.brand || '',
@@ -58,7 +66,10 @@ export function buildPeriodInventoryReceipt(payload = {}, { startDate = '', endD
       websiteAccount: [purchase.website, purchase.websiteAccount].filter(Boolean).join(' / '),
       purchaseInProgress: item.status === 'purchase',
     }]
-  }).sort((a, b) => a.purchaseDate.localeCompare(b.purchaseDate) || a.sid.localeCompare(b.sid) || a.name.localeCompare(b.name, 'zh-CN'))
+  }).sort((a, b) => a.purchaseDate.localeCompare(b.purchaseDate)
+    || a.paymentBatch.localeCompare(b.paymentBatch, 'zh-CN')
+    || a.sid.localeCompare(b.sid)
+    || a.name.localeCompare(b.name, 'zh-CN'))
 
   return {
     rows,
