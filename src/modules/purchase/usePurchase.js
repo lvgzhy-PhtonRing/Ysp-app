@@ -226,14 +226,15 @@ export function addPurchaseItem(itemData = {}, options = {}) {
   }
 
   const preTransferCost = toNumber(purchaseDetails.preTransferCost, 0)
+  const requestedSid = typeof itemData.sid === 'string' ? itemData.sid.trim() : ''
 
   const item = {
     ...itemData,
     owner: itemData.owner || 'papa',
     id: generateItemId(),
     sid:
-      typeof itemData.sid === 'string' && itemData.sid.trim()
-        ? itemData.sid.trim()
+      requestedSid && !/^temp-/i.test(requestedSid)
+        ? requestedSid
         : generateNextSid(itemData.category || purchaseDetails.categoryHint || DEFAULT_CATEGORY),
     status: 'purchase',
     cost: preTransferCost,

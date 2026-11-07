@@ -1325,14 +1325,17 @@ function submitEditPurchaseGroup() {
       }
     })
 
+    const generatedSidByDraftKey = new Map()
     lines.forEach((line) => {
       const src = line.id ? originalById.get(line.id) : null
       if (src) {
         applyLineToItem(line, src, repriceAll)
         synchronizeSameSidLines(line, null, originalById, repriceAll)
       } else {
-        addPurchaseItem({
-          sid: line.sid,
+        const draftKey = String(line.sid || '').trim()
+        const isDraftSid = /^temp-/i.test(draftKey)
+        const createdItem = addPurchaseItem({
+          sid: isDraftSid ? generatedSidByDraftKey.get(draftKey) : draftKey,
           name: line.name,
           brand: line.brand,
           category: editGroupForm.category,
@@ -1371,6 +1374,9 @@ function submitEditPurchaseGroup() {
             transferSelected: false,
           },
         })
+        if (isDraftSid && createdItem?.sid && !generatedSidByDraftKey.has(draftKey)) {
+          generatedSidByDraftKey.set(draftKey, createdItem.sid)
+        }
       }
     })
 
