@@ -64,30 +64,32 @@ function momFor(config) {
 const chartCanvas = ref(null)
 let chartInstance = null
 
-/** 自定义插件：在柱组上方绘制差额标注 */
+/** 在两条折线节点旁标出对应金额 */
 const diffPlugin = {
   id: 'cashflowDiff',
   afterDatasetsDraw(chart) {
     const { ctx } = chart
-    const meta0 = chart.getDatasetMeta(0)
-    const meta1 = chart.getDatasetMeta(1)
-    if (!meta0?.data?.length || !meta1?.data?.length) return
+    const diffMeta = chart.getDatasetMeta(2)
+    const debtMeta = chart.getDatasetMeta(3)
+    if (!diffMeta?.data?.length || !debtMeta?.data?.length) return
 
     ctx.font = '10px "Microsoft YaHei", sans-serif'
     ctx.textAlign = 'center'
 
-    for (let i = 0; i < meta0.data.length; i++) {
-      const net = Number(chart.data.datasets[0].data[i] || 0)
-      const proc = Number(chart.data.datasets[1].data[i] || 0)
-      const diff = net - proc
-      if (diff === 0 && net === 0 && proc === 0) continue
+    for (let i = 0; i < diffMeta.data.length; i++) {
+      const debt = Number(chart.data.datasets[3].data[i])
+      const diff = Number(chart.data.datasets[2].data[i])
+      const debtPoint = debtMeta.data[i]
+      const diffPoint = diffMeta.data[i]
 
-      const xPos = (meta0.data[i].x + meta1.data[i].x) / 2
-      const topY = Math.min(meta0.data[i].y, meta1.data[i].y)
-
-      ctx.fillStyle = diff >= 0 ? '#16a34a' : '#dc2626'
-      const label = diff >= 0 ? `+${fmtShort(diff)}` : fmtShort(diff)
-      ctx.fillText(label, xPos, topY - 6)
+      if (Number.isFinite(debt) && debtPoint && !debtPoint.skip) {
+        ctx.fillStyle = '#3b82f6'
+        ctx.fillText(fmtShort(debt), debtPoint.x, debtPoint.y - 9)
+      }
+      if (Number.isFinite(diff) && diffPoint && !diffPoint.skip) {
+        ctx.fillStyle = '#8b5cf6'
+        ctx.fillText(fmtShort(diff), diffPoint.x, diffPoint.y + 15)
+      }
     }
   },
 }
@@ -185,13 +187,13 @@ function buildChartConfig(fiveMonthData) {
         y: {
           type: 'linear',
           position: 'left',
-          title: { display: true, text: '金额 (元)' },
+          title: { display: false },
           beginAtZero: true,
         },
         y1: {
           type: 'linear',
           position: 'right',
-          title: { display: true, text: '负债 (元)' },
+          title: { display: true, text: '金额（元）' },
           beginAtZero: true,
           grid: { drawOnChartArea: false },
         },
