@@ -23,7 +23,7 @@ const brandStats = computed(() => getBrandStats(allItems.value))
 
 const searchKeyword = ref('')
 const brandFilter = ref('')
-const sortMode = ref('brand') // 'brand' | 'change' | 'value' | 'profit'
+const sortMode = ref('name') // 'name' | 'change' | 'value' | 'profit'
 
 // ===== 品牌折叠状态 =====
 const collapsedBrands = ref(new Set())
@@ -138,15 +138,7 @@ const sortedGroups = computed(() => {
     return { brand, items: sorted, totalValue, totalCost, changeRate, pricedCount: priced.length, rawCount: items.length }
   })
 
-  if (sortMode.value === 'brand') {
-    entries.sort((a, b) => a.brand.localeCompare(b.brand, 'zh-CN'))
-  } else if (sortMode.value === 'change') {
-    entries.sort((a, b) => b.changeRate - a.changeRate)
-  } else if (sortMode.value === 'value') {
-    entries.sort((a, b) => b.totalValue - a.totalValue)
-  } else if (sortMode.value === 'profit') {
-    entries.sort((a, b) => (b.totalValue - b.totalCost) - (a.totalValue - a.totalCost))
-  }
+  entries.sort((a, b) => a.brand.localeCompare(b.brand, 'zh-CN'))
   return entries
 })
 
@@ -337,9 +329,9 @@ function formatAmount(v) {
         <div class="flex flex-wrap gap-2 ml-auto">
           <button
             class="px-3 py-1 text-xs rounded-full transition"
-            :class="sortMode === 'brand' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
-            @click="sortMode = 'brand'"
-          >按品牌</button>
+            :class="sortMode === 'name' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+            @click="sortMode = 'name'"
+          >按名称</button>
           <button
             class="px-3 py-1 text-xs rounded-full transition"
             :class="sortMode === 'change' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
