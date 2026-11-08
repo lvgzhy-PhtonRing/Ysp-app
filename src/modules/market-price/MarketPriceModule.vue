@@ -254,9 +254,6 @@ function formatAmount(v) {
         <h2 class="text-3xl leading-10 font-extrabold">市场价格</h2>
         <span class="text-base text-gray-400 font-light">Market Price</span>
       </div>
-      <button class="btn btn-outline btn-sm" title="跨 Owner 补齐同款未标价库存商品，不覆盖已有价格；有冲突时跳过" @click="runMarketPriceBackfill">
-        <i class="fa-solid fa-link mr-1.5"></i>一键同步已有标价
-      </button>
     </div>
 
     <!-- ===== 空状态 ===== -->
@@ -312,6 +309,20 @@ function formatAmount(v) {
             </div>
             <div class="text-[10px] text-gray-400">{{ bs.pricedCount }}/{{ bs.totalCount }} 件已标价</div>
           </div>
+        </div>
+        <div class="mt-2 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-2 pt-3">
+          <div class="flex items-center gap-2 text-xs text-gray-500">
+            <i class="fa-solid fa-circle-info text-gray-400"></i>
+            <span>跨 Owner 补齐同款未标价商品；保留已有标价，冲突项跳过并列出</span>
+          </div>
+          <button
+            class="inline-flex items-center justify-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            title="跨 Owner 补齐同款未标价库存商品，不覆盖已有价格；有冲突时跳过并列出"
+            @click="runMarketPriceBackfill"
+          >
+            <i class="fa-solid fa-link"></i>
+            一键同步已有标价
+          </button>
         </div>
       </div>
 

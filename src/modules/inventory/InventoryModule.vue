@@ -1114,9 +1114,46 @@ watch(invFilterMode, (val) => {
               <label class="block text-sm mb-1 text-gray-600">Owner</label>
               <select v-model="editForm.owner" class="apple-select"><option value="papa">Papa</option><option value="payton">Payton</option></select>
             </div>
-            <div v-if="editForm.owner === 'payton'">
-              <label class="block text-sm mb-1 text-gray-600">用途</label>
-              <select v-model="editForm.isLongTerm" class="apple-select"><option :value="false">投资</option><option :value="true">自留</option></select>
+            <div>
+              <label class="block text-sm mb-1 text-gray-600">{{ editForm.owner === 'payton' ? 'Payton 用途' : '库存类型' }}</label>
+              <div
+                class="flex items-center gap-1.5"
+                role="group"
+                :aria-label="editForm.owner === 'payton' ? 'Payton 用途' : '库存类型'"
+              >
+                <template v-if="editForm.owner === 'payton'">
+                  <button
+                    type="button"
+                    class="rounded-full border px-3 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                    :class="!editForm.isLongTerm ? 'border-purple-600 bg-purple-600 text-white' : 'border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100'"
+                    :aria-pressed="!editForm.isLongTerm"
+                    @click="editForm.isLongTerm = false"
+                  >投资</button>
+                  <button
+                    type="button"
+                    class="rounded-full border px-3 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                    :class="editForm.isLongTerm ? 'border-purple-600 bg-purple-600 text-white' : 'border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100'"
+                    :aria-pressed="editForm.isLongTerm"
+                    @click="editForm.isLongTerm = true"
+                  >自留</button>
+                </template>
+                <template v-else>
+                  <button
+                    type="button"
+                    class="rounded-full border px-3 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    :class="editForm.isLongTerm ? 'border-blue-600 bg-blue-600 text-white' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'"
+                    :aria-pressed="editForm.isLongTerm"
+                    @click="editForm.isLongTerm = true"
+                  >长线</button>
+                  <button
+                    type="button"
+                    class="rounded-full border px-3 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    :class="!editForm.isLongTerm ? 'border-blue-600 bg-blue-600 text-white' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'"
+                    :aria-pressed="!editForm.isLongTerm"
+                    @click="editForm.isLongTerm = false"
+                  >短线</button>
+                </template>
+              </div>
             </div>
           </div>
           <div class="flex items-center gap-2">
