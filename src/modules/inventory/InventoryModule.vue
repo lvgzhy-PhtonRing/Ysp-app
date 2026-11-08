@@ -996,7 +996,7 @@ watch(invFilterMode, (val) => {
             </thead>
             <tbody>
               <tr v-for="item in group.items" :key="item.id" :style="item.isLongTerm ? {backgroundColor: '#f3e8ff'} : {}">
-                <td><span v-if="item.isDefect" class="text-xs bg-danger text-white px-2 py-0.5 rounded">残次品</span><span v-else class="text-xs bg-success text-white px-2 py-0.5 rounded">正常</span></td>
+                <td><span v-if="item.isDefect" class="text-xs bg-danger text-white px-2 py-0.5 rounded">残次</span><span v-else class="text-xs bg-success text-white px-2 py-0.5 rounded">正常</span></td>
                 <td class="text-xs text-gray-400 font-mono" :title="item.sid"><button class="hover:text-blue-600" @click.stop="copySid(item.sid)">{{ item.sid?.length > 20 ? `${item.sid.slice(0, 8)}…${item.sid.slice(-4)}` : item.sid }}</button></td>
                 <td class="font-medium">{{ item.name }}<span v-if="item.isLongTerm" class="ml-1 text-xs bg-purple-500 text-white px-1 rounded">{{ store.currentOwner === 'payton' ? '自留' : '长线' }}</span></td>
                 <td>{{ item.brand }}</td>
