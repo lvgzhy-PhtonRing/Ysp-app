@@ -150,7 +150,7 @@ function buildChartConfig(fiveMonthData) {
           backgroundColor: 'rgba(59,130,246,0.06)',
           borderWidth: 2.5,
           fill: true,
-          yAxisID: 'y1',
+          yAxisID: 'y',
           tension: 0.3,
           pointRadius: 5,
           pointBackgroundColor: '#3b82f6',
@@ -186,16 +186,9 @@ function buildChartConfig(fiveMonthData) {
       scales: {
         y: {
           type: 'linear',
-          position: 'left',
-          title: { display: false },
-          beginAtZero: true,
-        },
-        y1: {
-          type: 'linear',
           position: 'right',
           title: { display: true, text: '金额（元）' },
           beginAtZero: true,
-          grid: { drawOnChartArea: false },
         },
       },
     },
