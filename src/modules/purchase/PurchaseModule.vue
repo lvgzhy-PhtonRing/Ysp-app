@@ -557,6 +557,11 @@ function fmtNum(v) {
   return Number(v || 0).toFixed(2)
 }
 
+function fmtShipping(v) {
+  const amount = Number(v || 0)
+  return amount.toFixed(2).endsWith('.00') ? amount.toFixed(0) : amount.toFixed(2)
+}
+
 function toggleGroup(key) {
   collapsedGroups[key] = !collapsedGroups[key]
 }
@@ -1852,7 +1857,7 @@ watch(purchaseViewCategory, () => {
                   </td>
                   <td class="text-center px-2 py-2">{{ item.qty }}</td>
                   <td class="text-gray-500 text-right px-2 py-2">{{ item.purchaseDetails?.originalPrice || '-' }}</td>
-                  <td class="text-gray-500 text-right px-2 py-2">{{ item.purchaseDetails?.domesticShipping || 0 }}</td>
+                  <td class="text-gray-500 text-right px-2 py-2">{{ fmtShipping(item.purchaseDetails?.domesticShipping || 0) }}</td>
                   <td class="text-gray-500 text-right px-2 py-2">{{ item.purchaseDetails?.fee || 0 }}</td>
                   <td class="text-center px-2 py-2">{{ item.purchaseDetails?.transferCoefficient || 1 }}</td>
                   <td class="text-warning text-right px-2 py-2">{{ fmtMoney(item.purchaseDetails?.preTransferCost || 0) }}</td>
