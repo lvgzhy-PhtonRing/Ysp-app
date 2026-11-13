@@ -11,7 +11,8 @@ const error = ref('')
 const message = ref('')
 const busy = ref(false)
 const tab = ref('dashboard')
-const investTab = ref('transactions')
+const dailyTab = ref('transactions')
+const investTab = ref('garage')
 const detailTab = ref('transfers')
 const keyword = ref('')
 const tabs = [ ['dashboard', "Payton's 数据"], ['daily', '日常消费'], ['invest', '投资小车'] ]
@@ -52,10 +53,11 @@ const rows = computed(() => {
   const d = archive.value?.data
   if (!d) return []
   const sources = { daily: d.accounts.pocket.transactions,
+    keepGarage: d.cars.filter(car => car.category === 'keep'),
     transactions: d.accounts.invest.transactions, garage: d.cars.filter(car => car.category === 'invest'),
     loans: d.accounts.invest.loans, transfers: d.transferPairs,
     prices: Object.entries(d.expectedPrices).map(([name, value]) => ({ name, ...value })), logs: d.operationLogs }
-  const source = tab.value === 'invest' ? investTab : tab.value === 'dashboard' ? detailTab : tab.value
+  const source = tab.value === 'invest' ? investTab : tab.value === 'daily' ? (dailyTab === 'garage' ? 'keepGarage' : dailyTab) : tab.value === 'dashboard' ? detailTab : tab.value
   const q = keyword.value.trim().toLowerCase()
   return (sources[source] || []).filter(row => !q || JSON.stringify(row).toLowerCase().includes(q))
 })
@@ -118,16 +120,18 @@ function money(value) { return value == null ? '—' : `¥${Number(value).toFixe
           </details>
         </template>
         <template v-else>
-          <div v-if="tab === 'invest'" class="mt-4 flex gap-2"><button v-for="item in [['transactions','投资明细'],['garage','投资车库']]" :key="item[0]" class="rounded-full px-3 py-1 text-sm" :class="investTab === item[0] ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600'" @click="investTab = item[0]">{{ item[1] }}</button></div>
-          <input v-model="keyword" class="apple-input mt-3" :placeholder="tab === 'daily' ? '搜索日常收支' : '搜索投资记录或车辆'" />
+          <div v-if="tab === 'daily'" class="mt-4 flex gap-2"><button v-for="item in [['transactions','收支明细'],['garage','自留车库']]" :key="item[0]" class="rounded-full px-3 py-1 text-sm" :class="dailyTab === item[0] ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'" @click="dailyTab = item[0]">{{ item[1] }}</button></div>
+          <div v-if="tab === 'invest'" class="mt-4 flex gap-2"><button v-for="item in [['garage','投资车库'],['transactions','投资明细']]" :key="item[0]" class="rounded-full px-3 py-1 text-sm" :class="investTab === item[0] ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600'" @click="investTab = item[0]">{{ item[1] }}</button></div>
+          <input v-model="keyword" class="apple-input mt-3" :placeholder="tab === 'daily' ? (dailyTab === 'garage' ? '搜索自留车名称或 SID' : '搜索日常收支') : (investTab === 'garage' ? '搜索投资车名称或 SID' : '搜索投资账户明细')" />
           <p class="text-xs text-gray-500 mt-2">共 {{ rows.length }} 条</p>
           <div class="mt-2 space-y-2">
             <article v-for="(row,index) in rows" :key="index" class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-sm">
-              <template v-if="tab === 'invest' && investTab === 'garage'"><div class="font-semibold">{{ row.name }} <span class="font-normal text-gray-500">{{ row.sid }}</span></div><div class="mt-1 text-xs text-gray-600">{{ row.brand }} · {{ row.isSold ? '已售' : '未售' }} · 购入 {{ row.buyDate || '—' }} {{ money(row.buyPrice) }}<span v-if="row.isSold"> · 售出 {{ row.soldDate || '—' }} {{ money(row.sellPrice) }}</span> · 预期 {{ money(row.expectedValue) }}</div><div v-if="row.note" class="text-xs text-gray-500">{{ row.note }}</div></template>
+              <template v-if="(tab === 'invest' && investTab === 'garage') || (tab === 'daily' && dailyTab === 'garage')"><div class="font-semibold">{{ row.name }} <span class="font-normal text-gray-500">{{ row.sid }}</span></div><div class="mt-1 text-xs text-gray-600">{{ row.brand }} · {{ row.isSold ? '已售' : '未售' }} · 购入 {{ row.buyDate || '—' }} {{ money(row.buyPrice) }}<span v-if="row.isSold"> · 售出 {{ row.soldDate || '—' }} {{ money(row.sellPrice) }}</span> · 预期 {{ money(row.expectedValue) }}</div><div v-if="row.note" class="text-xs text-gray-500">{{ row.note }}</div></template>
               <template v-else><div>{{ row.date }} · {{ category(row.type) }} · {{ money(row.amount) }} · {{ row.note || row.category || '—' }}</div><div class="text-xs text-gray-500">{{ row.carSid || '' }}</div></template>
               <details class="mt-1 text-xs text-gray-500"><summary class="cursor-pointer">原始详情</summary><pre class="whitespace-pre-wrap break-all mt-1">{{ JSON.stringify(row, null, 2) }}</pre></details>
             </article>
           </div>
+          <p v-if="!rows.length" class="mt-4 rounded-lg bg-gray-50 p-4 text-center text-sm text-gray-500">{{ keyword ? '没有找到匹配记录，请检查搜索内容。' : '此分类没有历史记录。' }}</p>
         </template>
       </template>
     </GlassModal>
