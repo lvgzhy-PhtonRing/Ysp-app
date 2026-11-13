@@ -2,7 +2,8 @@
 import { computed, ref } from 'vue'
 import GlassModal from '../../components/GlassModal.vue'
 import { markCarArchiveCloudSynced, parseCarArchiveText, readCarArchive, saveCarArchiveOnce } from '../../data/carHistoryArchive'
-import { verifyCarHistoryArchive } from '../../data/carHistoryVerification'
+import { getCarHistoryArchiveRows } from './carHistoryArchiveRows'
+import { getCarHistoryArchiveSummary, getCarHistoryMonthlySpending } from './carHistoryArchiveSummary'
 import { state, setCloudSession } from '../../data/store'
 import { syncCarArchive } from '../../services/carArchiveCloud'
 
@@ -10,24 +11,15 @@ const open = ref(false)
 const archive = ref(null)
 const error = ref('')
 const message = ref('')
-const verificationError = ref('')
-const verificationSource = ref('')
-const verificationReport = ref(null)
 const busy = ref(false)
 const tab = ref('dashboard')
 const dailyTab = ref('transactions')
-const investTab = ref('garage')
+const investTab = ref('transactions')
 const detailTab = ref('transfers')
 const keyword = ref('')
 const tabs = [ ['dashboard', "Payton's 数据"], ['daily', '日常消费'], ['invest', '投资小车'] ]
 const dailyTabs = [['transactions', '收支明细'], ['garage', '自留车库']]
 const investTabs = [['transactions', '投资明细'], ['garage', '投资车库']]
-const archiveUiLayout = {
-  roots: tabs.map(([, label]) => label),
-  daily: dailyTabs.map(([, label]) => label),
-  invest: investTabs.map(([, label]) => label),
-  loansLocation: 'dashboard',
-}
 
 async function show() {
   error.value = ''
@@ -50,21 +42,6 @@ async function importFile(event) {
   } catch (e) { error.value = `档案未导入：${e.message}` }
 }
 
-async function verifyFile(event) {
-  const file = event.target.files?.[0]
-  event.target.value = ''
-  if (!file) return
-  verificationError.value = ''
-  verificationReport.value = null
-  try {
-    const source = parseCarArchiveText(await file.text())
-    verificationReport.value = verifyCarHistoryArchive(source, archive.value?.data, archiveUiLayout)
-    verificationSource.value = file.name
-  } catch (e) {
-    verificationError.value = `核验未完成：${e.message}`
-  }
-}
-
 async function sync() {
   busy.value = true; error.value = ''; message.value = ''
   try {
@@ -77,17 +54,28 @@ async function sync() {
 }
 
 const rows = computed(() => {
-  const d = archive.value?.data
-  if (!d) return []
-  const sources = { daily: d.accounts.pocket.transactions,
-    keepGarage: d.cars.filter(car => car.category === 'keep' && !car.isSold),
-    transactions: d.accounts.invest.transactions, garage: d.cars.filter(car => car.category === 'invest' && !car.isSold),
-    loans: d.accounts.invest.loans, transfers: d.transferPairs,
-    prices: Object.entries(d.expectedPrices).map(([name, value]) => ({ name, ...value })), logs: d.operationLogs }
-  const source = tab.value === 'invest' ? investTab : tab.value === 'daily' ? (dailyTab === 'garage' ? 'keepGarage' : dailyTab) : tab.value === 'dashboard' ? detailTab : tab.value
-  const q = keyword.value.trim().toLowerCase()
-  return (sources[source] || []).filter(row => !q || JSON.stringify(row).toLowerCase().includes(q))
+  return getCarHistoryArchiveRows(archive.value?.data, {
+    tab: tab.value,
+    dailyTab: dailyTab.value,
+    investTab: investTab.value,
+    detailTab: detailTab.value,
+    keyword: keyword.value,
+  })
 })
+const transactionMonths = computed(() => {
+  if (!((tab.value === 'daily' && dailyTab.value === 'transactions') || (tab.value === 'invest' && investTab.value === 'transactions'))) return []
+  const groups = new Map()
+  for (const row of rows.value) {
+    const month = String(row.date || '').slice(0, 7) || '日期未记录'
+    if (!groups.has(month)) groups.set(month, [])
+    groups.get(month).push(row)
+  }
+  return [...groups].sort(([left], [right]) => right.localeCompare(left)).map(([month, transactions]) => ({ month, transactions }))
+})
+const visibleLoans = computed(() => (archive.value?.data.accounts.invest.loans || []).filter(loan => ['active', 'overdue'].includes(loan.status)))
+const archiveSummary = computed(() => archive.value ? getCarHistoryArchiveSummary(archive.value.data) : null)
+const monthlySpending = computed(() => archive.value ? getCarHistoryMonthlySpending(archive.value.data.accounts.pocket.transactions) : [])
+const maxMonthlyAmount = computed(() => Math.max(1, ...monthlySpending.value.map(row => Math.max(row.income, row.expense))))
 const metrics = computed(() => {
   const d = archive.value?.data
   if (!d) return { pocket: 0, invest: 0, debt: 0, fund: 0, investmentValue: 0, investmentExpected: 0, investmentCount: 0, keepValue: 0, keepExpected: 0, keepCount: 0 }
@@ -101,6 +89,7 @@ const metrics = computed(() => {
   return { pocket, invest, debt, fund: pocket + invest - debt, investmentValue: value(investment), investmentExpected: expected(investment), investmentCount: investment.length, keepValue: value(keep), keepExpected: expected(keep), keepCount: keep.length }
 })
 function category(value) { return ({ invest: '投资', keep: '自留', income: '收入', expense: '支出', active: '进行中', repaid: '已还清' })[value] || value || '—' }
+function transactionCategory(value) { return ({ car_buy: '买车', car_sell: '卖车', allowance: '零花钱', loan_new: '新贷款', loan_repay: '还贷', transfer_in: '转入', transfer_out: '转出', daily: '日常消费', other: '其它' })[value] || value || '—' }
 function money(value) { return value == null ? '—' : `¥${Number(value).toFixed(2)}` }
 </script>
 
@@ -114,45 +103,10 @@ function money(value) { return value == null ? '—' : `¥${Number(value).toFixe
       </div>
       <div class="mt-4 flex flex-wrap items-center gap-3">
         <label v-if="!archive" class="btn btn-outline btn-sm cursor-pointer">选择 car 备份<input type="file" accept=".json,application/json" class="hidden" @change="importFile"></label>
-        <label v-if="archive" class="btn btn-outline btn-sm cursor-pointer">核验原始 car 备份<input type="file" accept=".json,application/json" class="hidden" @change="verifyFile"></label>
         <button v-if="!archive?.cloudSyncedAt" class="btn btn-outline btn-sm" :disabled="busy" @click="sync">{{ busy ? '正在同步…' : '首次同步到云端' }}</button>
         <span v-if="archive" class="text-xs text-gray-500">{{ archive.sourceFile }} · 档案日期 {{ archive.archiveDate || '未注明' }}<span v-if="archive.cloudSyncedAt"> · 已固化并同步</span></span>
       </div>
       <p v-if="error" class="mt-3 text-sm text-red-600">{{ error }}</p><p v-if="message" class="mt-3 text-sm text-green-700">{{ message }}</p>
-      <p v-if="archive" class="mt-2 text-xs text-gray-500">核验仅在本机只读比较所选备份与当前档案，不改数据、不写入云端。</p>
-      <p v-if="verificationError" class="mt-3 text-sm text-red-600">{{ verificationError }}</p>
-      <section v-if="verificationReport" class="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4" aria-label="car 历史档案核验结果">
-        <div class="flex flex-wrap items-start justify-between gap-2">
-          <div><h4 class="font-semibold">核验结果：{{ verificationReport.dataPassed && verificationReport.displayCountsPassed ? '数据一致' : '发现数据差异' }}</h4><p class="mt-1 text-xs text-gray-500">基准文件：{{ verificationSource }}</p></div>
-          <span class="rounded-full px-3 py-1 text-xs font-semibold" :class="verificationReport.structurePassed ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'">{{ verificationReport.structurePassed ? '主模块与子标签符合' : '页面结构有差异' }}</span>
-        </div>
-        <div class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          <div v-for="section in verificationReport.sections" :key="section.name" class="rounded-lg bg-white p-3 text-xs">
-            <div class="flex justify-between gap-2"><span>{{ section.name }}</span><strong :class="section.passed ? 'text-green-700' : 'text-red-600'">{{ section.passed ? '一致' : '有差异' }}</strong></div>
-            <div class="mt-1 text-gray-500">car {{ section.sourceCount }} 条 · YSP {{ section.archiveCount }} 条</div>
-          </div>
-        </div>
-        <div class="mt-3 rounded-lg bg-white p-3 text-xs">
-          <strong>页面显示条数</strong>
-          <div class="mt-1 grid gap-1 text-gray-600 sm:grid-cols-2">
-            <span>收支明细：{{ verificationReport.visibleCounts.pocketTransactions }} 条</span><span>自留车库：{{ verificationReport.visibleCounts.keepGarage }} 辆</span>
-            <span>投资明细：{{ verificationReport.visibleCounts.investTransactions }} 条</span><span>投资车库：{{ verificationReport.visibleCounts.investGarage }} 辆</span>
-          </div>
-        </div>
-        <details v-if="verificationReport.carDifferences.length || verificationReport.sections.some(section => section.differences?.length)" class="mt-3 rounded-lg bg-white p-3 text-xs">
-          <summary class="cursor-pointer font-semibold">查看字段与记录差异</summary>
-          <ul class="mt-2 space-y-1">
-            <li v-for="(diff, index) in verificationReport.carDifferences" :key="`car-${index}`" class="break-all">商品 {{ diff.sid }} · {{ diff.kind }}<template v-if="diff.field"> · {{ diff.field }}：car「{{ diff.source }}」→ YSP「{{ diff.archive }}」</template></li>
-            <template v-for="section in verificationReport.sections" :key="section.name"><li v-for="(diff, index) in section.differences" :key="`${section.name}-${index}`" class="break-all">{{ section.name }} · {{ diff.key }} · {{ diff.kind }}<template v-if="diff.source">：car「{{ diff.source }}」→ YSP「{{ diff.archive }}」</template></li></template>
-          </ul>
-          <p v-if="verificationReport.sections.some(section => section.differenceCount > section.differences.length)" class="mt-2 text-gray-500">差异详情最多显示前 30 条。</p>
-        </details>
-        <div v-if="verificationReport.structureWarnings.length || verificationReport.structureDifferences.length" class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-          <strong>页面结构核对</strong>
-          <p v-for="warning in verificationReport.structureWarnings" :key="warning" class="mt-1">位置提醒：{{ warning }}</p>
-          <p v-for="difference in verificationReport.structureDifferences" :key="difference" class="mt-1">结构差异：{{ difference }}</p>
-        </div>
-      </section>
       <p v-if="!archive" class="mt-5 text-sm text-gray-500">选择停用时的 car 备份，或登录后从云端恢复独立档案。</p>
       <template v-else>
         <div class="mt-4 flex flex-wrap gap-2"><button v-for="item in tabs" :key="item[0]" class="rounded-full px-3 py-1 text-sm" :class="tab === item[0] ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'" @click="tab = item[0]">{{ item[1] }}</button></div>
@@ -169,11 +123,21 @@ function money(value) { return value == null ? '—' : `¥${Number(value).toFixe
           </div>
           <div class="mt-4">
             <h4 class="font-semibold">贷款</h4>
-            <div v-if="!archive.data.accounts.invest.loans.length" class="mt-2 text-sm text-gray-500">没有贷款记录</div>
-            <article v-for="loan in archive.data.accounts.invest.loans" :key="loan.id" class="mt-2 rounded-lg bg-gray-50 px-3 py-2 text-sm">
+            <div v-if="!visibleLoans.length" class="mt-2 text-sm text-gray-500">没有进行中或逾期的贷款记录</div>
+            <article v-for="loan in visibleLoans" :key="loan.id" class="mt-2 rounded-lg bg-gray-50 px-3 py-2 text-sm">
               <div class="font-medium">{{ loan.name || '贷款' }} · {{ category(loan.status) }} · 剩余 {{ money(loan.remaining) }}</div><div class="text-xs text-gray-500">{{ loan.startDate || '—' }} 至 {{ loan.dueDate || '—' }} · {{ loan.note || '' }}</div>
             </article>
           </div>
+          <section class="mt-4 rounded-xl border border-gray-100 bg-white p-4">
+            <h4 class="font-semibold">近六月零钱收支平衡</h4>
+            <div class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <div v-for="month in monthlySpending" :key="month.key" class="rounded-lg bg-gray-50 p-3 text-xs">
+                <div class="flex justify-between"><strong>{{ month.label }}</strong><span :class="month.net >= 0 ? 'text-green-700' : 'text-red-600'">结余 {{ money(month.net) }}</span></div>
+                <div class="mt-2 flex items-center gap-2"><span class="w-8 text-gray-500">支出</span><div class="h-2 flex-1 rounded-full bg-gray-200"><div class="h-2 rounded-full bg-red-400" :style="{ width: `${month.expense / maxMonthlyAmount * 100}%` }"></div></div><span class="w-20 text-right">{{ money(month.expense) }}</span></div>
+                <div class="mt-1 flex items-center gap-2"><span class="w-8 text-gray-500">收入</span><div class="h-2 flex-1 rounded-full bg-gray-200"><div class="h-2 rounded-full bg-green-500" :style="{ width: `${month.income / maxMonthlyAmount * 100}%` }"></div></div><span class="w-20 text-right">{{ money(month.income) }}</span></div>
+              </div>
+            </div>
+          </section>
           <details class="mt-4 rounded-lg border border-gray-100 p-3">
             <summary class="cursor-pointer text-sm font-semibold">更多历史明细</summary>
             <div class="mt-3 flex flex-wrap gap-2"><button v-for="item in [['transfers','账户互转'],['prices','预期价格'],['logs','操作日志']]" :key="item[0]" class="rounded-full px-3 py-1 text-xs" :class="detailTab === item[0] ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-600'" @click.prevent="detailTab = item[0]">{{ item[1] }}</button></div>
@@ -184,14 +148,40 @@ function money(value) { return value == null ? '—' : `¥${Number(value).toFixe
         <template v-else>
           <div v-if="tab === 'daily'" class="mt-4 flex gap-2"><button v-for="item in dailyTabs" :key="item[0]" class="rounded-full px-3 py-1 text-sm" :class="dailyTab === item[0] ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'" @click="dailyTab = item[0]">{{ item[1] }}</button></div>
           <div v-if="tab === 'invest'" class="mt-4 flex gap-2"><button v-for="item in investTabs" :key="item[0]" class="rounded-full px-3 py-1 text-sm" :class="investTab === item[0] ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600'" @click="investTab = item[0]">{{ item[1] }}</button></div>
+          <div v-if="tab === 'daily'" class="mt-3 rounded-xl bg-gray-50 p-4">
+            <div class="text-xs text-gray-500">{{ archiveSummary.pocketName || '零钱账户' }} · 月额 {{ money(archiveSummary.monthlyAllowance) }}</div>
+            <div class="mt-1 text-xl font-bold">零钱余额 {{ money(archiveSummary.pocketBalance) }}</div>
+          </div>
+          <div v-if="tab === 'invest'" class="mt-3 rounded-xl bg-gray-50 p-4">
+            <div class="text-xs text-gray-500">投资账户余额</div>
+            <div class="mt-1 text-xl font-bold">{{ money(archiveSummary.investBalance) }}</div>
+            <div class="mt-1 text-xs text-gray-500">{{ money(archiveSummary.loanTotal) }} 贷款 − {{ money(archiveSummary.carBuySpent) }} 买车 + {{ money(archiveSummary.sellIncome) }} 卖车 · {{ archiveSummary.loanCount }} 笔贷款</div>
+          </div>
           <input v-model="keyword" class="apple-input mt-3" :placeholder="tab === 'daily' ? (dailyTab === 'garage' ? '搜索自留车名称或 SID' : '搜索日常收支') : (investTab === 'garage' ? '搜索投资车名称或 SID' : '搜索投资账户明细')" />
           <p class="text-xs text-gray-500 mt-2">共 {{ rows.length }} 条</p>
           <div class="mt-2 space-y-2">
-            <article v-for="(row,index) in rows" :key="index" class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-sm">
-              <template v-if="(tab === 'invest' && investTab === 'garage') || (tab === 'daily' && dailyTab === 'garage')"><div class="font-semibold">{{ row.name }} <span class="font-normal text-gray-500">{{ row.sid }}</span></div><div class="mt-1 text-xs text-gray-600">{{ row.brand }} · {{ row.isSold ? '已售' : '未售' }} · 购入 {{ row.buyDate || '—' }} {{ money(row.buyPrice) }}<span v-if="row.isSold"> · 售出 {{ row.soldDate || '—' }} {{ money(row.sellPrice) }}</span> · 预期 {{ money(row.expectedValue) }}</div><div v-if="row.note" class="text-xs text-gray-500">{{ row.note }}</div></template>
-              <template v-else><div>{{ row.date }} · {{ category(row.type) }} · {{ money(row.amount) }} · {{ row.note || row.category || '—' }}</div><div class="text-xs text-gray-500">{{ row.carSid || '' }}</div></template>
-              <details class="mt-1 text-xs text-gray-500"><summary class="cursor-pointer">原始详情</summary><pre class="whitespace-pre-wrap break-all mt-1">{{ JSON.stringify(row, null, 2) }}</pre></details>
-            </article>
+            <template v-if="transactionMonths.length">
+              <details v-for="(group, index) in transactionMonths" :key="group.month" :open="index === 0" class="overflow-hidden rounded-lg border border-gray-100">
+                <summary class="flex cursor-pointer flex-wrap items-center gap-x-4 gap-y-1 bg-gray-50 px-3 py-2 text-sm">
+                  <strong class="flex-1">{{ group.month }}</strong>
+                  <span class="text-xs text-red-600">支出 {{ money(group.transactions.filter(row => row.type === 'expense').reduce((sum, row) => sum + Number(row.amount || 0), 0)) }}</span>
+                  <span class="text-xs text-green-700">收入 {{ money(group.transactions.filter(row => row.type === 'income').reduce((sum, row) => sum + Number(row.amount || 0), 0)) }}</span>
+                  <span class="text-xs text-gray-500">{{ group.transactions.length }} 笔</span>
+                </summary>
+                <article v-for="row in group.transactions" :key="row.id" class="border-t border-gray-100 px-3 py-2 text-sm">
+                  <div>{{ row.date }} · {{ transactionCategory(row.category) }} · {{ money(row.amount) }}</div>
+                  <div class="text-xs text-gray-500">{{ row.note || '—' }}<span v-if="row.carSid"> · {{ row.carSid }}</span></div>
+                  <details class="mt-1 text-xs text-gray-500"><summary class="cursor-pointer">原始详情</summary><pre class="whitespace-pre-wrap break-all mt-1">{{ JSON.stringify(row, null, 2) }}</pre></details>
+                </article>
+              </details>
+            </template>
+            <template v-else>
+              <article v-for="(row,index) in rows" :key="index" class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-sm">
+                <template v-if="(tab === 'invest' && investTab === 'garage') || (tab === 'daily' && dailyTab === 'garage')"><div class="font-semibold">{{ row.name }} <span class="font-normal text-gray-500">{{ row.sid }}</span></div><div class="mt-1 text-xs text-gray-600">{{ row.brand }} · {{ row.isSold ? '已售' : '未售' }} · 购入 {{ row.buyDate || '—' }} {{ money(row.buyPrice) }}<span v-if="row.isSold"> · 售出 {{ row.soldDate || '—' }} {{ money(row.sellPrice) }}</span> · 预期 {{ money(row.expectedValue) }}</div><div v-if="row.note" class="text-xs text-gray-500">{{ row.note }}</div></template>
+                <template v-else><div>{{ row.date }} · {{ category(row.type) }} · {{ money(row.amount) }} · {{ row.note || row.category || '—' }}</div><div class="text-xs text-gray-500">{{ row.carSid || '' }}</div></template>
+                <details class="mt-1 text-xs text-gray-500"><summary class="cursor-pointer">原始详情</summary><pre class="whitespace-pre-wrap break-all mt-1">{{ JSON.stringify(row, null, 2) }}</pre></details>
+              </article>
+            </template>
           </div>
           <p v-if="!rows.length" class="mt-4 rounded-lg bg-gray-50 p-4 text-center text-sm text-gray-500">{{ keyword ? '没有找到匹配记录，请检查搜索内容。' : '此分类没有历史记录。' }}</p>
         </template>
