@@ -40,6 +40,14 @@ export function saveCarArchiveOnce(archive) {
   return readCarArchive()
 }
 
+export function markCarArchiveCloudSynced(at = new Date().toISOString()) {
+  const archive = readCarArchive()
+  if (!archive) return null
+  const updated = { ...archive, cloudSyncedAt: at }
+  localStorage.setItem(CAR_ARCHIVE_KEY, JSON.stringify(updated))
+  return updated
+}
+
 export function addCarArchiveToBackup(payload) {
   const archive = readCarArchive()
   return archive ? { ...payload, carHistoryArchive: archive } : payload
