@@ -59,6 +59,7 @@ import {
 } from './data/store'
 import { appendAdoptBefore, latestFullImportSnapshot } from './data/adoptLog'
 import { finalizeRestorePayload, getHistoryRestoreTarget, isCompleteHistoryEntry } from './data/restorePayload'
+import { addCarArchiveToBackup, restoreCarArchiveFromBackup } from './data/carHistoryArchive'
 import {
   getLogBrief,
   getLogDetailSections,
@@ -270,7 +271,7 @@ watch(
 
 function downloadBackupManually() {
   const today = todayStr()
-  downloadJsonBackup({ ...exportData(), operationLogs: [...store.operationLogs] }, `PhotonRing数据_${today}.json`)
+  downloadJsonBackup(addCarArchiveToBackup({ ...exportData(), operationLogs: [...store.operationLogs] }), `PhotonRing数据_${today}.json`)
   backupNoticeVisible.value = false
 }
 
@@ -327,7 +328,7 @@ async function retryEditorLock() {
 }
 
 function exportLockedPageBackup() {
-  downloadJsonBackup({ ...exportData(), operationLogs: [...store.operationLogs] }, `PhotonRing数据_锁定页_${todayStr()}.json`)
+  downloadJsonBackup(addCarArchiveToBackup({ ...exportData(), operationLogs: [...store.operationLogs] }), `PhotonRing数据_锁定页_${todayStr()}.json`)
 }
 
 function todayStr() {
@@ -847,6 +848,7 @@ function handleImport(event) {
   reader.onload = (e) => {
     try {
       const json = JSON.parse(e.target?.result)
+      restoreCarArchiveFromBackup(json)
       // 导入前快照：把当前完整数据落档，便于日后回溯还原（Task 1 appendAdoptBefore）
       const snap = appendAdoptBefore({
         slot: '__full_import__',
@@ -871,7 +873,7 @@ function handleImport(event) {
 }
 
 function handleExport() {
-  const data = exportData()
+  const data = addCarArchiveToBackup(exportData())
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

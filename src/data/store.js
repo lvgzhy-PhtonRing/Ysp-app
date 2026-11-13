@@ -7,6 +7,7 @@ import { SLOT_KEYS, slotValue, normalizeRev, computeSlotPlan, buildMerged, revOf
 import { evictOldestAdoptBefore } from './adoptLog'
 import { createDefaultOwnerRegistry, migratePayload } from './migrations'
 import { normalizeTaxpayerProfiles, upsertTaxpayerProfile } from './taxpayerProfiles'
+import { addCarArchiveToBackup } from './carHistoryArchive'
 import { getUnconfirmedSalesTotal } from '../modules/sales/saleAccounting'
 
 import {
@@ -839,7 +840,7 @@ function maybeAutoBackup() {
   if (!isBackupDue(today, state.autoBackup.lastDate)) return
 
   const payload = { ...exportData(), operationLogs: [...state.operationLogs] }
-  downloadJsonBackup(payload, `PhotonRing数据_${today}.json`)
+  downloadJsonBackup(addCarArchiveToBackup(payload), `PhotonRing数据_${today}.json`)
 
   state.autoBackup.lastDate = today
   state.autoBackup.lastNotice = today

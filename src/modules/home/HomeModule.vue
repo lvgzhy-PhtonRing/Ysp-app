@@ -10,6 +10,7 @@ import {
   searchItems,
 } from './useHomeInsights'
 import CashflowMonitor from './CashflowMonitor.vue'
+import CarHistoryArchive from './CarHistoryArchive.vue'
 import { getPublicExpense } from '../finance/useFinance'
 import { buildAlipayBreakdown, calcAlipayBalance } from '../../utils/calc'
 import { getPaytonFund } from '../payton-finance/usePaytonFinance'
@@ -282,6 +283,7 @@ function statusText(status) {
     </section>
 
     <CashflowMonitor class="order-5" data-home-order="5" @update-owner="emit('update-owner', $event)" />
+    <CarHistoryArchive />
 
     <GlassModal v-model="showItemDetailModal" panel-class="w-full max-w-2xl p-5">
       <div class="mb-4 text-lg font-semibold">商品详情</div>
