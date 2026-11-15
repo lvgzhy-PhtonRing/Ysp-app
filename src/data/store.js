@@ -319,12 +319,15 @@ function clearCloudSyncTimer() {
   cloudSyncTimer = null
 }
 
-// 移除 updatedAt 与 _rev 字段，用于判断本地数据是否有"真实"变化（时间戳/版本变化不算）
+// 移除元数据与自动生成快照，用于判断本地数据是否有真实业务变化。
+// 快照可能在页面启动时自动补齐，不能因此把“本地数据修改时间”刷新为当前时间。
 function stripMeta(data) {
   if (!data || typeof data !== 'object') return data
   const copy = { ...data }
   delete copy.updatedAt
   delete copy._rev
+  delete copy.version
+  delete copy.snapshots
   return copy
 }
 
