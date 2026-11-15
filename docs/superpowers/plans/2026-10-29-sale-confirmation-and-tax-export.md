@@ -1,5 +1,7 @@
 # 销售确认入账与税务工作簿实施计划
 
+> **文档状态：历史实施计划，核心功能已完成。** 保留原任务拆解供追溯；现行工作簿功能和字段以 `docs/2026-10-12-上海个体工商户报税系统调研与自动化建议.md` 的“当前实现复核”及当前程序为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 为每笔销售增加确认入账日，自动汇总 Papa 与 Payton 未确认金额，并按已确认销售的入账日生成税务核对工作簿。

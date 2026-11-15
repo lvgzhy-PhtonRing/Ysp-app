@@ -98,7 +98,7 @@ function money(value) { return value == null ? '—' : `¥${Number(value).toFixe
     <button class="text-xs text-gray-400 hover:text-gray-600 underline" @click="show">car 历史档案</button>
     <GlassModal v-model="open" panel-class="w-full max-w-5xl p-5 max-h-[90vh] overflow-y-auto">
       <div class="flex flex-wrap justify-between items-start gap-3">
-        <div><h3 class="text-xl font-bold text-gray-800">car 停用时历史档案</h3><p class="text-xs text-gray-500 mt-1">只读快照；与当前库存、销售和资金独立。</p></div>
+        <div><h3 class="text-xl font-bold text-gray-800">皮蛋的记账管理系统20261015前停用历史档案</h3><p class="text-xs text-gray-500 mt-1">只读快照；与当前库存、销售和资金独立。</p></div>
         <button class="btn btn-outline btn-sm" @click="open = false">关闭</button>
       </div>
       <div class="mt-4 flex flex-wrap items-center gap-3">
