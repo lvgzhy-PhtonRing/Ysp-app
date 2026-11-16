@@ -121,7 +121,7 @@ async function download() {
     <div class="flex items-start justify-between gap-4">
       <div>
         <h2 class="text-xl font-bold text-gray-900">报税导出</h2>
-        <p class="mt-1 text-sm text-gray-500">按已确认销售的入账日整理；不会展示下单日期，也不会上传数据。</p>
+        <p class="mt-1 text-sm text-gray-500">税期按已确认销售的实际到账日整理；跨期到账交易会另列提示，不重复计入本期合计。</p>
       </div>
       <button class="text-gray-400 hover:text-gray-800" aria-label="关闭" @click="close">✕</button>
     </div>
@@ -155,10 +155,12 @@ async function download() {
       <h3 class="font-semibold text-blue-900">导出预览</h3>
       <div class="mt-3 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
         <div><div class="text-gray-500">确认销售</div><b>{{ workbookData.totals.salesCount }} 笔</b></div>
+        <div><div class="text-gray-500">跨期到账销售</div><b>{{ workbookData.totals.crossPeriodSalesCount }} 笔</b></div>
         <div><div class="text-gray-500">成交总额</div><b>¥{{ workbookData.totals.revenue.toFixed(2) }}</b></div>
         <div><div class="text-gray-500">商品成本参考</div><b>¥{{ workbookData.totals.cost.toFixed(2) }}</b></div>
         <div><div class="text-gray-500">待确认事项</div><b :class="workbookData.issues.length ? 'text-amber-700' : 'text-green-700'">{{ workbookData.issues.length }} 项</b></div>
       </div>
+      <p v-if="workbookData.totals.crossPeriodSalesCount" class="mt-3 text-xs leading-relaxed text-blue-800">跨期销售会单独放在“跨期到账销售”工作表，按实际到账月份归入对应税期，不计入当前期间金额。</p>
       <ul v-if="previewIssues.length" class="mt-3 max-h-36 space-y-1 overflow-y-auto text-xs text-amber-800">
         <li v-for="(issue, index) in previewIssues" :key="`${issue.id}-${index}`">{{ issue.name || issue.sid || issue.id }}：{{ issue.issue }}</li>
         <li v-if="workbookData.issues.length > previewIssues.length">另有 {{ workbookData.issues.length - previewIssues.length }} 项，详见工作簿“待确认事项”。</li>

@@ -28,12 +28,14 @@ const moneyColumnsBySheet = {
   '增值税核对': [2],
   'A表经营数据': [2],
   '销售明细': [6, 7, 8, 9, 10, 11],
+  '跨期到账销售': [7, 8, 9, 10, 11, 12],
   '收支明细': [4],
   '补差明细': [4],
 }
 
 const sidColumnsBySheet = {
   '销售明细': [4],
+  '跨期到账销售': [3],
   '补差明细': [3],
   '待确认事项': [2],
 }
@@ -77,6 +79,7 @@ function worksheetRows(name, title, headers, rows) {
     if (name === '申报步骤清单') return [row.process, row.step, row.check]
     if (name === '增值税核对' || name === 'A表经营数据') return [row.metric, row.amount, row.check, row.note || '']
     if (name === '销售明细') return [row.entryDate, row.purchaseDate, row.name, displaySid(row.sid), row.batch, row.price, row.cost, row.platformFee, row.express, row.adjustment, row.referenceProfit]
+    if (name === '跨期到账销售') return [row.purchaseDate, row.name, displaySid(row.sid), row.batch, row.entryDate, row.entryMonth, row.price, row.cost, row.platformFee, row.express, row.adjustment, row.referenceProfit]
     if (name === '收支明细') return [row.date, row.type, row.item, row.amount, row.note, row.taxCategory]
     if (name === '补差明细') return [row.entryDate, row.name, displaySid(row.sid), row.adjustment, row.direction]
     return [row.id === undefined || row.id === null ? '' : String(row.id), displaySid(row.sid), row.name || row.item || '', row.issue]
@@ -107,6 +110,7 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
 
   const allSales = (Array.isArray(payload.items) ? payload.items : []).filter((item) => item?.status === 'sold' && item?.saleDetails && selectedChannels.has(salesChannelOf(item.saleDetails)))
   const sales = []
+  const crossPeriodSales = []
   allSales.forEach((item) => {
     const sale = item.saleDetails
     if (sale.isConfirmed !== true) {
@@ -117,15 +121,15 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
       issues.push({ id: item.id, sid: item.sid || '', name: item.name || '', issue: sale.entryDate ? '入账日期无效，不能归入申报期间。' : '缺少入账日期，不能归入申报期间。' })
       return
     }
-    if (!periodValid || !inPeriod(sale.entryDate, startDate, endDate)) return
     const price = toAmount(sale.price)
     const cost = toAmount(item.cost)
     const platformFee = price * toAmount(sale.feeRate)
     const express = toAmount(sale.express)
     const adjustment = toAmount(sale.deduction)
-    sales.push({
+    const row = {
       id: item.id,
       entryDate: sale.entryDate,
+      entryMonth: sale.entryDate.slice(0, 7),
       purchaseDate: resolvePurchaseDate(item),
       name: item.name || '',
       sid: item.sid || '',
@@ -136,11 +140,17 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
       express,
       adjustment,
       referenceProfit: price - cost - platformFee - express - adjustment,
-    })
+    }
+    if (periodValid && inPeriod(sale.entryDate, startDate, endDate)) {
+      sales.push(row)
+    } else if (periodValid && inPeriod(sale.date, startDate, endDate)) {
+      crossPeriodSales.push(row)
+    }
   })
 
   if (sales.length) issues.push({ id: 'tax-classification', issue: '本期销售没有税务分类、开票类型及开票金额字段，请逐项对照税务系统预填数据核对。' })
   const sortedSales = sortByDateAscending(sales, 'entryDate')
+  const sortedCrossPeriodSales = sortByDateAscending(crossPeriodSales, 'entryDate')
 
   const financeRecords = []
   let publicExpense = 0
@@ -179,7 +189,7 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
     { field: '申报期间（起止日均包含）', value: periodValid ? `${startDate} 至 ${endDate}` : '期间无效' },
     { field: '生成时间', value: createdAt },
     { field: '用途', value: '仅用于申报准备与人工复核；不自动判断税额、不提交、不缴税。' },
-    { field: '销售期间口径', value: '仅按已确认销售的入账日期归期。' },
+    { field: '销售期间口径', value: '主销售明细与汇总仅按已确认销售的入账日期归期；销售日期在本期间、入账日期在期间外的交易另列“跨期到账销售”，按实际到账日期所在税期申报，不计入本期合计。' },
     { field: '单品利润参考', value: '售价 − 单品成本 − 平台手续费 − 快递费 − 补差。' },
     { field: '店面整体利润参考', value: '本期已确认销售单品利润合计 − 本期公共支出净额（支出 − 收入）；不等于应纳税所得额或税额。' },
     { field: '公共支出口径', value: '取自 YSP 公共收支中 Papa 或未标归属的本期收入与支出；税务性质及凭证需人工核实。' },
@@ -225,6 +235,7 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
         id: row.id, entryDate: row.entryDate, purchaseDate: row.purchaseDate, name: row.name, sid: row.sid, batch: row.batch,
         price: row.price, cost: row.cost, platformFee: row.platformFee, express: row.express, adjustment: row.adjustment, referenceProfit: row.referenceProfit,
       }))),
+      sheet('跨期到账销售', ['采购日期', '商品名称', 'SID', '批次', '实际到账日期', '实际到账月份', '成交总价', '单品成本', '平台手续费', '快递费', '补差（正数为卖方支出）', '经营利润参考'], sortedCrossPeriodSales),
       sheet('收支明细', ['日期', '类型', '项目', '金额', '备注', '税务归类'], sortedFinanceRecords),
       sheet('补差明细', ['入账日期', '商品名称', 'SID', '补差金额', '方向说明'], sortedSales.filter((row) => row.adjustment !== 0).map((row) => ({
         entryDate: row.entryDate, name: row.name, sid: row.sid, adjustment: row.adjustment,
@@ -236,7 +247,7 @@ export function buildTaxWorkbookData(payload = {}, options = {}) {
   return {
     issues,
     period: { startDate, endDate, taxpayerName, taxpayerId },
-    totals: { ...totals, salesCount: sales.length, expenseRows: financeRecords.length },
+    totals: { ...totals, salesCount: sales.length, crossPeriodSalesCount: crossPeriodSales.length, expenseRows: financeRecords.length },
     sheets,
   }
 }
@@ -286,6 +297,12 @@ export function createPrintReadyTaxWorkbook(workbookData, ExcelJS) {
       columns[1] = { width: 12 }
       columns[2] = { width: 48 }
     }
+    if (name === '跨期到账销售') {
+      columns[0] = { width: 12 }
+      columns[1] = { width: 48 }
+      columns[4] = { width: 14 }
+      columns[5] = { width: 14 }
+    }
     const totalWidth = columns.reduce((sum, column) => sum + column.width, 0)
     const printWidth = Math.max(1, totalWidth, 154)
     const widthScale = printWidth / totalWidth
@@ -293,6 +310,11 @@ export function createPrintReadyTaxWorkbook(workbookData, ExcelJS) {
     if (name === '待确认事项') worksheet.getColumn(2).numFmt = '@'
     if (name === '销售明细') {
       ;[6, 7, 8, 9, 10, 11].forEach((columnIndex) => {
+        worksheet.getColumn(columnIndex).numFmt = '0.00'
+      })
+    }
+    if (name === '跨期到账销售') {
+      ;[7, 8, 9, 10, 11, 12].forEach((columnIndex) => {
         worksheet.getColumn(columnIndex).numFmt = '0.00'
       })
     }
