@@ -1,4 +1,3 @@
-import JSZip from 'jszip'
 import templateUrl from './templates/period-inventory-intake-a3-template.xlsx?url'
 import { resolvePurchaseDate } from './purchaseDate'
 
@@ -118,6 +117,7 @@ export async function writePeriodInventoryReceipt(payload, options, filename) {
   const data = buildPeriodInventoryReceipt(payload, options)
   const response = await fetch(templateUrl)
   if (!response.ok) throw new Error('无法读取 A3 入库单模板')
+  const { default: JSZip } = await import('jszip')
   const zip = await JSZip.loadAsync(await response.arrayBuffer())
   const sheetPath = 'xl/worksheets/sheet1.xml'
   const sheetFile = zip.file(sheetPath)

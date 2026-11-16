@@ -1,20 +1,11 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AppSidebar from './components/AppSidebar.vue'
 import GlassModal from './components/GlassModal.vue'
 import DataHelpModal from './components/DataHelpModal.vue'
 import TaxReminderModal from './components/TaxReminderModal.vue'
 import TaxExportModal from './modules/tax-export/TaxExportModal.vue'
 import HomeModule from './modules/home/HomeModule.vue'
-import InventoryModule from './modules/inventory/InventoryModule.vue'
-import InventoryAgingModule from './modules/inventory/InventoryAgingModule.vue'
-import PurchaseModule from './modules/purchase/PurchaseModule.vue'
-import SalesModule from './modules/sales/SalesModule.vue'
-import SalesAnalysisModule from './modules/sales-analysis/SalesAnalysisModule.vue'
-import FinanceModule from './modules/finance/FinanceModule.vue'
-import PaytonFinanceModule from './modules/payton-finance/PaytonFinanceModule.vue'
-import RushCarPrototypeModule from './modules/rushcar/RushCarPrototypeModule.vue'
-import MarketPriceModule from './modules/market-price/MarketPriceModule.vue'
 import { primaryConflictAction } from './utils/cloudConflict'
 import { SLOT_LABELS, slotValue } from './data/cloudSlotPlan'
 import { summarizeConflictPayload, summarizeConflictSlot } from './data/cloudConflictSummary'
@@ -81,6 +72,16 @@ import { shouldWarnBeforeOverwrite, shouldWarnBeforeUploadLocal, downloadJsonBac
 import { shouldShowGlobalOwnerSwitch } from './utils/appNavigation'
 import { createEditorLock } from './utils/editorLock'
 import { collectTaxReminderHits, listTaxFilingItems, markTaxFilingCompleted, TAX_REMINDER_STORAGE_KEY } from './data/taxReminders'
+
+const InventoryModule = defineAsyncComponent(() => import('./modules/inventory/InventoryModule.vue'))
+const InventoryAgingModule = defineAsyncComponent(() => import('./modules/inventory/InventoryAgingModule.vue'))
+const PurchaseModule = defineAsyncComponent(() => import('./modules/purchase/PurchaseModule.vue'))
+const SalesModule = defineAsyncComponent(() => import('./modules/sales/SalesModule.vue'))
+const SalesAnalysisModule = defineAsyncComponent(() => import('./modules/sales-analysis/SalesAnalysisModule.vue'))
+const FinanceModule = defineAsyncComponent(() => import('./modules/finance/FinanceModule.vue'))
+const PaytonFinanceModule = defineAsyncComponent(() => import('./modules/payton-finance/PaytonFinanceModule.vue'))
+const RushCarPrototypeModule = defineAsyncComponent(() => import('./modules/rushcar/RushCarPrototypeModule.vue'))
+const MarketPriceModule = defineAsyncComponent(() => import('./modules/market-price/MarketPriceModule.vue'))
 
 const tabs = [
   { id: 'home', name: '数据透视' },

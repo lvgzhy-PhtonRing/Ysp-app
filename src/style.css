@@ -233,7 +233,7 @@ a {
 }
 
 /* Ensure semantic color classes override default table text color */
-.apple-table td.text-danger {
+.apple-table td[class~="text-danger"] {
   color: #ef4444;
 }
 
