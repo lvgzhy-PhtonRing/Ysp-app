@@ -28,7 +28,20 @@ jobs:
           cache: npm
 
       - name: Create cloud-config.json from secret
-        run: echo '${{ secrets.CLOUD_CONFIG_JSON }}' > public/cloud-config.json
+        env:
+          CLOUD_CONFIG_JSON: ${{ secrets.CLOUD_CONFIG_JSON }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+          if (!process.env.CLOUD_CONFIG_JSON) process.exit(0)
+          const config = JSON.parse(process.env.CLOUD_CONFIG_JSON)
+          if (String(config.stateId || '').trim() === 'main' || !String(config.stateId || '').trim()) config.publicRead = false
+          const key = String(config.supabaseAnonKey || config.anonKey || '').trim()
+          let role
+          try { role = JSON.parse(Buffer.from(key.split('.')[1], 'base64url')).role } catch {}
+          if (!key.startsWith('sb_publishable_') && role !== 'anon') throw new Error('Cloud config requires a public Supabase key')
+          fs.writeFileSync('public/cloud-config.json', JSON.stringify(config))
+          NODE
 
       - name: Install deps
         run: npm install

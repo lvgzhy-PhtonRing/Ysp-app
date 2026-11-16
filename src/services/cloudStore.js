@@ -28,12 +28,13 @@ function normalizeBaseUrl(url) {
 }
 
 export function normalizeCloudConfig(raw = {}) {
+  const stateId = trimString(raw.stateId) || 'main'
   return {
     supabaseUrl: normalizeBaseUrl(raw.supabaseUrl || raw.url),
     supabaseAnonKey: trimString(raw.supabaseAnonKey || raw.anonKey),
-    stateId: trimString(raw.stateId) || 'main',
+    stateId,
     enabled: Boolean(raw.enabled),
-    publicRead: raw.publicRead !== false,
+    publicRead: stateId !== 'main' && raw.publicRead !== false,
   }
 }
 
@@ -271,6 +272,7 @@ export async function saveCloudState(rawConfig = {}, payload = {}, options = {})
   }
 
   const { session = null, onSession = null, makePublic = true, keepalive = false, expectedRevision } = options
+  const isPublic = config.stateId !== 'main' && Boolean(makePublic)
   if (expectedRevision !== null) requireCloudRevision(expectedRevision)
   const nextSession = await ensureSession(config, session, onSession)
   if (!nextSession?.accessToken) {
@@ -288,7 +290,7 @@ export async function saveCloudState(rawConfig = {}, payload = {}, options = {})
     patchParams.set('revision', `eq.${expectedRevision}`)
     const patchResp = await fetchWithTimeout(`${config.supabaseUrl}/rest/v1/ysp_state?${patchParams.toString()}`, {
       method: 'PATCH', headers,
-      body: JSON.stringify({ payload, is_public: Boolean(makePublic), revision: expectedRevision + 1 }),
+      body: JSON.stringify({ payload, is_public: isPublic, revision: expectedRevision + 1 }),
       keepalive,
     }, keepalive ? null : FETCH_TIMEOUT_MS)
     const patchData = await readJsonResponse(patchResp)
@@ -308,7 +310,7 @@ export async function saveCloudState(rawConfig = {}, payload = {}, options = {})
   const insertRow = {
     id: config.stateId,
     payload,
-    is_public: Boolean(makePublic),
+    is_public: isPublic,
     revision: 0,
   }
   if (nextSession?.user?.id) {

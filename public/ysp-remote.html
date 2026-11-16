@@ -518,6 +518,11 @@ function profitClass(v) { return Number(v) >= 0 ? 'profit-pos' : 'profit-neg'; }
 function esc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+function actionAttrs(name, ...args) {
+  return `data-action="${name}" data-action-args="${esc(JSON.stringify(args))}"`;
+}
+
 function toNum(v, fb=0) { const n=Number(v); return isFinite(n)?n:fb; }
 function itemOwner(item) { return item && item.owner === 'payton' ? 'payton' : 'papa'; }
 function ownerLabel(item) { return itemOwner(item) === 'payton' ? 'Payton' : 'Papa'; }
@@ -868,7 +873,7 @@ function renderInventory() {
   // Category filter chips
   html += `<div class="filter-bar">`;
   cats.forEach(c => {
-    html += `<button class="filter-chip ${APP.invFilters.category===c?'active':''}" onclick="setInvCat('${esc(c)}')">${esc(c)}</button>`;
+    html += `<button class="filter-chip ${APP.invFilters.category===c?'active':''}" ${actionAttrs('setInvCat', c)}>${esc(c)}</button>`;
   });
   html += `</div>`;
 
@@ -876,7 +881,7 @@ function renderInventory() {
   if (APP.invFilters.category !== '全部' && batches.length > 1) {
     html += `<div class="filter-bar">`;
     batches.forEach(b => {
-      html += `<button class="filter-chip small ${APP.invFilters.batch===b?'active':''}" onclick="setInvBatch('${esc(b)}')">${esc(b)}</button>`;
+      html += `<button class="filter-chip small ${APP.invFilters.batch===b?'active':''}" ${actionAttrs('setInvBatch', b)}>${esc(b)}</button>`;
     });
     html += `</div>`;
   }
@@ -885,7 +890,7 @@ function renderInventory() {
   if (brands.length > 2) {
     html += `<div class="filter-bar">`;
     brands.forEach(b => {
-      html += `<button class="filter-chip small ${APP.invFilters.brand===b?'active':''}" onclick="setInvBrand('${esc(b)}')">${esc(b)}</button>`;
+      html += `<button class="filter-chip small ${APP.invFilters.brand===b?'active':''}" ${actionAttrs('setInvBrand', b)}>${esc(b)}</button>`;
     });
     html += `</div>`;
   }
@@ -909,7 +914,7 @@ function renderInventory() {
         : g.label;
 
       html += `<div class="group-section">
-        <div class="group-header ${expanded?'expanded':''}" onclick="toggleInvGroup('${esc(gKey)}')">
+        <div class="group-header ${expanded?'expanded':''}" ${actionAttrs('toggleInvGroup', gKey)}>
           <div>
             <div class="group-name">${esc(groupTitle)}</div>
             <div class="group-meta">${g.count} 件 · ¥${fmtMoney(g.totalCost)}</div>
@@ -924,7 +929,7 @@ function renderInventory() {
       if (expanded) {
         html += `<div class="item-list">`;
         g.mergedItems.forEach(item => {
-          html += `<div class="item-row" onclick="openItemDetail(${JSON.stringify(item.id)})" style="cursor:pointer">
+          html += `<div class="item-row" ${actionAttrs('openItemDetail', item.id)} style="cursor:pointer">
             <div class="item-main">
               <div class="item-name">${esc(item.name)}</div>
               <div class="item-sid">${esc(item.sid||'')} · ${esc(item.brand||'')} · ${esc(item.batch||'')}${ownerBadgeHtml(item)}</div>
@@ -988,6 +993,13 @@ function filterSoldItems() {
   });
 }
 
+function getItemCreationOrder(item) {
+  const created = Number(item?.creationOrder);
+  if (Number.isFinite(created) && created > 0) return created;
+  const order = Number(item?.id || 0);
+  return Number.isFinite(order) ? order : 0;
+}
+
 function groupSoldItems(items) {
   const mode = APP.salesViewMode;
   const map = new Map();
@@ -1024,7 +1036,7 @@ function groupSoldItems(items) {
     g.items.sort((a,b) => {
       const ta=getTs(a), tb=getTs(b);
       if(tb!==ta) return tb-ta;
-      return Number(b.id||0)-Number(a.id||0);
+      return getItemCreationOrder(b)-getItemCreationOrder(a);
     });
   });
 
@@ -1111,7 +1123,7 @@ function renderSales() {
   </div>`;
 
   html += `<div class="filter-bar" aria-label="销售渠道筛选">`;
-  ['全部', ...SALES_CHANNELS].forEach(shop => { html += `<button class="filter-chip ${APP.shopFilter===shop?'active':''}" aria-pressed="${APP.shopFilter===shop}" onclick="setShopFilter('${esc(shop)}')">${esc(shop)}</button>`; });
+  ['全部', ...SALES_CHANNELS].forEach(shop => { html += `<button class="filter-chip ${APP.shopFilter===shop?'active':''}" aria-pressed="${APP.shopFilter===shop}" ${actionAttrs('setShopFilter', shop)}>${esc(shop)}</button>`; });
   html += `</div>`;
 
   // View mode tabs
@@ -1126,7 +1138,7 @@ function renderSales() {
   // Category filter
   html += `<div class="filter-bar">`;
   cats.forEach(c => {
-    html += `<button class="filter-chip ${APP.salesFilters.category===c?'active':''}" onclick="setSalesCat('${esc(c)}')">${esc(c)}</button>`;
+    html += `<button class="filter-chip ${APP.salesFilters.category===c?'active':''}" ${actionAttrs('setSalesCat', c)}>${esc(c)}</button>`;
   });
   html += `</div>`;
 
@@ -1134,7 +1146,7 @@ function renderSales() {
   if (batches.length > 2) {
     html += `<div class="filter-bar">`;
     batches.forEach(b => {
-      html += `<button class="filter-chip small ${APP.salesFilters.batch===b?'active':''}" onclick="setSalesBatch('${esc(b)}')">${esc(b)}</button>`;
+      html += `<button class="filter-chip small ${APP.salesFilters.batch===b?'active':''}" ${actionAttrs('setSalesBatch', b)}>${esc(b)}</button>`;
     });
     html += `</div>`;
   }
@@ -1156,7 +1168,7 @@ function renderSales() {
         // flat list
         const item = g.items[0];
         const sd = item.saleDetails || {};
-        html += `<div class="card" style="margin-top:8px;cursor:pointer" onclick="openItemDetail(${JSON.stringify(item.id)})">
+        html += `<div class="card" style="margin-top:8px;cursor:pointer" ${actionAttrs('openItemDetail', item.id, 'sales')}>
           <div class="card-body" style="padding:10px 14px">
             <div class="row-flex">
               <div>
@@ -1179,7 +1191,7 @@ function renderSales() {
       } else {
         const profitRate = g.cost > 0 ? g.profit/g.cost*100 : 0;
         html += `<div class="group-section">
-          <div class="group-header ${expanded?'expanded':''}" onclick="toggleSalesGroup('${esc(gKey)}')">
+          <div class="group-header ${expanded?'expanded':''}" ${actionAttrs('toggleSalesGroup', gKey)}>
             <div>
               <div class="group-name">${esc(g.title)}</div>
               <div class="group-meta">${g.count} 件 · 回款¥${fmtMoney(g.revenue)} · 利润¥${fmtMoney(g.profit)}</div>
@@ -1194,7 +1206,7 @@ function renderSales() {
           html += `<div class="item-list">`;
           g.items.forEach(item => {
             const sd = item.saleDetails || {};
-            html += `<div class="item-row" onclick="openItemDetail(${JSON.stringify(item.id)})" style="cursor:pointer">
+            html += `<div class="item-row" ${actionAttrs('openItemDetail', item.id, 'sales')} style="cursor:pointer">
               <div class="item-main">
                 <div class="item-name">${esc(item.name)}</div>
                 <div class="item-sid">${esc(item.sid||'')} · ${esc(item.brand||'')} · ${esc(sd.date||'')}${APP.salesOwnerScope==='all'?ownerBadgeHtml(item):''}</div>
@@ -1244,26 +1256,26 @@ function getPurchaseGroupKey(item) {
 }
 
 function mergeItemsBySid(items) {
-  const getSortTs = item => {
+  const getDateTs = item => {
     const d = item.purchaseDetails?.date;
     const dateTs = d ? new Date(d).getTime() : 0;
-    const idTs = Number(item.id||0);
-    return (isFinite(dateTs)?dateTs:0)*1000000 + (isFinite(idTs)?idTs:0);
+    return Number.isFinite(dateTs) ? dateTs : 0;
   };
+  const compareLatest = (a,b) => getDateTs(b)-getDateTs(a) || getItemCreationOrder(b)-getItemCreationOrder(a);
   const map = new Map();
   items.forEach(item => {
     const key = `${itemOwner(item)}|${item.sid||''}`;
     if (!map.has(key)) {
-      map.set(key, {...item, qty:1, _latestTs:getSortTs(item)});
+      map.set(key, {...item, qty:1, latestItem:item});
       return;
     }
     const g = map.get(key);
     g.qty++;
-    g._latestTs = Math.max(Number(g._latestTs||0), getSortTs(item));
+    if (compareLatest(item,g.latestItem)<0) g.latestItem = item;
   });
   return Array.from(map.values())
-    .sort((a,b) => Number(b._latestTs||0)-Number(a._latestTs||0))
-    .map(item => { const n={...item}; delete n._latestTs; return n; });
+    .sort((a,b) => compareLatest(a.latestItem,b.latestItem))
+    .map(item => { const n={...item}; delete n.latestItem; return n; });
 }
 
 function buildPurchaseGroups(categoryItems) {
@@ -1403,7 +1415,7 @@ function renderPurchase() {
     html += `<div class="filter-bar">`;
     PURCHASE_TABS.forEach(c => {
       const cs = stats.byCategory[c];
-      html += `<button class="filter-chip ${tab===c?'active':''}" onclick="setPurchaseTab('${c}')">
+      html += `<button class="filter-chip ${tab===c?'active':''}" ${actionAttrs('setPurchaseTab', c)}>
         ${esc(c)} ${cs.count>0?`<span style="font-size:11px">(${cs.count})</span>`:''}
       </button>`;
     });
@@ -1427,7 +1439,7 @@ function renderPurchase() {
     const batches = [...new Set(allGroups.map(bg=>bg.batch))];
     if (!batches.includes(APP.purchaseBatchFilter)) APP.purchaseBatchFilter='全部';
     html += `<div class="filter-bar" aria-label="按采购批次筛选">`;
-    ['全部',...batches].forEach(batch=>{ html += `<button class="filter-chip small ${APP.purchaseBatchFilter===batch?'active':''}" aria-pressed="${APP.purchaseBatchFilter===batch}" onclick="setPurchaseBatchFilter('${esc(batch)}')">${esc(batch)}</button>`; });
+    ['全部',...batches].forEach(batch=>{ html += `<button class="filter-chip small ${APP.purchaseBatchFilter===batch?'active':''}" aria-pressed="${APP.purchaseBatchFilter===batch}" ${actionAttrs('setPurchaseBatchFilter', batch)}>${esc(batch)}</button>`; });
     html += `</div>
       <div class="search-wrap"><input id="purchase-keyword" class="search-input" type="search" placeholder="搜索商品名称、SID、品牌或采购组" value="${esc(APP.purchaseKeyword)}" oninput="setPurchaseKeyword(this.value)" aria-label="搜索采购商品"></div>`;
 
@@ -1445,7 +1457,7 @@ function renderPurchase() {
             const title = pg.paymentBatch || [pg.date,pg.website].filter(Boolean).join(' · ') || '未填付款批次';
             const preview = pg.mergedItems.slice(0,3).map(i=>`${i.name}${i.qty>1?' ×'+i.qty:''}`).join('、');
             html += `<div class="sub-group" style="margin:6px 16px 0;background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.07);overflow:hidden">
-              <div class="sub-group-header" role="button" tabindex="0" aria-expanded="${pgExpanded}" onclick="togglePurchaseGroup('${esc(key)}',${index===0})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();togglePurchaseGroup('${esc(key)}',${index===0})}">
+              <div class="sub-group-header" role="button" tabindex="0" aria-expanded="${pgExpanded}" ${actionAttrs('togglePurchaseGroup', key, index===0)}>
                 <div style="min-width:0;flex:1">
                   <div class="sub-group-name">${esc(title)}</div>
                   <div class="sub-group-meta">${esc(bg.batch)} · ${pg.date?esc(pg.date):'日期未记录'}${pg.website?' · '+esc(pg.website):''}${pg.websiteAccount?' · '+esc(pg.websiteAccount):''}${pg.paymentAccount?' · '+esc(pg.paymentAccount):''}</div>
@@ -1460,7 +1472,7 @@ function renderPurchase() {
               pg.mergedItems.forEach(item => {
                 const pd = item.purchaseDetails || {};
                 const isPending = (pd.transferStatus||'pending') === 'pending';
-                html += `<div class="sub-item-row" onclick="openItemDetail(${JSON.stringify(item.id)})" style="cursor:pointer">
+                html += `<div class="sub-item-row" ${actionAttrs('openItemDetail', item.id)} style="cursor:pointer">
                   <div class="item-main">
                     <div class="item-name">${esc(item.name)}</div>
                     <div class="item-sid">${esc(item.sid||'')} · ${esc(item.brand||'')}${ownerBadgeHtml(item)}</div>
@@ -1494,7 +1506,7 @@ function renderPurchase() {
     // Transfer list
     html += `<div class="filter-bar">`;
     ['日淘','美淘'].forEach(c => {
-      html += `<button class="filter-chip ${APP.transferCat===c?'active':''}" onclick="setTransferCat('${c}')">${esc(c)}</button>`;
+      html += `<button class="filter-chip ${APP.transferCat===c?'active':''}" ${actionAttrs('setTransferCat', c)}>${esc(c)}</button>`;
     });
     html += `</div>`;
 
@@ -1512,7 +1524,7 @@ function renderPurchase() {
         const transferBatch=tItems[0]?.batch||t.batch||'-';
 
         html += `<div class="transfer-card">
-          <div class="transfer-header" onclick="togglePurGroup('${esc(tKey)}')">
+          <div class="transfer-header" ${actionAttrs('togglePurGroup', tKey)}>
             <div>
               <div class="transfer-id">${esc(t.transferBatch||t.transferId)}</div>
               <div class="transfer-meta">
@@ -1533,7 +1545,7 @@ function renderPurchase() {
           const merged = mergeItemsBySid(tItems);
           merged.forEach(item => {
             const pd = item.purchaseDetails || {};
-            html += `<div class="item-row" onclick="openItemDetail(${JSON.stringify(item.id)})" style="cursor:pointer">
+            html += `<div class="item-row" ${actionAttrs('openItemDetail', item.id)} style="cursor:pointer">
               <div class="item-main">
                 <div class="item-name">${esc(item.name)}</div>
                 <div class="item-sid">${esc(item.sid||'')} · ${esc(item.brand||'')} · ${esc(item.status==='inventory'?'已入库':'采购中')}${ownerBadgeHtml(item)}</div>
@@ -2220,7 +2232,7 @@ function renderHome() {
       <div class="calc-grid">
         <div class="calc-item">
           <label>挖财总负债</label>
-          <input type="number" id="calc-debt" value="${APP.calc.debt}" oninput="updateCalc('debt',this.value)">
+          <input type="number" id="calc-debt" value="${toNum(APP.calc.debt)}" oninput="updateCalc('debt',this.value)">
         </div>
         <div class="calc-item">
           <label>借贷余额（自动）</label>
@@ -2232,7 +2244,7 @@ function renderHome() {
         </div>
         <div class="calc-item">
           <label>未确认交易</label>
-          <input type="number" id="calc-unconfirmed" value="${APP.calc.unconfirmed}" oninput="updateCalc('unconfirmed',this.value)">
+          <input type="number" id="calc-unconfirmed" value="${toNum(APP.calc.unconfirmed)}" oninput="updateCalc('unconfirmed',this.value)">
         </div>
         <div class="calc-item">
           <label>Payton's基金（云端）</label>
@@ -2252,9 +2264,9 @@ function renderHome() {
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;padding:8px 10px;background:#f0fdf4;border-radius:8px;font-size:12px;color:#8e8e93">
         <span>应有<b style="color:#1c1c1e">¥${fmtMoney(alipay)}</b>中包括</span>
         <label style="white-space:nowrap">转运余额</label>
-        <input type="number" id="calc-forwarderBalance" value="${APP.calc.forwarderBalance}" oninput="updateCalc('forwarderBalance',this.value)" style="width:68px;padding:3px 5px;border:1px solid #e5e5ea;border-radius:6px;font-size:12px">
+        <input type="number" id="calc-forwarderBalance" value="${toNum(APP.calc.forwarderBalance)}" oninput="updateCalc('forwarderBalance',this.value)" style="width:68px;padding:3px 5px;border:1px solid #e5e5ea;border-radius:6px;font-size:12px">
         <label style="white-space:nowrap">手表余额</label>
-        <input type="number" id="calc-watchBalance" value="${APP.calc.watchBalance}" oninput="updateCalc('watchBalance',this.value)" style="width:68px;padding:3px 5px;border:1px solid #e5e5ea;border-radius:6px;font-size:12px">
+        <input type="number" id="calc-watchBalance" value="${toNum(APP.calc.watchBalance)}" oninput="updateCalc('watchBalance',this.value)" style="width:68px;padding:3px 5px;border:1px solid #e5e5ea;border-radius:6px;font-size:12px">
         <span>故实际<b style="color:#007aff">¥${fmtMoney(actualBal)}</b>元</span>
       </div>
     </div>
@@ -2327,11 +2339,11 @@ function renderSearchResults() {
   results.forEach(item => {
     const statusLabel = statusText(item.status);
     const statusColor = item.status==='sold'?'#007aff':item.status==='inventory'?'#34c759':'#ff9500';
-    html += `<div class="search-result-item" onclick="showSearchDetail(${JSON.stringify(item.id)})">
+    html += `<div class="search-result-item" ${actionAttrs('showSearchDetail', item.id)}>
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
         <div style="flex:1;min-width:0">
           <div style="font-size:14px;font-weight:500">${esc(item.name)}</div>
-          <div style="font-size:11px;color:#8e8e93">${esc(item.sid||'')} · ${esc(item.brand||'')} · ${ownerBadgeHtml(item)} · <span style="color:${statusColor}">${statusLabel}</span></div>
+          <div style="font-size:11px;color:#8e8e93">${esc(item.sid||'')} · ${esc(item.brand||'')} · ${ownerBadgeHtml(item)} · <span style="color:${statusColor}">${esc(statusLabel)}</span></div>
           ${item._groupCount>1?`<div style="font-size:11px;color:#8e8e93">×${item._groupCount}件 合计¥${fmtMoney(item._groupTotalCost)}</div>`:''}
         </div>
         <div style="text-align:right;flex-shrink:0">
@@ -2347,12 +2359,11 @@ function renderSearchResults() {
 }
 
 // 通用商品详情弹窗 - 支持从任意页面调用
-function openItemDetail(itemId) {
-  // 先从搜索结果中找（支持合并组），再从原始数据中找
+function openItemDetail(itemId, source) {
   let item = null;
   let groupItems = null;
 
-  if (APP.searchKeyword) {
+  if (source === 'search' && APP.searchKeyword) {
     const results = searchItems(APP.searchKeyword);
     const found = results.find(i => i.id === itemId || (i._isMerged && i._groupItems && i._groupItems.some(gi => gi.id === itemId)));
     if (found) {
@@ -2361,7 +2372,8 @@ function openItemDetail(itemId) {
     }
   }
   if (!item) {
-    item = filterOwnerItems(APP.data.items).find(i => i.id === itemId);
+    const owner = source === 'sales' && APP.salesOwnerScope === 'all' ? 'all' : APP.ownerFilter;
+    item = filterOwnerItems(APP.data.items, owner).find(i => i.id === itemId);
   }
   if (!item) return;
 
@@ -2381,7 +2393,7 @@ function openItemDetail(itemId) {
     html += `<div style="background:#eef2ff;border-radius:10px;padding:10px;margin-bottom:10px;border:1px solid #c7d2fe">
       <div style="font-size:12px;font-weight:600;color:#4f46e5;margin-bottom:6px">合并组信息 · 共 ${displayItems.length} 条 · 合计¥${fmtMoney(displayItems.reduce((s,i)=>s+toNum(i.cost),0))}</div>`;
     displayItems.forEach((gi, gidx) => {
-      html += `<div style="font-size:11px;color:#6b7280;padding:3px 0;border-bottom:1px solid #e0e7ff">#${gidx+1} · ID:${gi.id} · 成本¥${fmtMoney(gi.cost)} · 转运批次:${gi.purchaseDetails?.transferBatch||'-'}</div>`;
+      html += `<div style="font-size:11px;color:#6b7280;padding:3px 0;border-bottom:1px solid #e0e7ff">#${gidx+1} · ID:${esc(gi.id)} · 成本¥${fmtMoney(gi.cost)} · 转运批次:${esc(gi.purchaseDetails?.transferBatch||'-')}</div>`;
     });
     html += `</div>`;
   }
@@ -2390,8 +2402,8 @@ function openItemDetail(itemId) {
     const pd = it.purchaseDetails || {};
     const sd = it.saleDetails || {};
     html += `<div style="background:#f9f9f9;border-radius:10px;padding:10px;margin-bottom:8px">`;
-    if (isMerged) html += `<div style="font-size:12px;font-weight:600;color:#8e8e93;margin-bottom:6px">记录 ${idx+1} · ${statusText(it.status)}</div>`;
-    else html += `<div style="font-size:12px;font-weight:600;color:#8e8e93;margin-bottom:6px">${statusText(it.status)}</div>`;
+    if (isMerged) html += `<div style="font-size:12px;font-weight:600;color:#8e8e93;margin-bottom:6px">记录 ${idx+1} · ${esc(statusText(it.status))}</div>`;
+    else html += `<div style="font-size:12px;font-weight:600;color:#8e8e93;margin-bottom:6px">${esc(statusText(it.status))}</div>`;
     html += `<div class="label-val"><span class="label">成本</span><span class="val">¥${fmtMoney(it.cost)}</span></div>`;
 
     // 销售信息
@@ -2440,7 +2452,7 @@ function openItemDetail(itemId) {
 }
 
 // 保持向后兼容
-function showSearchDetail(itemId) { openItemDetail(itemId); }
+function showSearchDetail(itemId) { openItemDetail(itemId, 'search'); }
 
 function toggleBatchStats() {
   APP.batchStatsCollapsed = !APP.batchStatsCollapsed;
@@ -2463,6 +2475,27 @@ function toggleBatchStats() {
 function closeDetailModal() {
   document.getElementById('detail-modal').classList.remove('open');
 }
+
+const renderedActions = {
+  setInvCat, setInvBatch, setInvBrand, toggleInvGroup,
+  setShopFilter, setSalesCat, setSalesBatch, toggleSalesGroup,
+  setPurchaseTab, setPurchaseBatchFilter, togglePurchaseGroup, setTransferCat, togglePurGroup,
+  openItemDetail, showSearchDetail,
+};
+
+document.addEventListener('click', (event) => {
+  const action = event.target.closest?.('[data-action]');
+  if (!action || !Object.hasOwn(renderedActions, action.dataset.action)) return;
+  renderedActions[action.dataset.action](...JSON.parse(action.dataset.actionArgs));
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  const action = event.target.closest?.('[role="button"][data-action]');
+  if (!action) return;
+  event.preventDefault();
+  action.click();
+});
 </script>
 
 </body>

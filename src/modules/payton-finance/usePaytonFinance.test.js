@@ -73,6 +73,35 @@ describe('Payton finance', () => {
     expect(state.ownerRegistry.payton.investBalance).toBe(300)
   })
 
+  it('rejects reversing or reducing required principal before changing records or balances', () => {
+    const loan = createPaytonLoan({ amount: 100 })
+    const borrow = loan.events[0]
+    const repayment = addPaytonLoanEvent(loan.id, { type: 'repay', amount: 60 })
+    expect(() => deletePaytonLoanEvent(loan.id, borrow.id)).toThrow('先处理相关还款')
+    expect(() => updatePaytonLoanEvent(loan.id, borrow.id, { amount: 50 })).toThrow('先处理相关还款')
+    expect(loan.events).toEqual([borrow, repayment])
+    expect(loan.remaining).toBe(40)
+    expect(state.ownerRegistry.payton.investBalance).toBe(340)
+    expect(getPaytonFund()).toBe(320)
+    deletePaytonLoanEvent(loan.id, repayment.id)
+    deletePaytonLoanEvent(loan.id, borrow.id)
+    expect(loan.events).toEqual([])
+    expect(loan.remaining).toBe(0)
+    expect(state.ownerRegistry.payton.investBalance).toBe(300)
+    expect(getPaytonFund()).toBe(320)
+  })
+
+  it('keeps an imported opening balance and validates all remaining events in order', () => {
+    const loan = state.ownerRegistry.payton.loans[0]
+    const borrow = addPaytonLoanEvent(loan.id, { type: 'borrow', amount: 25 })
+    addPaytonLoanEvent(loan.id, { type: 'repay', amount: 100 })
+    addPaytonLoanEvent(loan.id, { type: 'borrow', amount: 50 })
+    expect(() => deletePaytonLoanEvent(loan.id, borrow.id)).toThrow('先处理相关还款')
+    expect(updatePaytonLoanEvent(loan.id, borrow.id, { amount: 20 }).amount).toBe(20)
+    expect(loan.remaining).toBe(50)
+    expect(state.ownerRegistry.payton.investBalance).toBe(270)
+  })
+
   it('keeps internal transfers balanced across edits and deletion', () => {
     const transfer = addPaytonTransfer({ fromAccount: 'pocket', toAccount: 'invest', amount: 40, date: '2026-10-20' })
     expect(state.ownerRegistry.payton.pocketBalance).toBe(60)

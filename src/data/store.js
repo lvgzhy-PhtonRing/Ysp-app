@@ -31,7 +31,7 @@ const DEFAULT_CLOUD_SETTINGS = {
   supabaseAnonKey: '',
   stateId: 'main',
   enabled: false,
-  publicRead: true,
+  publicRead: false,
 }
 
 const DEFAULT_CLOUD_SESSION = {
@@ -285,12 +285,13 @@ function trimString(value) {
 }
 
 function normalizeCloudSettings(settings = {}) {
+  const stateId = trimString(settings.stateId) || 'main'
   return {
     supabaseUrl: trimString(settings.supabaseUrl).replace(/\/+$/, ''),
     supabaseAnonKey: trimString(settings.supabaseAnonKey),
-    stateId: trimString(settings.stateId) || 'main',
+    stateId,
     enabled: Boolean(settings.enabled),
-    publicRead: settings.publicRead !== false,
+    publicRead: stateId !== 'main' && settings.publicRead !== false,
   }
 }
 
@@ -723,6 +724,38 @@ export function exportData() {
   }
 }
 
+export function validateMainBackup(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload) ||
+      !Array.isArray(payload.items) ||
+      payload.items.some((item) => !item || typeof item !== 'object' || Array.isArray(item) ||
+        !(Number.isFinite(item.id) || (typeof item.id === 'string' && item.id.trim())))) {
+    throw new Error('备份缺少有效的商品列表，请选择 PhotonRing 主账本备份')
+  }
+  return payload
+}
+
+export function importMainBackup(payload) {
+  validateMainBackup(payload)
+  if (!mayWrite()) return false
+  const before = exportData()
+  const beforeSlotBaseline = { ...lastPersistedSlot }
+  try {
+    loadData(payload)
+    if (saveToLocalStorage({ requirePersistence: true })) return true
+  } catch (error) {
+    restoreBeforeImport()
+    throw error
+  }
+  restoreBeforeImport()
+  return false
+
+  function restoreBeforeImport() {
+    loadData(before)
+    state.snapshots = before.snapshots
+    lastPersistedSlot = beforeSlotBaseline
+  }
+}
+
 export function saveTaxpayerProfile(name, taxId) {
   if (!mayWrite()) return { saved: false, conflict: null }
   const result = upsertTaxpayerProfile(state.taxpayerProfiles, name, taxId)
@@ -917,6 +950,8 @@ export function saveToLocalStorage(options = {}) {
     refreshSlotBaseline(currentData)
   }
   const serialized = JSON.stringify(currentData)
+  // 导入需先落盘，失败时由调用方恢复内存，避免生成撤销记录或同步未保存的数据。
+  if (options.requirePersistence && !setItemQuiet('ysp_data', serialized)) return false
 
   if (hasDataChange && !suppressHistory) {
     pushHistoryEntry(lastPersistedData, currentData)
@@ -924,13 +959,20 @@ export function saveToLocalStorage(options = {}) {
     clearPendingHistoryMeta()
   }
 
-  if (persistData(serialized)) {
+  const persisted = options.requirePersistence || persistData(serialized)
+  if (persisted) {
     setPersistedSnapshot(currentData)
   }
   // 落盘失败时不更新基线：hasDataChange 保持 true，下一次保存会重试而不是静默丢弃
   // 仅在有真实内容变更时调度云同步；纯时间戳对齐/无变化时不再触发，避免同步死循环
   if (hasDataChange) scheduleCloudSync()
-  maybeAutoBackup()
+  try {
+    maybeAutoBackup()
+  } catch (error) {
+    if (!options.requirePersistence) throw error
+    console.warn('[store] 导入已保存，每日备份生成失败', error?.message)
+  }
+  return persisted
 }
 
 function bumpSlotRevs(currentData) {
@@ -997,6 +1039,7 @@ function normalizePayloadForCompare(data) {
     transfers: Array.isArray(src.transfers) ? src.transfers : [],
     rushcar: normalizeRushCarData(src.rushcar),
     ownerRegistry: src.ownerRegistry && typeof src.ownerRegistry === 'object' ? src.ownerRegistry : {},
+    taxpayerProfiles: normalizeTaxpayerProfiles(src.taxpayerProfiles),
   }
 }
 

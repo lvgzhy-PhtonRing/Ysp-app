@@ -1,10 +1,14 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { deleteItem, editItem, filterInventory, getInventoryStats, sortInventoryItems, submitManualAdd } from './useInventory'
-import { submitSell } from '../sales/useSales'
+import {
+  deleteItem, editItem, filterInventory, getInventoryEditPatch, getInventoryEditTargets,
+  getInventoryStats, getLongTermInventoryScope, markLongTermInventory, sortInventoryItems, submitManualAdd,
+} from './useInventory'
+import { getSellableItem, submitSell } from '../sales/useSales'
 import { DEFAULT_SALES_CHANNEL, SALES_CHANNELS } from '../sales/salesChannels'
 import { buildInventorySalePayload } from './sellPayload'
 import { calcProfit } from '../../utils/calc'
+import { getBusinessDate } from '../../utils/businessDate'
 import { addOperationLog, saveToLocalStorage, state as store } from '../../data/store'
 import { adjustPaytonBalance } from '../payton-finance/usePaytonFinance'
 import { DEFAULT_BATCHES } from './inventoryOptions'
@@ -85,7 +89,7 @@ const sellForm = reactive({
   express: 0,
   feeRate: 0,
   deduction: 0,
-  date: new Date().toISOString().slice(0, 10),
+  date: getBusinessDate(),
   shop: DEFAULT_SALES_CHANNEL,
 })
 
@@ -208,33 +212,20 @@ const editBatchOptions = computed(() => {
 
 const longTermBrandOptions = computed(() => {
   if (!longTermForm.category) return []
-  return Array.from(
-    new Set(
-      store.items
-    .filter((i) => i.status === 'inventory' && i.category === longTermForm.category && (i?.owner || 'papa') === store.currentOwner)
-        .map((i) => i.brand)
-        .filter(Boolean),
-    ),
-  )
+  const items = getLongTermInventoryScope(store.items, { owner: store.currentOwner, category: longTermForm.category })
+  return [...new Set(items.map((i) => i.brand).filter(Boolean))]
 })
 
 const longTermBatchOptions = computed(() => {
   if (!longTermForm.category) return []
-  const inCat = store.items.filter((i) => i.status === 'inventory' && i.category === longTermForm.category && (i?.owner || 'papa') === store.currentOwner)
-  const inScope = longTermForm.brand ? inCat.filter((i) => i.brand === longTermForm.brand) : inCat
+  const inScope = getLongTermInventoryScope(store.items, { ...longTermForm, batch: '', owner: store.currentOwner })
   return Array.from(new Set(inScope.map((i) => i.batch).filter(Boolean)))
 })
 
 const longTermSidItems = computed(() => {
   if (!longTermForm.category) return []
   const grouped = new Map()
-  store.items
-    .filter((i) => {
-      if (i.status !== 'inventory' || i.category !== longTermForm.category || (i?.owner || 'papa') !== store.currentOwner) return false
-      if (longTermForm.brand && i.brand !== longTermForm.brand) return false
-      if (longTermForm.batch && i.batch !== longTermForm.batch) return false
-      return true
-    })
+  getLongTermInventoryScope(store.items, { ...longTermForm, owner: store.currentOwner })
     .forEach((i) => {
       const key = i.sid || String(i.id)
       if (!grouped.has(key)) {
@@ -511,29 +502,7 @@ function submitLongTermMark() {
     alert('请先选择大类')
     return
   }
-  const sidSet = new Set(longTermForm.selectedSids)
-  const target = store.items.filter(
-    (i) =>
-      i.status === 'inventory' &&
-      i.category === longTermForm.category &&
-      (!longTermForm.brand || i.brand === longTermForm.brand) &&
-      (!longTermForm.batch || i.batch === longTermForm.batch),
-  )
-  // 捕获实际变更 isLongTerm 状态的商品
-  const changedItems = target.filter((item) => item.isLongTerm !== sidSet.has(item.sid))
-  const changedNames = changedItems.map((item) => item.name)
-  target.forEach((item) => {
-    item.isLongTerm = sidSet.has(item.sid)
-  })
-  saveToLocalStorage()
-  addOperationLog('inventory_long_term', `长线库存`, {
-    category: longTermForm.category,
-    brand: longTermForm.brand,
-    batch: longTermForm.batch,
-    count: longTermForm.selectedSids.length,
-    itemNames: changedNames,
-    itemIds: changedItems.map((item) => item.id),
-  })
+  markLongTermInventory({ ...longTermForm, owner: store.currentOwner }, longTermForm.selectedSids)
   showLongTermModal.value = false
 }
 
@@ -568,6 +537,8 @@ function copySid(sid) {
   if (sid && navigator.clipboard?.writeText) navigator.clipboard.writeText(sid)
 }
 
+let inventoryValuesBeforeEdit = {}
+
 function openEdit(item) {
   editForm.id = item.id
   editForm.name = item.name
@@ -579,11 +550,12 @@ function openEdit(item) {
   editForm.cost = Number(item.cost || 0)
   editForm.isManual = !!item.isManual
   editForm.owner = item.owner || 'papa'
+  inventoryValuesBeforeEdit = getInventoryFormValues()
   showEditModal.value = true
 }
 
-function submitEdit() {
-  editItem(editForm.id, {
+function getInventoryFormValues() {
+  return {
     name: editForm.name,
     brand: editForm.brand,
     category: editForm.category,
@@ -592,7 +564,22 @@ function submitEdit() {
     isLongTerm: editForm.isLongTerm,
     cost: editForm.cost,
     owner: editForm.owner,
-  })
+  }
+}
+
+function submitEdit() {
+  const patch = getInventoryEditPatch(inventoryValuesBeforeEdit, getInventoryFormValues())
+  const item = store.items.find((row) => row.id === editForm.id)
+  if (!item) return
+  if (Object.hasOwn(patch, 'cost')) {
+    const targets = getInventoryEditTargets(item)
+    const currentCosts = new Set(targets.map((row) => Number(row.cost || 0)))
+    if (currentCosts.size > 1) {
+      const original = [...currentCosts].sort((a, b) => a - b)
+      if (!confirm(`同 SID 共 ${targets.length} 件，现有成本 ¥${fmtNum(original[0])} 至 ¥${fmtNum(original[original.length - 1])}。确认改为每件 ¥${fmtNum(patch.cost)}？`)) return
+    }
+  }
+  editItem(item.id, patch)
   showEditModal.value = false
 }
 
@@ -728,7 +715,7 @@ function submitUnlist() {
     x.purchaseDetails.transferStatus = 'completed'
     x.unlistDetails = {
       reason: scope === 'purchaseGroup' ? '同购买组下架' : scope === 'transfer' ? '同转运批次下架' : '当前条目下架',
-      date: new Date().toISOString().slice(0, 10),
+      date: getBusinessDate(),
     }
   })
 
@@ -763,7 +750,7 @@ function openSellModal(item) {
   sellForm.express = 0
   sellForm.feeRate = 0
   sellForm.deduction = 0
-  sellForm.date = new Date().toISOString().slice(0, 10)
+  sellForm.date = getBusinessDate()
   sellForm.shop = DEFAULT_SALES_CHANNEL
   showSellModal.value = true
 }
@@ -772,6 +759,10 @@ function submitSellItem() {
   if (!currentSellItem.value) return
   const itemIds = selectedSellItemIds.value
   if (itemIds.length === 0) return
+  if (new Set(itemIds).size !== itemIds.length || !itemIds.every(getSellableItem)) {
+    alert('所选商品中有记录已不在库存、记录不存在或内部编号重复，本批销售未登记。')
+    return
+  }
 
   const soldItems = []
   itemIds.forEach((id, idx) => {
@@ -1058,8 +1049,9 @@ watch(invFilterMode, (val) => {
               <input type="number" v-model.number="addForm.qty" class="apple-input" min="1" />
             </div>
             <div class="col-span-2">
-              <label class="block text-sm mb-1 text-gray-600">入库成本(RMB)</label>
+              <label class="block text-sm mb-1 text-gray-600">单件入库成本(RMB)</label>
               <input type="number" v-model.number="addForm.cost" class="apple-input" />
+              <p class="mt-1 text-xs text-gray-500">合计：¥{{ fmtNum(Number(addForm.cost || 0) * Math.max(1, Math.floor(Number(addForm.qty) || 1))) }}</p>
             </div>
           </div>
           <div class="flex items-center gap-2">

@@ -1,6 +1,8 @@
 // 采购模块逻辑层（无 UI）
 
 import { calcItemCost, calcProfit, calcTransferCost } from '../../utils/calc'
+import { getBusinessDate } from '../../utils/businessDate'
+import { createItemIdentity } from '../../utils/itemIdentity'
 import { addOperationLog, clone, saveToLocalStorage, state as store } from '../../data/store'
 import { adjustPaytonBalance, getPaytonAccountForItem } from '../payton-finance/usePaytonFinance'
 import {
@@ -125,10 +127,6 @@ export function getDomesticPurchaseTotal(lines) {
   return lines.reduce((sum, line) => sum + (toNumber(line.originalPrice) || toNumber(line.preTransferCost)), 0)
 }
 
-function generateItemId() {
-  return Date.now() + Math.floor(Math.random() * 1000)
-}
-
 function generateNextSid(category) {
   const existing = store.items.map((item) => item?.sid).filter(Boolean)
   const prefix = inferCategoryPrefix(category)
@@ -207,7 +205,7 @@ function recalcTransferItemsByTransferId(transferId) {
 }
 
 function todayDate() {
-  return new Date().toISOString().slice(0, 10)
+  return getBusinessDate()
 }
 
 function markInStockDate(item, date = todayDate()) {
@@ -231,7 +229,7 @@ export function addPurchaseItem(itemData = {}, options = {}) {
   const item = {
     ...itemData,
     owner: itemData.owner || 'papa',
-    id: generateItemId(),
+    ...createItemIdentity(store.items),
     sid:
       requestedSid && !/^temp-/i.test(requestedSid)
         ? requestedSid

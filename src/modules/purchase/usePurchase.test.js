@@ -68,6 +68,37 @@ describe('usePurchase logic', () => {
     expect(/^JP-\d{4}$/.test(item.sid)).toBe(true)
   })
 
+  it('keeps identities unique for same-SID purchases created in the same instant', () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1794873600000)
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.4)
+    try {
+      const first = addPurchaseItem({ sid: 'JP-0042', name: 'first' })
+      const second = addPurchaseItem({ sid: first.sid, name: 'second' })
+      expect(first.id).not.toBe(second.id)
+      expect(first.sid).toBe(second.sid)
+      expect(second.creationOrder).toBeGreaterThan(first.creationOrder)
+      const transfer = purchase.submitTransfer({ transferBatch: 'T-ID' }, [second.id])
+      expect(transfer.itemIds).toEqual([second.id])
+      expect(first.purchaseDetails.transferId).toBeUndefined()
+    } finally {
+      clock.mockRestore()
+      random.mockRestore()
+    }
+  })
+
+  it('records Shanghai local business date for inventory entry at UTC month boundary', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-31T16:00:00.000Z'))
+    try {
+      loadData({ items: [] })
+      const item = addPurchaseItem({ name: '月初入库测试', purchaseDetails: { preTransferCost: 10 } })
+      moveToInventory(item.id)
+      expect(item.inventoryDetails.inStockDate).toBe('2026-11-01')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('assigns mixed owners when items enter inventory and charges final Payton cost by account', () => {
     loadData({ items: [], ownerRegistry: { papa: {}, payton: { pocketBalance: 100, investBalance: 200, loans: [], accountTransfers: [] } } })
     const keep = addPurchaseItem({ name: 'keep', cost: 20, purchaseDetails: { preTransferCost: 20 } })

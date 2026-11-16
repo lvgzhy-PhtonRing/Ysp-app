@@ -18,9 +18,11 @@ import {
   splitTransferFeeByCoefficient,
 } from './usePurchase'
 import { calcItemCost, calcPreTransferCost } from '../../utils/calc'
+import { getBusinessDate } from '../../utils/businessDate'
+import { comparePurchaseItemsDesc, getItemCreationOrder } from '../../utils/itemIdentity'
 import { addOperationLog, clone, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
 import { CATEGORY_BATCHES } from './purchaseOptions'
-import { getPurchaseGroupKey } from './purchaseGrouping'
+import { getPurchaseGroupKey, getPurchaseGroupTransferIds } from './purchaseGrouping'
 import {
   createInventoryAssignmentRows,
   setInventoryAssignmentOwner,
@@ -153,7 +155,7 @@ function isInEditingPurchaseGroup(item) {
 const addForm = reactive({
   category: '日淘',
   batch: '预订',
-  date: new Date().toISOString().slice(0, 10),
+  date: getBusinessDate(),
   paymentAccount: '支付宝',
   discount: '',
   website: '',
@@ -167,7 +169,7 @@ const TRANSFER_COMPANIES = ['鼎丰转运', '顺丰集运', '星中转运', '天
 
 const transferForm = reactive({
   transferBatch: '',
-  date: new Date().toISOString().slice(0, 10),
+  date: getBusinessDate(),
   paymentAccount: '支付宝',
   logisticsRMB: 0,
   customsDutyRMB: 0,
@@ -217,31 +219,22 @@ const stats = computed(() => {
 })
 
 function mergeItemsBySid(items = [], splitByStatus = false) {
-  const getSortTs = (item) => {
-    const d = item?.purchaseDetails?.date
-    const dateTs = d ? new Date(d).getTime() : 0
-    const idTs = Number(item?.id || 0)
-    const safeDateTs = Number.isFinite(dateTs) ? dateTs : 0
-    const safeIdTs = Number.isFinite(idTs) ? idTs : 0
-    return safeDateTs * 1_000_000 + safeIdTs
-  }
-
   const map = new Map()
   items.forEach((item) => {
     const key = splitByStatus ? `${item?.sid || ''}__${item?.status || ''}` : `${item?.sid || ''}`
     if (!map.has(key)) {
-      map.set(key, { ...item, qty: 1, _latestTs: getSortTs(item) })
+      map.set(key, { ...item, qty: 1, latestItem: item })
       return
     }
     const g = map.get(key)
     g.qty += 1
-    g._latestTs = Math.max(Number(g._latestTs || 0), getSortTs(item))
+    if (comparePurchaseItemsDesc(item, g.latestItem) < 0) g.latestItem = item
   })
   return Array.from(map.values())
-    .sort((a, b) => Number(b._latestTs || 0) - Number(a._latestTs || 0))
+    .sort((a, b) => comparePurchaseItemsDesc(a.latestItem, b.latestItem))
     .map((item) => {
       const next = { ...item }
-      delete next._latestTs
+      delete next.latestItem
       return next
     })
 }
@@ -312,9 +305,9 @@ const groupedByBatch = computed(() => {
           const dateCmp = String(b.date || '').localeCompare(String(a.date || ''))
           if (dateCmp !== 0) return dateCmp
 
-          const aLatestId = Math.max(...(a.items || []).map((it) => Number(it?.id || 0)), 0)
-          const bLatestId = Math.max(...(b.items || []).map((it) => Number(it?.id || 0)), 0)
-          if (bLatestId !== aLatestId) return bLatestId - aLatestId
+          const aLatestOrder = Math.max(...(a.items || []).map(getItemCreationOrder), 0)
+          const bLatestOrder = Math.max(...(b.items || []).map(getItemCreationOrder), 0)
+          if (bLatestOrder !== aLatestOrder) return bLatestOrder - aLatestOrder
 
           return String(b.key || '').localeCompare(String(a.key || ''))
         })
@@ -667,7 +660,7 @@ function toggleTransferSelectionBySid(group) {
 function openAddModal() {
   addForm.category = purchaseViewCategory.value || '日淘'
   addForm.batch = availableBatches.value[0] || '预订'
-  addForm.date = new Date().toISOString().slice(0, 10)
+  addForm.date = getBusinessDate()
   addForm.paymentAccount = '支付宝'
   addForm.discount = ''
   addForm.website = ''
@@ -1088,7 +1081,7 @@ function handleNewTransfer() {
     return
   }
   transferForm.transferBatch = ''
-  transferForm.date = new Date().toISOString().slice(0, 10)
+  transferForm.date = getBusinessDate()
   transferForm.paymentAccount = '支付宝'
   transferForm.logisticsRMB = 0
   transferForm.customsDutyRMB = 0
@@ -1210,7 +1203,7 @@ function openEditPurchaseGroup(group) {
   editGroupForm.paymentBatch = paymentBatch
   editGroupForm.category = first?.category || purchaseViewCategory.value
   editGroupForm.batch = first?.batch || ''
-  editGroupForm.date = first?.purchaseDetails?.date || new Date().toISOString().slice(0, 10)
+  editGroupForm.date = first?.purchaseDetails?.date || getBusinessDate()
   editGroupForm.paymentAccount = first?.purchaseDetails?.paymentAccount || '支付宝'
   editGroupForm.discount = first?.purchaseDetails?.discount || ''
   editGroupForm.website = first?.purchaseDetails?.website || ''
@@ -1270,13 +1263,9 @@ function submitEditPurchaseGroup() {
       }
     }
 
-    const nextTransferIdSet = new Set()
-    lines.forEach((line) => {
-      const src = line.id ? originalById.get(line.id) : null
-      if (line.transferStatus === 'completed' && (line.transferId || src?.purchaseDetails?.transferId)) {
-        nextTransferIdSet.add(line.transferId || src?.purchaseDetails?.transferId)
-      }
-    })
+    const retainedIds = new Set(lines.map((line) => line.id))
+    const removedPurchaseRows = purchaseRows.filter((row) => !retainedIds.has(row.id))
+    const nextTransferIdSet = getPurchaseGroupTransferIds(lines, originalById, removedPurchaseRows)
 
     // 计算字段变更明细（每个商品的变化以 before/after 分组）
     const groupEditChanges = {}
@@ -1313,21 +1302,17 @@ function submitEditPurchaseGroup() {
     })
 
     const removedRows = []
-    purchaseRows.forEach((row) => {
-      if (!lines.some((l) => l.id === row.id)) {
-        const idx = store.items.findIndex((x) => x.id === row.id)
-        if (idx >= 0) {
-          const gone = store.items[idx]
-           removedRows.push({
-             itemId: gone.id,
-             name: gone.name,
-             sid: gone.sid,
-             groupId: String(gone?.purchaseDetails?.purchaseGroupId || '').trim(),
-             deletedItems: [clone(gone)],
-           })
-          store.items.splice(idx, 1)
-        }
-      }
+    removedPurchaseRows.forEach((row) => {
+      const idx = store.items.indexOf(row)
+      if (idx < 0) return
+      removedRows.push({
+        itemId: row.id,
+        name: row.name,
+        sid: row.sid,
+        groupId: String(row.purchaseDetails?.purchaseGroupId || '').trim(),
+        deletedItems: [clone(row)],
+      })
+      store.items.splice(idx, 1)
     })
 
     const generatedSidByDraftKey = new Map()
@@ -1423,6 +1408,7 @@ function submitEditPurchaseGroup() {
       changes: groupEditChanges,
       itemIds: changedItemIds,
       itemNames: lines.map((l) => l.name).filter(Boolean),
+      transferIds: [...nextTransferIdSet],
     })
     removedRows.forEach((r) => {
       addOperationLog('purchase_delete', '编辑购买组时删除商品: ' + (r.name || r.sid), {

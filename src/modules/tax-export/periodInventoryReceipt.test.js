@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest'
-import { buildPeriodInventoryReceipt, combineInventoryNote } from './periodInventoryReceipt'
+import { readFile } from 'node:fs/promises'
+import JSZip from 'jszip'
+import { describe, expect, it, vi } from 'vitest'
+import { buildPeriodInventoryReceipt, combineInventoryNote, writePeriodInventoryReceipt } from './periodInventoryReceipt'
+
+const range = { startDate: '2026-10-15', endDate: '2026-10-31', taxpayerName: '测试纳税主体', taxpayerId: 'AUDIT123' }
 
 describe('period inventory receipt notes', () => {
   it('combines status and purchase-group note without losing either', () => {
@@ -27,5 +31,38 @@ describe('period inventory receipt notes', () => {
       ],
     }, { startDate: '2026-10-15', endDate: '2026-10-31' })
     expect(result.rows.map((row) => `${row.paymentBatch}-${row.sid}`)).toEqual(['A组-S1', 'B组-S1', 'B组-S2'])
+  })
+
+  it('keeps an explicit zero cost and falls back only for missing or invalid costs', () => {
+    const costs = [0, '0', undefined, '', 'not-a-number', 5]
+    const result = buildPeriodInventoryReceipt({
+      items: costs.map((cost, index) => ({ sid: `S${index}`, cost, purchaseDetails: { date: '2026-10-20', preTransferCost: 17 } })),
+    }, range)
+    expect(result.rows.map((item) => item.unitCost)).toEqual([0, 0, 17, 17, 17, 5])
+    expect(result.totals.cost).toBe(56)
+  })
+
+  it('writes literal replacement markers and quotes to the worksheet XML', async () => {
+    const template = await readFile(new URL('./templates/period-inventory-intake-a3-template.xlsx', import.meta.url))
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:audit')
+    const link = { click: vi.fn(), remove: vi.fn(), style: {} }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => template }))
+    vi.stubGlobal('document', { createElement: () => link, body: { appendChild: vi.fn() } })
+    vi.stubGlobal('window', { setTimeout: vi.fn() })
+    try {
+      await writePeriodInventoryReceipt({
+        items: [{ sid: 'S1', name: 'A $& "原名"', cost: 0, purchaseDetails: { date: '2026-10-20', preTransferCost: 17, note: "B $' 备注" } }],
+      }, range, 'audit.xlsx')
+      const zip = await JSZip.loadAsync(await createObjectURL.mock.calls[0][0].arrayBuffer())
+      const xml = await zip.file('xl/worksheets/sheet1.xml').async('string')
+      expect(xml.match(/<ns0:sheetData>/g)).toHaveLength(1)
+      expect(xml).toContain('A $&amp; &quot;原名&quot;')
+      expect(xml).toContain('B $&apos; 备注')
+      expect(xml).toMatch(/<ns0:c r="F8"[^>]*><ns0:v>0<\/ns0:v>/)
+      expect(link.click).toHaveBeenCalledOnce()
+    } finally {
+      vi.unstubAllGlobals()
+      createObjectURL.mockRestore()
+    }
   })
 })

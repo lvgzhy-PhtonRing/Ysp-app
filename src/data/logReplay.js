@@ -195,14 +195,46 @@ function applyAdoptRestore(state, slot, before) {
   state[flat] = JSON.parse(JSON.stringify(before))
 }
 
+function restoreInventoryItemChanges(state, detail) {
+  for (const { itemId, changes } of detail.itemChanges) {
+    const item = findItem(state.items, itemId)
+    if (!item) continue
+    for (const [field, { before }] of Object.entries(changes)) {
+      if (before === undefined) delete item[field]
+      else item[field] = clone(before)
+    }
+  }
+  const payton = state.ownerRegistry?.payton
+  if (payton) {
+    for (const account of ['pocket', 'invest']) {
+      const delta = Number(detail.paytonDeltas?.[account] || 0)
+      if (delta) payton[account + 'Balance'] = Number(payton[account + 'Balance'] || 0) - delta
+    }
+  }
+}
+
 // ── 逐类型逆操作 ──────────────────────────────────────────────
 
 const INVERSE_HANDLERS = {
   inventory_delete: (state, d) => restoreItems(state, d.deletedItems),
 
-  inventory_manual_add: (state, d) => removeById(state.items, 'id', d.itemId),
+  inventory_manual_add: (state, d) => {
+    const itemIds = Array.isArray(d.itemIds) ? d.itemIds : [d.itemId]
+    itemIds.forEach((itemId) => removeById(state.items, 'id', itemId))
+    const payton = state.ownerRegistry?.payton
+    if (payton) {
+      for (const account of ['pocket', 'invest']) {
+        const delta = Number(d.paytonDeltas?.[account] || 0)
+        if (delta) payton[account + 'Balance'] = Number(payton[account + 'Balance'] || 0) - delta
+      }
+    }
+  },
 
   inventory_edit: (state, d) => {
+    if (Array.isArray(d.itemChanges)) {
+      restoreInventoryItemChanges(state, d)
+      return
+    }
     (state.items || []).forEach((item) => {
       if (item?.sid && item.sid === d.sid && item.status === 'inventory') {
         applyChangesTo(item, d.changes)
@@ -221,7 +253,9 @@ const INVERSE_HANDLERS = {
     })
   },
 
-  inventory_long_term: () => {},
+  inventory_long_term: (state, d) => {
+    if (Array.isArray(d.itemChanges)) restoreInventoryItemChanges(state, d)
+  },
 
   inventory_sales_sync: (state, d) => {
     if (!Array.isArray(d.itemIds)) return

@@ -11,6 +11,7 @@ import {
   exportData,
   getUnsyncedOperations,
   hiddenSync,
+  importMainBackup,
   isContentEqual,
   loadData,
   loadFromLocalStorage,
@@ -54,6 +55,38 @@ describe('data store', () => {
 
     expect(output.finance.records.length).toBe(sampleData.finance.records.length)
     expect(output.transfers.length).toBe(sampleData.transfers.length)
+  })
+
+  it('compares normalized taxpayer profiles as business data', () => {
+    const profile = { name: '测试商户', taxId: 'TEST01' }
+    expect(isContentEqual({ items: [] }, { items: [], taxpayerProfiles: [profile] })).toBe(false)
+    expect(isContentEqual({ items: [], taxpayerProfiles: [profile] }, {
+      items: [], taxpayerProfiles: [{ name: ' 测试商户 ', taxId: 'test01' }],
+    })).toBe(true)
+  })
+
+  it('rejects invalid imports and restores in-memory state when the main backup cannot be saved', () => {
+    const values = new Map([['ysp_data', JSON.stringify({
+      items: [{ id: 'kept', sid: 'CN-0001' }], updatedAt: '2026-11-13T07:00:00.000Z',
+    })]])
+    vi.stubGlobal('localStorage', {
+      getItem: (k) => values.get(k) ?? null,
+      setItem: (k, v) => {
+        if (k === 'ysp_data') throw new Error('quota')
+        values.set(k, v)
+      },
+    })
+    try {
+      loadFromLocalStorage()
+      const before = exportData()
+      expect(() => importMainBackup({})).toThrow('商品列表')
+      expect(() => importMainBackup({ items: [null] })).toThrow('商品列表')
+      expect(importMainBackup({ items: [], snapshots: [{ date: '2026-01-01' }] })).toBe(false)
+      expect(exportData()).toEqual(before)
+      expect(JSON.parse(values.get('ysp_data')).items[0].id).toBe('kept')
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('initializes Payton account defaults when a new browser has no saved data yet', () => {

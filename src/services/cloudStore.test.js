@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { fetchCloudState, saveCloudState, signInWithPassword } from './cloudStore'
+import { fetchCloudState, normalizeCloudConfig, saveCloudState, signInWithPassword } from './cloudStore'
 
 const CONFIG = {
   supabaseUrl: 'https://test.supabase.co',
@@ -73,6 +73,20 @@ describe('saveCloudState keepalive 透传', () => {
 })
 
 describe('cloud revision compare-and-swap', () => {
+  it('keeps main private on configuration, insert and update while preserving other slots', async () => {
+    expect(normalizeCloudConfig({ ...CONFIG, publicRead: true }).publicRead).toBe(false)
+    expect(normalizeCloudConfig({ ...CONFIG, stateId: 'car', publicRead: true }).publicRead).toBe(true)
+    const send = vi.fn(async (_, opts) => ({
+      ok: true, status: 200,
+      text: async () => JSON.stringify([{ revision: opts.method === 'POST' ? 0 : 2 }]),
+    }))
+    vi.stubGlobal('fetch', send)
+    await saveCloudState(CONFIG, { items: [] }, { session: SESSION, makePublic: true, expectedRevision: null })
+    await saveCloudState(CONFIG, { items: [] }, { session: SESSION, makePublic: true, expectedRevision: 1 })
+    expect(JSON.parse(send.mock.calls[0][1].body)[0].is_public).toBe(false)
+    expect(JSON.parse(send.mock.calls[1][1].body).is_public).toBe(false)
+  })
+
   it('returns the main row revision on read', async () => {
     mockFetchOnce(200, [{ id: 'main', payload: { items: [] }, revision: 7, updated_at: 't' }])
     const result = await fetchCloudState(CONFIG, { session: SESSION, publicOnly: false })

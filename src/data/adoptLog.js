@@ -110,7 +110,7 @@ export function appendAdoptBefore({ slot = '', before = null, beforeRev = null, 
   }
   const persisted = writeAllRetry([adopt, ...current])
   pruneAdoptBefore()
-  return { adoptId: adopt.adoptId, persisted }
+  return { adoptId: adopt.adoptId, persisted: persisted && !!getAdoptBeforeById(adopt.adoptId) }
 }
 
 export function getAdoptBeforeById(adoptId) {

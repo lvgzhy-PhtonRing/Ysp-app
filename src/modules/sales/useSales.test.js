@@ -41,6 +41,25 @@ describe('useSales logic', () => {
     expect(Number(item.saleDetails.profit)).toBeCloseTo(expected, 2)
   })
 
+  it('refuses to write a second sale or pick between duplicated internal IDs', () => {
+    loadData({
+      items: [
+        { id: 'duplicate', sid: 'JP-0001', owner: 'payton', status: 'inventory', cost: 30 },
+        { id: 'duplicate', sid: 'JP-0001', owner: 'payton', status: 'inventory', cost: 40 },
+        { id: 'unique', sid: 'JP-0001', owner: 'payton', status: 'inventory', cost: 50 },
+      ],
+    })
+    const startingBalance = store.ownerRegistry.payton.investBalance
+    const sale = { price: 100, date: '2026-10-20' }
+    expect(submitSell('duplicate', sale)).toBe(false)
+    expect(store.items.slice(0, 2).every((item) => item.status === 'inventory' && !item.saleDetails)).toBe(true)
+    expect(store.ownerRegistry.payton.investBalance).toBe(startingBalance)
+    expect(submitSell('unique', sale)).toBe(store.items[2])
+    expect(submitSell('unique', { ...sale, price: 200 })).toBe(false)
+    expect(store.items[2].saleDetails).toMatchObject({ price: 100, beforeSaleState: { status: 'inventory' } })
+    expect(store.ownerRegistry.payton.investBalance).toBe(startingBalance + 100)
+  })
+
   it('filters the current sales rows by shop while keeping the all-shops view intact', () => {
     const sales = [
       { id: 'phton', status: 'sold', cost: 70, saleDetails: { shop: 'PhtonRIng', price: 100, profit: 30 } },

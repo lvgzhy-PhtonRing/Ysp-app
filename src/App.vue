@@ -29,6 +29,7 @@ import {
   getUnsyncedOperations,
   hiddenSync,
   isCloudSyncUnhealthy,
+  importMainBackup,
   loadData,
   loadFromLocalStorage,
   loadUiStateFromLocalStorage,
@@ -56,10 +57,11 @@ import {
   syncToCloudNow,
   undoLastChange,
   unloadSync,
+  validateMainBackup,
 } from './data/store'
-import { appendAdoptBefore, latestFullImportSnapshot } from './data/adoptLog'
+import { appendAdoptBefore, getAdoptBeforeById, latestFullImportSnapshot } from './data/adoptLog'
 import { finalizeRestorePayload, getHistoryRestoreTarget, isCompleteHistoryEntry } from './data/restorePayload'
-import { addCarArchiveToBackup, restoreCarArchiveFromBackup } from './data/carHistoryArchive'
+import { CAR_ARCHIVE_KEY, addCarArchiveToBackup, restoreCarArchiveFromBackup } from './data/carHistoryArchive'
 import {
   getLogBrief,
   getLogDetailSections,
@@ -204,8 +206,16 @@ function handleRestoreFromHistory() {
 // computed 零依赖时首次求值即永久缓存），改用显式 ref，在 onMounted 与 handleImport 落档后置位。
 const fullImportReady = ref(false)
 
+function getLatestImportSnapshot() {
+  const entry = store.operationLogs.find((log) =>
+    log.type === 'app_import' && Object.hasOwn(log.detail || {}, 'snapshotAdoptId'))
+  if (!entry) return latestFullImportSnapshot()
+  const snap = getAdoptBeforeById(entry.detail.snapshotAdoptId)
+  return snap?.slot === '__full_import__' ? snap.before : null
+}
+
 function handleRestoreBeforeImport() {
-  const snapshot = latestFullImportSnapshot()
+  const snapshot = getLatestImportSnapshot()
   if (!snapshot) return
   if (!confirm('将当前数据恢复到最近一次导入前（会同步至云端），是否继续？')) return
   applyCloudDataToStore(finalizeRestorePayload(snapshot, exportData()), { trackHistory: true })
@@ -538,12 +548,13 @@ watch(cloudUnhealthy, (unhealthy) => {
 function getEnvCloudSettings() {
   const enabledRaw = String(import.meta.env.VITE_SUPABASE_ENABLED || '').toLowerCase()
   const publicReadRaw = String(import.meta.env.VITE_SUPABASE_PUBLIC_READ || 'true').toLowerCase()
+  const stateId = (import.meta.env.VITE_SUPABASE_STATE_ID || '').trim() || 'main'
   return {
     supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
     supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-    stateId: import.meta.env.VITE_SUPABASE_STATE_ID || 'main',
+    stateId,
     enabled: enabledRaw === 'true' || enabledRaw === '1',
-    publicRead: !(publicReadRaw === 'false' || publicReadRaw === '0'),
+    publicRead: stateId !== 'main' && !(publicReadRaw === 'false' || publicReadRaw === '0'),
   }
 }
 
@@ -847,22 +858,29 @@ function handleImport(event) {
   const reader = new FileReader()
   reader.onload = (e) => {
     try {
-      const json = JSON.parse(e.target?.result)
-      restoreCarArchiveFromBackup(json)
+      const json = validateMainBackup(JSON.parse(e.target?.result))
+      if (tabLocked.value) throw new Error('当前标签页没有编辑权')
       // 导入前快照：把当前完整数据落档，便于日后回溯还原（Task 1 appendAdoptBefore）
       const snap = appendAdoptBefore({
         slot: '__full_import__',
         before: exportData(),
       })
-      const snapshotAdoptId = snap.adoptId
-      loadData(json)
-      saveToLocalStorage()
-      addOperationLog('app_import', '导入数据成功', { file: file.name, snapshotAdoptId })
       if (!snap.persisted) {
-        addOperationLog('app_import', '导入前快照落档失败（存储已满），无法回溯到导入前状态', { file: file.name })
-      } else {
-        fullImportReady.value = true
+        if (confirm('无法保存本次导入前回溯点。点「确定」下载当前账本备份，点「取消」返回。')) {
+          handleExport()
+          if (!confirm('已发起备份下载。请确认已收到文件，再继续覆盖导入。')) return
+        } else return
       }
+      const archiveExisted = localStorage.getItem(CAR_ARCHIVE_KEY) !== null
+      try {
+        restoreCarArchiveFromBackup(json)
+        if (!importMainBackup(json)) throw new Error('本地存储空间不足或未取得编辑权，当前数据已保留')
+      } catch (error) {
+        if (!archiveExisted && json.carHistoryArchive) localStorage.removeItem(CAR_ARCHIVE_KEY)
+        throw error
+      }
+      addOperationLog('app_import', '导入数据成功', { file: file.name, snapshotAdoptId: snap.persisted ? snap.adoptId : '' })
+      fullImportReady.value = !!getLatestImportSnapshot()
       alert('导入成功')
     } catch (err) {
       alert(`导入失败：${err.message}`)
@@ -910,7 +928,7 @@ onMounted(async () => {
   registerWritePermissionChecker(() => editorLock.held())
   loadUiStateFromLocalStorage()
   loadFromLocalStorage()
-  fullImportReady.value = !!latestFullImportSnapshot()
+  fullImportReady.value = !!getLatestImportSnapshot()
 
   registerCloudSyncHandler(async (payload, options = {}) => {
     const reason = options?.reason || ''
@@ -1144,10 +1162,11 @@ watch(
             <input v-model="cloudForm.enabled" type="checkbox" />
             <span>启用云端同步</span>
           </label>
-          <label class="inline-flex items-center gap-2 cursor-pointer">
+          <label v-if="cloudForm.stateId.trim() && cloudForm.stateId.trim() !== 'main'" class="inline-flex items-center gap-2 cursor-pointer">
             <input v-model="cloudForm.publicRead" type="checkbox" />
-            <span>手机页匿名读取</span>
+            <span>允许此数据行匿名读取</span>
           </label>
+          <span v-else class="text-gray-500">主账本仅所有者登录后可读取</span>
         </div>
       </div>
 

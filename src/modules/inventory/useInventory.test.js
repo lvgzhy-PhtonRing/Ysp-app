@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import sampleData from '../../__tests__/fixtures/sampleData.json'
 import { loadData, state as store } from '../../data/store'
-import { deleteItem, editItem, filterInventory, getInventoryStats, sortInventoryItems } from './useInventory'
+import { reconstructAtTime } from '../../data/logReplay'
+import { deleteItem, editItem, filterInventory, getInventoryEditPatch, getInventoryStats, markLongTermInventory, sortInventoryItems, submitManualAdd } from './useInventory'
 
 describe('useInventory logic', () => {
   beforeEach(() => {
@@ -108,9 +109,71 @@ describe('useInventory logic', () => {
     expect(store.ownerRegistry.payton.investBalance).toBe(90)
   })
 
+  it('preserves each cost on rename and reverses explicit cost edits per item', () => {
+    loadData({ items: [
+      { id: 'p1', sid: 'same', owner: 'payton', status: 'inventory', name: 'old', cost: 100 },
+      { id: 'p2', sid: 'same', owner: 'payton', status: 'inventory', name: 'old 2', cost: 150 },
+      { id: 'a', sid: 'same', owner: 'papa', status: 'inventory', name: 'other', cost: 75 },
+    ], ownerRegistry: { payton: { pocketBalance: 50, investBalance: -250, loans: [] } } })
+    const opened = { name: 'old', cost: 100 }
+    editItem('p1', getInventoryEditPatch(opened, { ...opened, name: 'new' }))
+    expect(store.items.map(({ name, cost }) => [name, cost])).toEqual([['new', 100], ['new', 150], ['other', 75]])
+    expect(store.ownerRegistry.payton.investBalance).toBe(-250)
+
+    editItem('p1', { cost: 120 })
+    expect(store.ownerRegistry.payton.investBalance).toBe(-240)
+    const { state } = reconstructAtTime({ items: store.items, ownerRegistry: store.ownerRegistry }, [store.operationLogs[0]])
+    expect(state.items.map((item) => item.cost)).toEqual([100, 150, 75])
+    expect(state.ownerRegistry.payton.investBalance).toBe(-250)
+  })
+
+  it('marks only the chosen owner and scope, and transfers the Payton amount once', () => {
+    loadData({ items: [
+      { id: 'p1', sid: 'same', owner: 'payton', status: 'inventory', category: '日淘', batch: 'A', cost: 100 },
+      { id: 'p2', sid: 'keep', owner: 'payton', status: 'inventory', category: '日淘', batch: 'A', cost: 150, isLongTerm: true },
+      { id: 'p3', sid: 'same', owner: 'payton', status: 'inventory', category: '日淘', batch: 'B', cost: 50 },
+      { id: 'a', sid: 'same', owner: 'papa', status: 'inventory', category: '日淘', batch: 'A', cost: 75 },
+    ], ownerRegistry: { payton: { pocketBalance: -150, investBalance: -150, loans: [] } } })
+    markLongTermInventory({ owner: 'papa', category: '日淘', batch: 'A' }, ['same'])
+    expect(store.items.map((item) => item.isLongTerm)).toEqual([undefined, true, undefined, true])
+    markLongTermInventory({ owner: 'payton', category: '日淘', batch: 'A' }, ['same'])
+    expect(store.items.map((item) => item.isLongTerm)).toEqual([true, false, undefined, true])
+    expect(store.ownerRegistry.payton).toMatchObject({ pocketBalance: -100, investBalance: -200 })
+    const { state } = reconstructAtTime({ items: store.items, ownerRegistry: store.ownerRegistry }, [store.operationLogs[0]])
+    expect(state.items.map((item) => item.isLongTerm)).toEqual([undefined, true, undefined, true])
+    expect(state.ownerRegistry.payton).toMatchObject({ pocketBalance: -150, investBalance: -150 })
+  })
+
   it('returns Payton purchase cost only for mistaken or duplicate deletion', () => {
     loadData({ items: [{ id: 'p', owner: 'payton', status: 'inventory', cost: 25, isLongTerm: true }] })
     expect(deleteItem('p', { reason: 'mistake' })).toBe(true)
     expect(store.ownerRegistry.payton.pocketBalance).toBe(25)
+  })
+
+  it('adds every manually entered unit and reverses the matching total on replay', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-01T00:30:00+08:00'))
+    try {
+      loadData({ items: [], ownerRegistry: { payton: { pocketBalance: 100, investBalance: 200, loans: [] } } })
+
+      submitManualAdd({ name: '测试车', cost: 25, qty: 3, owner: 'payton', isLongTerm: true })
+
+      expect(store.items).toHaveLength(3)
+      expect(new Set(store.items.map((item) => item.id)).size).toBe(3)
+      expect(new Set(store.items.map((item) => item.sid)).size).toBe(1)
+      expect(store.items.map((item) => item.cost)).toEqual([25, 25, 25])
+      expect(store.items.every((item) => item.qty === 1 && item.stock === 1)).toBe(true)
+      expect(store.items.every((item) => item.inventoryDetails.inStockDate === '2026-11-01')).toBe(true)
+      expect(store.ownerRegistry.payton).toMatchObject({ pocketBalance: 25, investBalance: 200 })
+
+      const { state } = reconstructAtTime(
+        { items: store.items, ownerRegistry: store.ownerRegistry },
+        [store.operationLogs[0]],
+      )
+      expect(state.items).toHaveLength(0)
+      expect(state.ownerRegistry.payton.pocketBalance).toBe(100)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

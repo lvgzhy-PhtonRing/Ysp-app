@@ -1,4 +1,5 @@
 import { addOperationLog, saveToLocalStorage, state } from '../../data/store'
+import { getBusinessDate } from '../../utils/businessDate'
 
 const payton = (registry = state.ownerRegistry) => registry?.payton
 const number = (value) => Number.isFinite(Number(value)) ? Number(value) : 0
@@ -77,7 +78,7 @@ export function deletePaytonExpense(id) {
   return true
 }
 
-export function addMonthlyAllowance(date = new Date().toISOString().slice(0, 10)) {
+export function addMonthlyAllowance(date = getBusinessDate()) {
   const month = String(date).slice(0, 7)
   if (!/^\d{4}-\d{2}$/.test(month)) throw new Error('零花日期无效')
   const existing = state.financeRecords.some((record) => record.owner === 'payton' && record.item === '每月零花' && String(record.date).slice(0, 7) === month)
@@ -92,16 +93,33 @@ function loanById(id) {
   return payton()?.loans?.find((loan) => loan.id === id)
 }
 
-function applyLoanEffect(loan, event, sign = 1, allowNegative = false) {
+function loanEventDelta(event) {
   if (event.type !== 'borrow' && event.type !== 'repay') throw new Error('贷款事件必须是 borrow 或 repay')
   const amount = number(event.amount)
   if (amount <= 0) throw new Error('贷款事件金额必须大于 0')
-  const delta = (event.type === 'borrow' ? 1 : -1) * amount * sign
+  return event.type === 'borrow' ? amount : -amount
+}
+
+function applyLoanDelta(loan, delta) {
   const remaining = number(loan.remaining) + delta
-  if (!allowNegative && remaining < -0.000001) throw new Error('还款金额超过贷款剩余')
+  if (remaining < -0.000001) throw new Error('还款金额超过贷款剩余')
   loan.remaining = Math.max(0, remaining)
   loan.status = loan.remaining <= 0 ? 'repaid' : 'active'
   adjustPaytonBalance('invest', delta)
+}
+
+function loanEventEditDelta(loan, index, replacement = null) {
+  const deltas = loan.events.map(loanEventDelta)
+  const delta = (replacement ? loanEventDelta(replacement) : 0) - deltas[index]
+  if (!delta) return 0
+
+  // 导入的旧贷款可能只有剩余本金，新流水按该期初余额继续记录。
+  let remaining = number(loan.remaining) - deltas.reduce((sum, amount) => sum + amount, 0)
+  for (const [i, amount] of deltas.entries()) {
+    remaining += amount + (i === index ? delta : 0)
+    if (remaining < -0.000001) throw new Error('此变更会使贷款本金不足，请先处理相关还款')
+  }
+  return delta
 }
 
 export function createPaytonLoan(data = {}) {
@@ -113,7 +131,7 @@ export function createPaytonLoan(data = {}) {
     remaining: 0, startDate: data.startDate || data.date || '', dueDate: data.dueDate || '',
     status: 'active', events: [],
   }
-  applyLoanEffect(loan, event)
+  applyLoanDelta(loan, loanEventDelta(event))
   loan.events.push(event)
   payton().loans.push(loan)
   persist('finance_add_loan', `新增 Payton 贷款：${loan.name}`, { loanId: loan.id, amount })
@@ -124,7 +142,7 @@ export function addPaytonLoanEvent(loanId, data = {}) {
   const loan = loanById(loanId)
   if (!loan) return false
   const event = { id: data.id ?? makeId(), type: data.type, date: data.date || '', amount: number(data.amount), note: data.note || '' }
-  applyLoanEffect(loan, event)
+  applyLoanDelta(loan, loanEventDelta(event))
   loan.events = [...(loan.events || []), event]
   persist('finance_update_loan', `Payton 贷款${event.type === 'borrow' ? '借入' : '还款'}：${loan.name}`, { loanId, eventId: event.id, amount: event.amount })
   return event
@@ -132,20 +150,14 @@ export function addPaytonLoanEvent(loanId, data = {}) {
 
 export function updatePaytonLoanEvent(loanId, eventId, patch = {}) {
   const loan = loanById(loanId)
-  const event = loan?.events?.find((item) => item.id === eventId)
-  if (!event) return false
+  const index = loan?.events?.findIndex((item) => item.id === eventId) ?? -1
+  if (index < 0) return false
+  const event = loan.events[index]
   const next = { ...event, type: patch.type ?? event.type, date: patch.date ?? event.date, amount: patch.amount === undefined ? event.amount : number(patch.amount), note: patch.note ?? event.note }
   if (!['borrow', 'repay'].includes(next.type) || number(next.amount) <= 0) throw new Error('贷款事件类型或金额无效')
-  applyLoanEffect(loan, event, -1, true)
-  const before = { ...event }
+  const delta = loanEventEditDelta(loan, index, next)
+  if (delta) applyLoanDelta(loan, delta)
   Object.assign(event, next)
-  try {
-    applyLoanEffect(loan, event)
-  } catch (error) {
-    Object.assign(event, before)
-    applyLoanEffect(loan, event)
-    throw error
-  }
   persist('finance_update_loan', `编辑 Payton 贷款事件：${loan.name}`, { loanId, eventId })
   return event
 }
@@ -154,8 +166,8 @@ export function deletePaytonLoanEvent(loanId, eventId) {
   const loan = loanById(loanId)
   const index = loan?.events?.findIndex((event) => event.id === eventId) ?? -1
   if (index < 0) return false
-  const [event] = loan.events.splice(index, 1)
-  applyLoanEffect(loan, event, -1, true)
+  applyLoanDelta(loan, loanEventEditDelta(loan, index))
+  loan.events.splice(index, 1)
   persist('finance_update_loan', `删除 Payton 贷款事件：${loan.name}`, { loanId, eventId })
   return true
 }

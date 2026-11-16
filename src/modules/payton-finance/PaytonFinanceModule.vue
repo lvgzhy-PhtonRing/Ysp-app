@@ -1,6 +1,7 @@
 <script setup>
 import { computed, reactive, ref } from 'vue'
 import { state } from '../../data/store'
+import { getBusinessDate } from '../../utils/businessDate'
 import {
   addPaytonExpense, addPaytonLoanEvent, addPaytonTransfer,
   createPaytonLoan, deletePaytonExpense, deletePaytonLoanEvent, deletePaytonTransfer,
@@ -14,8 +15,7 @@ const loans = computed(() => owner.value.loans || [])
 const transfers = computed(() => owner.value.accountTransfers || [])
 const records = computed(() => state.financeRecords.filter((record) => record.owner === 'payton').sort((a, b) => String(b.date).localeCompare(String(a.date))))
 const expenseItems = computed(() => [...new Set(records.value.map((record) => String(record.item || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-CN')))
-const now = new Date()
-const purchaseMonth = ref(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)
+const purchaseMonth = ref(getBusinessDate().slice(0, 7))
 const carPurchases = computed(() => state.items
   .map((item, sourceIndex) => ({ item, sourceIndex }))
   .filter(({ item }) => item?.owner === 'payton' && item?.status !== 'purchase' && String(item?.inventoryDetails?.inStockDate || '').slice(0, 7) === purchaseMonth.value)
@@ -43,10 +43,10 @@ const balanceCards = computed(() => [
   { label: '贷款剩余', value: loanTotal.value },
   { label: "Payton's 基金", value: getPaytonFund() },
 ])
-const expenseForm = reactive({ type: 'expense', date: new Date().toISOString().slice(0, 10), item: '', amount: 0, note: '' })
-const loanForm = reactive({ name: '', amount: 0, date: new Date().toISOString().slice(0, 10), dueDate: '', note: '' })
-const loanEventForm = reactive({ type: 'repay', amount: 0, date: new Date().toISOString().slice(0, 10), note: '' })
-const transferForm = reactive({ fromAccount: 'pocket', toAccount: 'invest', amount: 0, date: new Date().toISOString().slice(0, 10), note: '' })
+const expenseForm = reactive({ type: 'expense', date: getBusinessDate(), item: '', amount: 0, note: '' })
+const loanForm = reactive({ name: '', amount: 0, date: getBusinessDate(), dueDate: '', note: '' })
+const loanEventForm = reactive({ type: 'repay', amount: 0, date: getBusinessDate(), note: '' })
+const transferForm = reactive({ fromAccount: 'pocket', toAccount: 'invest', amount: 0, date: getBusinessDate(), note: '' })
 const transferDirection = ref('pocket-to-invest')
 const editingTransferId = ref(null)
 const editTransferDirection = ref('pocket-to-invest')
@@ -86,6 +86,13 @@ function addLoanEvent(loan) {
   addPaytonLoanEvent(loan.id, { ...loanEventForm })
   loanEventForm.amount = 0; loanEventForm.note = ''
   showRepayForm.value = false
+}
+function undoLoanEvent(loanId, eventId) {
+  try {
+    deletePaytonLoanEvent(loanId, eventId)
+  } catch (error) {
+    alert(error.message)
+  }
 }
 function monthsRemaining(loan) {
   if (!loan.dueDate) return null
@@ -212,7 +219,7 @@ function saveTransferEdit() {
       <div v-if="!loans.length" class="py-8 text-center text-gray-400">暂无贷款</div>
       <div v-if="showLoanForm" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 glass-modal" @click.self="showLoanForm = false"><div class="apple-card w-full max-w-lg space-y-4"><h3 class="text-xl font-bold">新增贷款</h3><div class="grid grid-cols-2 gap-3"><label class="text-sm">贷款名称<input v-model="loanForm.name" class="apple-input mt-1 block w-full" /></label><label class="text-sm">金额<input v-model.number="loanForm.amount" type="number" min="0" step="0.01" class="apple-input mt-1 block w-full" /></label><label class="text-sm">开始日<input v-model="loanForm.date" type="date" class="apple-input mt-1 block w-full" /></label><label class="text-sm">到期日<input v-model="loanForm.dueDate" type="date" class="apple-input mt-1 block w-full" /></label><label class="text-sm col-span-2">备注<input v-model="loanForm.note" class="apple-input mt-1 block w-full" /></label></div><div class="flex justify-end gap-2"><button class="btn btn-outline" @click="showLoanForm = false">取消</button><button class="btn btn-primary" @click="submitLoan">新增贷款</button></div></div></div>
       <div v-if="showRepayForm" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 glass-modal" @click.self="showRepayForm = false"><div class="apple-card w-full max-w-lg space-y-4"><h3 class="text-xl font-bold">归还贷款</h3><label class="text-sm">选择贷款<select v-model="selectedLoanId" class="apple-select mt-1 block w-full"><option value="">请选择</option><option v-for="loan in loans.filter(x => x.status === 'active')" :key="loan.id" :value="loan.id">{{ loan.name }} · 剩余 ¥{{ Number(loan.remaining).toFixed(2) }}</option></select></label><div class="grid grid-cols-2 gap-3"><label class="text-sm">还款金额<input v-model.number="loanEventForm.amount" type="number" min="0" step="0.01" class="apple-input mt-1 block w-full" /></label><label class="text-sm">日期<input v-model="loanEventForm.date" type="date" class="apple-input mt-1 block w-full" /></label><label class="text-sm col-span-2">备注<input v-model="loanEventForm.note" class="apple-input mt-1 block w-full" /></label></div><div class="flex justify-end gap-2"><button class="btn btn-outline" @click="showRepayForm = false">取消</button><button class="btn btn-primary" :disabled="!selectedLoanId" @click="addLoanEvent(loans.find(x => x.id === selectedLoanId))">确认归还</button></div></div></div>
-      <div v-if="showLoanDetailId" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 glass-modal" @click.self="showLoanDetailId = ''"><div v-if="loans.find(x => x.id === showLoanDetailId)" class="apple-card w-full max-w-2xl max-h-[85vh] overflow-y-auto space-y-4"><div class="flex justify-between"><h3 class="text-xl font-bold">{{ loans.find(x => x.id === showLoanDetailId).name }} · 贷款详情</h3><button @click="showLoanDetailId = ''">关闭</button></div><p class="text-gray-500">开始 {{ loans.find(x => x.id === showLoanDetailId).startDate }} · 到期 {{ loans.find(x => x.id === showLoanDetailId).dueDate || '未设' }} · 备注 {{ loans.find(x => x.id === showLoanDetailId).note || '—' }}</p><div v-for="event in loans.find(x => x.id === showLoanDetailId).events || []" :key="event.id" class="flex justify-between border-t py-2 text-sm"><span>{{ event.date }} · {{ event.type === 'borrow' ? '借款' : '还款' }} · {{ event.note }}</span><span>¥{{ Number(event.amount).toFixed(2) }} <button class="ml-2 text-red-500" @click="deletePaytonLoanEvent(showLoanDetailId, event.id)">撤销</button></span></div></div></div>
+      <div v-if="showLoanDetailId" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 glass-modal" @click.self="showLoanDetailId = ''"><div v-if="loans.find(x => x.id === showLoanDetailId)" class="apple-card w-full max-w-2xl max-h-[85vh] overflow-y-auto space-y-4"><div class="flex justify-between"><h3 class="text-xl font-bold">{{ loans.find(x => x.id === showLoanDetailId).name }} · 贷款详情</h3><button @click="showLoanDetailId = ''">关闭</button></div><p class="text-gray-500">开始 {{ loans.find(x => x.id === showLoanDetailId).startDate }} · 到期 {{ loans.find(x => x.id === showLoanDetailId).dueDate || '未设' }} · 备注 {{ loans.find(x => x.id === showLoanDetailId).note || '—' }}</p><div v-for="event in loans.find(x => x.id === showLoanDetailId).events || []" :key="event.id" class="flex justify-between border-t py-2 text-sm"><span>{{ event.date }} · {{ event.type === 'borrow' ? '借款' : '还款' }} · {{ event.note }}</span><span>¥{{ Number(event.amount).toFixed(2) }} <button class="ml-2 text-red-500" @click="undoLoanEvent(showLoanDetailId, event.id)">撤销</button></span></div></div></div>
     </section>
 
     <section v-else class="apple-card space-y-4">

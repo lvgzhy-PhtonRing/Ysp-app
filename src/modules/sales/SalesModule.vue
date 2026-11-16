@@ -1,6 +1,8 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { calcProfit } from '../../utils/calc'
+import { getBusinessDate } from '../../utils/businessDate'
+import { getItemCreationOrder } from '../../utils/itemIdentity'
 import { getPublicExpense } from '../finance/useFinance'
 import { state as store } from '../../data/store'
 import { editSaleRecord, getOwnerInventory, getSalesChannelStats, getSalesStats, rollbackSale as rollbackSaleRecord, setSaleConfirmation, submitSell } from './useSales'
@@ -28,7 +30,7 @@ const addForm = reactive({
   feeRate: 0,
   deduction: 0,
   shop: DEFAULT_SALES_CHANNEL,
-  date: new Date().toISOString().slice(0, 10),
+  date: getBusinessDate(),
 })
 
 const editForm = reactive({
@@ -142,8 +144,7 @@ function getSafeDateTs(value) {
 function getSaleOrderTs(item) {
   const soldAt = Number(item?.saleDetails?.soldAt || 0)
   if (Number.isFinite(soldAt) && soldAt > 0) return soldAt
-  const idTs = Number(item?.id || 0)
-  return Number.isFinite(idTs) && idTs > 0 ? idTs : 0
+  return Math.max(0, getItemCreationOrder(item))
 }
 
 function compareSoldItemsDesc(a, b) {
@@ -155,7 +156,7 @@ function compareSoldItemsDesc(a, b) {
   const ob = getSaleOrderTs(b)
   if (ob !== oa) return ob - oa
 
-  return Number(b?.id || 0) - Number(a?.id || 0)
+  return getItemCreationOrder(b) - getItemCreationOrder(a)
 }
 
 const groupedSalesList = computed(() => {
@@ -203,13 +204,13 @@ function openAddSaleModal() {
   addForm.feeRate = 0
   addForm.deduction = 0
   addForm.shop = DEFAULT_SALES_CHANNEL
-  addForm.date = new Date().toISOString().slice(0, 10)
+  addForm.date = getBusinessDate()
   showAddModal.value = true
 }
 
 function submitAddSale() {
   if (!addForm.itemId) return
-  submitSell(addForm.itemId, {
+  const soldItem = submitSell(addForm.itemId, {
     price: Number(addForm.price || 0),
     express: Number(addForm.express || 0),
     feeRate: Number(addForm.feeRate || 0),
@@ -217,6 +218,10 @@ function submitAddSale() {
     shop: addForm.shop,
     date: addForm.date,
   })
+  if (!soldItem) {
+    alert('该商品已不在库存、记录不存在或内部编号重复，未登记销售。')
+    return
+  }
   showAddModal.value = false
 }
 

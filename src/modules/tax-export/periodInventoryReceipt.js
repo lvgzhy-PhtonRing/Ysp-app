@@ -3,8 +3,9 @@ import templateUrl from './templates/period-inventory-intake-a3-template.xlsx?ur
 import { resolvePurchaseDate } from './purchaseDate'
 
 function amount(value) {
+  if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return undefined
   const number = Number(value)
-  return Number.isFinite(number) ? number : 0
+  return Number.isFinite(number) ? number : undefined
 }
 
 function dateOnly(value) {
@@ -51,7 +52,7 @@ export function buildPeriodInventoryReceipt(payload = {}, { startDate = '', endD
     const purchaseDate = resolvePurchaseDate(item)
     if (!purchaseDate || purchaseDate < startDate || purchaseDate > endDate) return []
     const inStockDate = dateOnly(item?.inventoryDetails?.inStockDate)
-    const unitCost = amount(item.cost) || amount(purchase.preTransferCost)
+    const unitCost = amount(item.cost) ?? amount(purchase.preTransferCost) ?? 0
     return [{
       sid: item.sid || '',
       name: item.name || '',
@@ -153,7 +154,7 @@ export async function writePeriodInventoryReceipt(payload, options, filename) {
   const lastRow = startRow + data.rows.length - 1
   const detailRows = data.rows.map((item, index) => buildDetailRow(rowTemplate, startRow + index, item, index))
   const sheetData = `<ns0:sheetData>${[...rowsWithMetadata, ...detailRows].join('')}</ns0:sheetData>`
-  sheetXml = sheetXml.replace(sheetDataMatch[0], sheetData)
+  sheetXml = sheetXml.replace(sheetDataMatch[0], () => sheetData)
   sheetXml = sheetXml.replace(/<ns0:dimension ref="[^"]+"\s*\/>/, `<ns0:dimension ref="A2:P${Math.max(7, lastRow)}" />`)
   await replaceZipText(zip, sheetPath, () => sheetXml)
 

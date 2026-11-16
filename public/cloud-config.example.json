@@ -3,5 +3,5 @@
   "supabaseAnonKey": "YOUR_SUPABASE_ANON_KEY",
   "stateId": "main",
   "enabled": true,
-  "publicRead": true
+  "publicRead": false
 }

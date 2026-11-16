@@ -1,4 +1,5 @@
 import { computed, isRef, reactive, watch } from 'vue'
+import { getBusinessDate } from '../../utils/businessDate'
 
 const PRESET_MATTEL_USERNAMES = ['zhylvg@gmail.com', 'll_gg@yeah.net', 'Payton-pi@zohomail.com']
 
@@ -88,7 +89,7 @@ function createCardOption(label, holder, bank, identifier, cardType, remark = ''
 }
 
 function createInitialState(seed = {}) {
-  const now = new Date().toISOString().slice(0, 10)
+  const now = getBusinessDate()
   return reactive({
     entries: Array.isArray(seed.entries) ? seed.entries : [],
     forwarderInfos: Array.isArray(seed.forwarderInfos) && seed.forwarderInfos.length

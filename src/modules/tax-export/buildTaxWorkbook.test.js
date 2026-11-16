@@ -96,11 +96,23 @@ describe('buildTaxWorkbookData', () => {
   it('serializes the required workbook sheets without a sale order-date column', () => {
     const result = buildTaxWorkbookData(payload, period)
     const workbook = createTaxWorkbook(result, XLSX)
-    expect(workbook.SheetNames).toEqual(['阅读说明', '申报步骤清单', '增值税核对', 'A表经营数据', '销售明细', '收支明细', '补差明细', '待确认事项'])
+    expect(workbook.SheetNames).toEqual(['阅读说明', '申报步骤清单', '增值税核对', 'A表经营数据', '销售明细', '跨期到账销售', '收支明细', '补差明细', '待确认事项'])
     const headers = XLSX.utils.sheet_to_json(workbook.Sheets['销售明细'], { header: 1 })[1]
     expect(headers).toContain('入账日期')
     expect(headers).not.toContain('下单日期')
     expect(XLSX.utils.sheet_to_json(workbook.Sheets['阅读说明'], { header: 1 })[1]).toEqual(['项目', '内容', '备注'])
+  })
+
+  it('keeps prior-period orders out of totals until actually received', () => {
+    const order = { id: 'cross-period', sid: 'C1', name: '跨期商品', status: 'sold', cost: 40, saleDetails: { date: '2026-10-31', entryDate: '2026-11-01', isConfirmed: true, price: 100, shop: 'PhtonRIng' } }
+    const october = buildTaxWorkbookData({ items: [order] }, { ...period, endDate: '2026-10-31' })
+    const november = buildTaxWorkbookData({ items: [order] }, { ...period, startDate: '2026-11-01', endDate: '2026-11-30' })
+    expect(october.sheets.find((sheet) => sheet.name === '跨期到账销售').rows.map((row) => row.sid)).toEqual(['C1'])
+    expect(october.sheets.find((sheet) => sheet.name === '销售明细').rows).toHaveLength(0)
+    expect(october.totals.revenue).toBe(0)
+    expect(november.sheets.find((sheet) => sheet.name === '跨期到账销售').rows).toHaveLength(0)
+    expect(november.sheets.find((sheet) => sheet.name === '销售明细').rows.map((row) => row.sid)).toEqual(['C1'])
+    expect(november.totals.revenue).toBe(100)
   })
 
   it('shortens long SID text consistently on the pending-issues sheet', () => {

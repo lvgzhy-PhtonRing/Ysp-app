@@ -42,6 +42,8 @@ alter table public.ysp_state enable row level security;
 
 部署需要 `revision` 的新版客户端之前，须先在 Supabase SQL Editor 执行 [`scripts/sql/2026-10-24-ysp-main-revision.sql`](scripts/sql/2026-10-24-ysp-main-revision.sql)。触发器会拒绝旧版客户端写入 `main`，不影响 `car` 行。
 
+随后执行 [`scripts/sql/2026-11-16-ysp-main-private.sql`](scripts/sql/2026-11-16-ysp-main-private.sql)，将 `main` 限定为所有者可读，并防止已打开的旧页面在同步时重新公开该行。其他数据行沿用原有权限。
+
 ### 2) RLS 策略
 
 ```sql
@@ -80,7 +82,7 @@ with check (owner_id = auth.uid());
 
 ```sql
 insert into public.ysp_state (id, owner_id, is_public, payload)
-values ('main', '<your-auth-user-id>', true, '{}'::jsonb)
+values ('main', '<your-auth-user-id>', false, '{"items":[]}'::jsonb)
 on conflict (id) do nothing;
 ```
 
@@ -95,7 +97,7 @@ VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
 VITE_SUPABASE_STATE_ID=main
 VITE_SUPABASE_ENABLED=true
-VITE_SUPABASE_PUBLIC_READ=true
+VITE_SUPABASE_PUBLIC_READ=false
 ```
 
 2. 静态配置文件（给手机页自动读取）
@@ -103,7 +105,7 @@ VITE_SUPABASE_PUBLIC_READ=true
 - 编辑 `public/cloud-config.json`
 - 参考 `public/cloud-config.example.json`
 
-> 注意：只能放 `anon key`，不要放 `service_role key`。
+> 只放 Supabase 的 publishable key 或旧版 anon key。`main` 需要登录读取。
 
 > `main` 行 `payload` 内含 `_rev`（每数据集合独立版本号）。两设备各改不同集合可自动合并；仅当双方都改同一集合时弹逐槽位冲突框。
 

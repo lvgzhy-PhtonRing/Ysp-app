@@ -10,6 +10,7 @@ import {
   updateLoanRecord,
 } from './useFinance'
 import { state as store } from '../../data/store'
+import { getBusinessDate } from '../../utils/businessDate'
 
 const showRecordModal = ref(false)
 const showLoanModal = ref(false)
@@ -24,7 +25,7 @@ const financeLoanCollapseStorageKey = 'ysp_ui_finance_loan_collapse'
 
 const recordForm = reactive({
   type: 'expense',
-  date: new Date().toISOString().slice(0, 10),
+  date: getBusinessDate(),
   item: '',
   amount: 0,
   note: '',
@@ -32,7 +33,7 @@ const recordForm = reactive({
 
 const loanForm = reactive({
   type: 'borrow',
-  date: new Date().toISOString().slice(0, 10),
+  date: getBusinessDate(),
   counterparty: '',
   amount: 0,
   note: '',
@@ -126,7 +127,7 @@ function openRecordModal() {
   isEditingRecord.value = false
   editingRecordId.value = null
   recordForm.type = 'expense'
-  recordForm.date = new Date().toISOString().slice(0, 10)
+  recordForm.date = getBusinessDate()
   recordForm.item = ''
   recordForm.amount = 0
   recordForm.note = ''
@@ -138,7 +139,7 @@ function openEditRecord(record) {
   isEditingRecord.value = true
   editingRecordId.value = record.id
   recordForm.type = record.type || 'expense'
-  recordForm.date = record.date || new Date().toISOString().slice(0, 10)
+  recordForm.date = record.date || getBusinessDate()
   recordForm.item = record.item || ''
   recordForm.amount = Number(record.amount || 0)
   recordForm.note = record.note || ''
@@ -170,7 +171,7 @@ function openLoanModal() {
   isEditingLoan.value = false
   editingLoanId.value = null
   loanForm.type = 'borrow'
-  loanForm.date = new Date().toISOString().slice(0, 10)
+  loanForm.date = getBusinessDate()
   loanForm.counterparty = 'PT工作公费'
   loanForm.amount = 0
   loanForm.note = ''
@@ -182,7 +183,7 @@ function openEditLoan(loan) {
   isEditingLoan.value = true
   editingLoanId.value = loan.id
   loanForm.type = loan.type || 'borrow'
-  loanForm.date = loan.date || new Date().toISOString().slice(0, 10)
+  loanForm.date = loan.date || getBusinessDate()
   loanForm.counterparty = loan.counterparty || 'PT工作公费'
   loanForm.amount = Number(loan.amount || 0)
   loanForm.note = loan.note || ''

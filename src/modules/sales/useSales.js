@@ -1,6 +1,7 @@
 // 销售模块逻辑层（无 UI）
 
 import { calcProfit } from '../../utils/calc'
+import { getItemCreationOrder } from '../../utils/itemIdentity'
 import { addOperationLog, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
 import { adjustPaytonBalance, getPaytonAccountForItem } from '../payton-finance/usePaytonFinance'
 import { getSaleNetProceeds } from './saleAccounting'
@@ -52,8 +53,14 @@ function valueForCompare(value) {
   }
 }
 
+export function getSellableItem(itemId) {
+  if (itemId == null || itemId === '') return null
+  const matches = store.items.filter((item) => item?.id === itemId)
+  return matches.length === 1 && matches[0].status === 'inventory' ? matches[0] : null
+}
+
 export function submitSell(itemId, saleData = {}, options = {}) {
-  const item = store.items.find((x) => x.id === itemId)
+  const item = getSellableItem(itemId)
   if (!item) return false
 
   const price = toNumber(saleData.price)
@@ -216,7 +223,7 @@ export function editSaleRecord(itemId, newSaleData = {}) {
   const feeRate = toNumber(merged.feeRate)
   const deduction = toNumber(merged.deduction)
   const shop = isSalesChannel(merged.shop) ? merged.shop : inferLegacySalesChannel(merged.date)
-  const soldAt = toPositiveTimestamp(merged.soldAt, Number(item?.saleDetails?.soldAt || item?.id || 0))
+  const soldAt = toPositiveTimestamp(merged.soldAt, item?.saleDetails?.soldAt || getItemCreationOrder(item))
 
   const beforeSaleDetails = {
     ...(item.saleDetails || {}),

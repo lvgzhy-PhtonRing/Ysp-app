@@ -29,6 +29,14 @@ describe('adoptLog（C 方案）', () => {
     if (typeof localStorage !== 'undefined') localStorage.removeItem(ADOPT_STORAGE_KEY)
   })
 
+  it('does not report an oversized import snapshot as saved when retaining older entries', () => {
+    const older = appendAdoptBefore({ slot: 'items', before: [] })
+    const latest = appendAdoptBefore({ slot: '__full_import__', before: { items: [{ name: 'a'.repeat(MAX_TOTAL_BYTES) }] } })
+    expect(latest.persisted).toBe(false)
+    expect(getAdoptBeforeById(latest.adoptId)).toBeNull()
+    expect(getAdoptBeforeById(older.adoptId)).not.toBeNull()
+  })
+
   it('append 生成唯一 id 并可按 id 读取', () => {
     // before 存槽位内容本身（数组），与 slotValue(payload, slot) 一致
     const res = appendAdoptBefore({ slot: 'items', before: [{ id: 'a' }], beforeRev: 2, cloudRev: 3 })

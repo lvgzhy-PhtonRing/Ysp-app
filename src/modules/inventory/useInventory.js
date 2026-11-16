@@ -1,15 +1,13 @@
 // 库存模块逻辑层（无 UI）
 
 import { addOperationLog, clone, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
+import { createItemIdentity } from '../../utils/itemIdentity'
+import { getBusinessDate } from '../../utils/businessDate'
 import { adjustPaytonBalance, getPaytonAccountForItem } from '../payton-finance/usePaytonFinance'
 
 function toNumber(value, fallback = 0) {
   const n = Number(value)
   return Number.isFinite(n) ? n : fallback
-}
-
-function generateItemId() {
-  return Date.now() + Math.floor(Math.random() * 1000)
 }
 
 function generateManualSid() {
@@ -94,53 +92,92 @@ export function sortInventoryItems(items = [], key, direction = 'asc') {
   )
 }
 
+export function getInventoryEditPatch(before, after) {
+  return Object.fromEntries(Object.entries(after).filter(([key, value]) =>
+    valueForCompare(before[key]) !== valueForCompare(value),
+  ))
+}
+
+function applyInventoryPatch(item, patch, paytonDeltas) {
+  const changes = Object.fromEntries(Object.entries(getInventoryEditPatch(item, patch)).map(([field, after]) =>
+    [field, { before: item[field], after }],
+  ))
+  if (!Object.keys(changes).length) return null
+
+  const oldAccount = getPaytonAccountForItem(item)
+  const newItem = { ...item, ...patch }
+  const newAccount = getPaytonAccountForItem(newItem)
+  if (oldAccount) paytonDeltas[oldAccount] += toNumber(item.cost)
+  if (newAccount) paytonDeltas[newAccount] -= toNumber(newItem.cost)
+  Object.assign(item, patch)
+  return { itemId: item.id, changes }
+}
+
+function saveInventoryChanges(paytonDeltas) {
+  for (const [account, delta] of Object.entries(paytonDeltas)) {
+    if (delta) adjustPaytonBalance(account, delta)
+  }
+  saveToLocalStorage()
+}
+
+export function getInventoryEditTargets(item) {
+  const related = item.status === 'inventory'
+    ? store.items.filter((x) => x.id !== item.id && x.status === 'inventory' && x.owner === item.owner && x.sid && x.sid === item.sid)
+    : []
+  return [item, ...related]
+}
+
 export function editItem(itemId, updateData = {}) {
   const item = store.items.find((x) => x.id === itemId)
   if (!item) return false
 
-  const beforeValues = {}
-  Object.keys(updateData).forEach((key) => {
-    beforeValues[key] = item[key]
-  })
+  const paytonDeltas = { pocket: 0, invest: 0 }
+  const itemChanges = getInventoryEditTargets(item)
+    .map((target) => applyInventoryPatch(target, updateData, paytonDeltas)).filter(Boolean)
+  if (!itemChanges.length) return item
 
-  const relatedItems =
-    item.status === 'inventory'
-      ? store.items.filter((x) => x.id !== item.id && x.status === 'inventory' && x.owner === item.owner && x.sid && x.sid === item.sid)
-      : []
-
-  const targets = [item, ...relatedItems]
-
-  targets.forEach((target) => {
-    const oldAccount = getPaytonAccountForItem(target)
-    const oldCost = toNumber(target.cost)
-    const nextItem = { ...target, ...updateData }
-    const newAccount = getPaytonAccountForItem(nextItem)
-    if (oldAccount) adjustPaytonBalance(oldAccount, oldCost)
-    if (newAccount) adjustPaytonBalance(newAccount, -toNumber(nextItem.cost))
-    Object.keys(updateData).forEach((key) => {
-      target[key] = updateData[key]
-    })
-  })
-
-  const changes = {}
-  Object.keys(updateData).forEach((key) => {
-    const before = beforeValues[key]
-    const after = item[key]
-    if (valueForCompare(before) !== valueForCompare(after)) {
-      changes[key] = { before, after }
-    }
-  })
-
-  saveToLocalStorage()
-  var changesText = formatChangesSummary(changes)
-  addOperationLog('inventory_edit', '编辑库存: ' + item.name + (changesText ? ' ← ' + changesText : '') + (targets.length > 1 ? ' (影响' + targets.length + '件)' : ''), {
+  saveInventoryChanges(paytonDeltas)
+  const changes = itemChanges[0].changes
+  const changesText = formatChangesSummary(changes)
+  addOperationLog('inventory_edit', '编辑库存: ' + item.name + (changesText ? ' ← ' + changesText : '') + (itemChanges.length > 1 ? ' (影响' + itemChanges.length + '件)' : ''), {
     name: item.name,
     sid: item.sid,
-    affected: targets.length,
+    affected: itemChanges.length,
     changedFields: Object.keys(changes),
-    changes: changes,
+    changes,
+    itemChanges,
+    paytonDeltas,
   })
   return item
+}
+
+export function getLongTermInventoryScope(items, { owner, category, brand, batch }) {
+  if (!category) return []
+  return filterInventory(items, { status: 'inventory', owner: owner || 'papa', category, brand, batch })
+}
+
+export function markLongTermInventory({ owner, category, brand, batch }, selectedSids = []) {
+  const sidSet = new Set(selectedSids)
+  const scope = getLongTermInventoryScope(store.items, { owner, category, brand, batch })
+  const paytonDeltas = { pocket: 0, invest: 0 }
+  const changed = scope.filter((item) => Boolean(item.isLongTerm) !== sidSet.has(item.sid))
+  if (!changed.length) return
+
+  const itemChanges = changed.map((item) =>
+    applyInventoryPatch(item, { isLongTerm: sidSet.has(item.sid) }, paytonDeltas),
+  )
+  saveInventoryChanges(paytonDeltas)
+  addOperationLog('inventory_long_term', '长线库存', {
+    owner,
+    category,
+    brand,
+    batch,
+    count: selectedSids.length,
+    itemNames: changed.map((item) => item.name),
+    itemIds: changed.map((item) => item.id),
+    itemChanges,
+    paytonDeltas,
+  })
 }
 
 export function deleteItem(itemId, options = {}) {
@@ -164,20 +201,50 @@ export function deleteItem(itemId, options = {}) {
 }
 
 export function submitManualAdd(itemData = {}) {
-  const item = {
-    ...itemData,
-    owner: itemData.owner || store.currentOwner || 'papa',
-    id: generateItemId(),
-    sid: generateManualSid(),
-    status: 'inventory',
-    isManual: true,
+  const qty = Math.max(1, Math.floor(toNumber(itemData.qty, 1)))
+  const sid = generateManualSid()
+  const owner = itemData.owner || store.currentOwner || 'papa'
+  const unitCost = toNumber(itemData.cost)
+  const items = []
+  for (let index = 0; index < qty; index += 1) {
+    items.push({
+      ...itemData,
+      owner,
+      ...createItemIdentity([...store.items, ...items]),
+      sid,
+      qty: 1,
+      stock: 1,
+      cost: unitCost,
+      status: 'inventory',
+      isManual: true,
+      inventoryDetails: {
+        ...(itemData.inventoryDetails || {}),
+        inStockDate: itemData.inventoryDetails?.inStockDate || getBusinessDate(),
+      },
+    })
   }
-
-  const account = getPaytonAccountForItem(item)
-  if (account) adjustPaytonBalance(account, -toNumber(item.cost))
-  store.items.push(item)
+  const paytonDeltas = { pocket: 0, invest: 0 }
+  items.forEach((item) => {
+    const account = getPaytonAccountForItem(item)
+    if (account) paytonDeltas[account] -= unitCost
+  })
+  Object.entries(paytonDeltas).forEach(([account, delta]) => {
+    if (delta) adjustPaytonBalance(account, delta)
+  })
+  store.items.push(...items)
   saveToLocalStorage()
-  addOperationLog('inventory_manual_add', `手动添加商品: ${item.name}`, { owner: item.owner, name: item.name, sid: item.sid, itemId: item.id, cost: item.cost })
+  const item = items[0]
+  addOperationLog('inventory_manual_add', `手动添加商品: ${item.name}${qty > 1 ? ` ×${qty}` : ''}`, {
+    owner,
+    name: item.name,
+    sid,
+    itemId: item.id,
+    itemIds: items.map(({ id }) => id),
+    qty,
+    cost: unitCost,
+    totalCost: unitCost * qty,
+    paytonDeltas,
+  })
   return item
 }
 
