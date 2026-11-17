@@ -81,10 +81,42 @@ describe('data store', () => {
       const before = exportData()
       expect(() => importMainBackup({})).toThrow('商品列表')
       expect(() => importMainBackup({ items: [null] })).toThrow('商品列表')
-      expect(importMainBackup({ items: [], snapshots: [{ date: '2026-01-01' }] })).toBe(false)
+      expect(importMainBackup({ ...before, items: [], snapshots: [{ date: '2026-01-01' }] })).toBe(false)
       expect(exportData()).toEqual(before)
       expect(JSON.parse(values.get('ysp_data')).items[0].id).toBe('kept')
     } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('拒绝同值内部 ID 和缺失的资金集合，允许不同内部 ID 共用 SID', () => {
+    const backup = exportData()
+    expect(() => importMainBackup({ ...backup, items: [{ id: 12 }, { id: '12' }] })).toThrow('重复')
+    expect(() => importMainBackup({ ...backup, finance: undefined })).toThrow('财务')
+    expect(() => importMainBackup({ ...backup, finance: { records: [] } })).toThrow('借贷')
+    expect(() => importMainBackup({ ...backup, transfers: undefined })).toThrow('转运')
+    expect(() => importMainBackup({ ...backup, items: [{ id: 'a', sid: 'same' }, { id: 'b', sid: 'same' }] })).not.toThrow()
+  })
+
+  it('将每日备份日志落盘供查看，并排除为未同步操作', () => {
+    const values = new Map()
+    vi.stubGlobal('localStorage', {
+      getItem: key => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, value),
+      removeItem: key => values.delete(key),
+    })
+    const log = { id: 1, type: 'calc_update', time: '2026-10-26T01:00:00Z', message: '保存旧账本', detail: { before: 1 } }
+    try {
+      loadFromLocalStorage()
+      expect(importMainBackup({ ...exportData(), operationLogs: [log] })).toBe(true)
+      expect(JSON.parse(values.get('ysp_ui')).operationLogs).toEqual([{ ...log, fromBackup: true }])
+      clearOperationLogs()
+      values.set('ysp_ui', JSON.stringify({ operationLogs: [{ ...log, fromBackup: true }] }))
+      loadUiStateFromLocalStorage()
+      expect(state.operationLogs[0]).toMatchObject(log)
+      expect(getUnsyncedOperations()).toEqual([])
+    } finally {
+      state.operationLogs.splice(0)
       vi.unstubAllGlobals()
     }
   })

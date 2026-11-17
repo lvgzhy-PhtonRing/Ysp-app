@@ -29,10 +29,24 @@ const bChecklist = [
 
 const firstFilingSource = '按店铺于2026-10-15成立及大王陛下确认的首次申报日期设置；以税务系统显示为准'
 const annualSettlementSource = '个人所得税经营所得在取得所得次年3月31日前汇算清缴'
+const futureQuarterDeadlineSource = '上海申报期限预估；具体日期尚无税务机关正式文件，节假日顺延及实际期限请以电子税务局当期待办为准'
+const futureQuarterDeadlineSourceUrl = 'https://shanghai.chinatax.gov.cn/sjtax/ztzl/yshj/ldjj/202412/t474700.html'
+const futureQuarterPeriods = [
+  { period: '2027年第1季度', dueDate: '2027-04-20' },
+  { period: '2027年第2季度', dueDate: '2027-07-15' },
+  { period: '2027年第3季度', dueDate: '2027-10-26' },
+  { period: '2027年第4季度', dueDate: '2028-01-15' },
+]
+const futureQuarterItems = futureQuarterPeriods.flatMap(({ period, dueDate }) => [
+  { form: VAT_FORM, type: 'vat', period, dueDate, deadlineSource: futureQuarterDeadlineSource, deadlineSourceUrl: futureQuarterDeadlineSourceUrl, deadlineStatus: '待官方期限校准', portal: '企业电子税务局', url: 'https://etax.shanghai.chinatax.gov.cn:8443/', checklist: vatChecklist },
+  { form: A_FORM, type: 'pit-a', period, dueDate, deadlineSource: futureQuarterDeadlineSource, deadlineSourceUrl: futureQuarterDeadlineSourceUrl, deadlineStatus: '待官方期限校准', portal: '自然人电子税务局', url: 'https://etax.chinatax.gov.cn/', checklist: aChecklist },
+])
 const filingItems = [
   { form: VAT_FORM, type: 'vat', period: '2026年第4季度', dueDate: '2027-01-20', deadlineSource: firstFilingSource, portal: '企业电子税务局', url: 'https://etax.shanghai.chinatax.gov.cn:8443/', checklist: vatChecklist },
   { form: A_FORM, type: 'pit-a', period: '2026年第4季度', dueDate: '2027-01-20', deadlineSource: firstFilingSource, portal: '自然人电子税务局', url: 'https://etax.chinatax.gov.cn/', checklist: aChecklist },
   { form: B_FORM, type: 'pit-b', period: '2026年度', dueDate: '2027-03-31', deadlineSource: annualSettlementSource, deadlineSourceUrl: 'https://shanghai.chinatax.gov.cn/tax/zcfw/rdwd/202602/t479416.html', portal: '自然人电子税务局', url: 'https://etax.chinatax.gov.cn/', checklist: bChecklist },
+  ...futureQuarterItems,
+  { form: B_FORM, type: 'pit-b', period: '2027年度', dueDate: '2028-03-31', deadlineSource: annualSettlementSource, deadlineSourceUrl: 'https://shanghai.chinatax.gov.cn/tax/zcfw/rdwd/202602/t479416.html', portal: '自然人电子税务局', url: 'https://etax.chinatax.gov.cn/', checklist: bChecklist },
 ].map(item => ({ ...item, id: `${item.type}:${item.period}` }))
 
 function parseLocalDate(value) {

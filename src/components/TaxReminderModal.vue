@@ -51,7 +51,7 @@ function dueTone(item) {
               <span v-if="item.completed" class="shrink-0 text-xs font-semibold text-emerald-700">已申报</span>
               <span v-else class="shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-bold" :class="dueTone(item)">{{ item.status }}</span>
             </span>
-            <span class="mt-1 block text-xs text-slate-500">{{ item.period }} · 截止 {{ item.dueDate }}</span>
+            <span class="mt-1 block text-xs text-slate-500">{{ item.period }} · {{ item.deadlineStatus ? '预计截止' : '截止' }} {{ item.dueDate }}</span>
           </button>
         </nav>
 
@@ -63,7 +63,7 @@ function dueTone(item) {
                 <h3 class="mt-1 text-lg font-bold">{{ selectedItem.form }}</h3>
               </div>
               <div class="rounded-lg bg-white/80 px-3 py-2 text-right">
-                <div class="text-[11px] font-semibold opacity-70">申报截止日</div>
+                <div class="text-[11px] font-semibold opacity-70">{{ selectedItem.deadlineStatus ? '预计申报截止日' : '申报截止日' }}</div>
                 <div class="text-base font-extrabold">{{ selectedItem.dueDate }}</div>
               </div>
             </div>
@@ -87,6 +87,7 @@ function dueTone(item) {
               打开办理入口 <i class="fa-solid fa-arrow-up-right-from-square text-xs" />
             </a>
             <div class="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">
+              <div v-if="selectedItem.deadlineStatus" class="mb-1 font-semibold text-amber-700">{{ selectedItem.deadlineStatus }}；请以当期电子税务局待办为准。</div>
               期限依据：{{ selectedItem.deadlineSource }}
               <a v-if="selectedItem.deadlineSourceUrl" class="ml-1 font-semibold text-blue-700 underline underline-offset-2 hover:text-blue-900" :href="selectedItem.deadlineSourceUrl" target="_blank" rel="noopener noreferrer">查看官方来源</a>
             </div>

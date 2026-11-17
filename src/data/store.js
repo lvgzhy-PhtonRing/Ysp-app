@@ -731,6 +731,37 @@ export function validateMainBackup(payload) {
         !(Number.isFinite(item.id) || (typeof item.id === 'string' && item.id.trim())))) {
     throw new Error('备份缺少有效的商品列表，请选择 PhotonRing 主账本备份')
   }
+  const ids = new Set()
+  for (const item of payload.items) {
+    const id = String(item.id).trim()
+    if (ids.has(id)) throw new Error(`备份含重复商品内部 ID（${id}），请修正备份后重试`)
+    ids.add(id)
+  }
+  const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value)
+  const isRecordList = value => Array.isArray(value) && value.every(isObject)
+  if (!isObject(payload.finance)) throw new Error('备份缺少有效的财务数据')
+  if (!isRecordList(payload.finance.records)) throw new Error('备份缺少有效的公共收支列表')
+  if (!isRecordList(payload.finance.loans)) throw new Error('备份缺少有效的借贷列表')
+  if (!isObject(payload.calc)) throw new Error('备份缺少有效的支付宝计算器数据')
+  if (!isRecordList(payload.transfers)) throw new Error('备份缺少有效的转运列表')
+  if (!isObject(payload.rushcar) || Object.keys(DEFAULT_RUSHCAR).some(key => !Array.isArray(payload.rushcar[key]))) {
+    throw new Error('备份缺少有效的美淘记录')
+  }
+  const [major, minor, patch] = String(payload.version || '').split('.').map(Number)
+  if ((major >= 5 || Object.hasOwn(payload, 'ownerRegistry')) &&
+      (!isObject(payload.ownerRegistry?.papa) || !isObject(payload.ownerRegistry?.payton))) {
+    throw new Error('备份缺少有效的 Owner 资金数据')
+  }
+  if ((major > 5 || (major === 5 && (minor > 0 || patch >= 13)) || Object.hasOwn(payload, 'taxpayerProfiles')) &&
+      !isRecordList(payload.taxpayerProfiles)) {
+    throw new Error('备份缺少有效的纳税主体列表')
+  }
+  if (Object.hasOwn(payload, 'operationLogs') &&
+      (!isRecordList(payload.operationLogs) ||
+        payload.operationLogs.some(log => log.id == null || typeof log.type !== 'string' ||
+          typeof log.message !== 'string' || !Number.isFinite(Date.parse(log.time))))) {
+    throw new Error('备份中的操作日志格式无效')
+  }
   return payload
 }
 
@@ -739,9 +770,10 @@ export function importMainBackup(payload) {
   if (!mayWrite()) return false
   const before = exportData()
   const beforeSlotBaseline = { ...lastPersistedSlot }
+  const backupLogs = payload.operationLogs?.slice(0, MAX_OPERATION_LOGS).map(log => ({ ...log, fromBackup: true }))
   try {
     loadData(payload)
-    if (saveToLocalStorage({ requirePersistence: true })) return true
+    if (saveToLocalStorage({ requirePersistence: true, backupLogs })) return true
   } catch (error) {
     restoreBeforeImport()
     throw error
@@ -890,6 +922,7 @@ function maybeAutoBackup() {
 // 会因未捕获异常中断、内存里的改动在下次刷新时丢失。策略：先写，失败再腾空间，
 // 腾完重试——优先牺牲采纳前快照（体积最大的冗余来源），最后砍 ysp_ui 那份重复日志。
 const UI_LOGS_TRIM_KEEP = 100
+const MAX_OPERATION_LOGS = 500
 const MAX_EVICT_ATTEMPTS = 64
 
 function setItemQuiet(key, value) {
@@ -913,6 +946,23 @@ function buildUiPayload(maxLogs = state.operationLogs.length) {
     autoBackup: { ...state.autoBackup },
     currentOwner: state.currentOwner,
   }
+}
+
+function persistImportedData(serialized, backupLogs) {
+  if (!backupLogs) return setItemQuiet('ysp_data', serialized)
+
+  // 先核对历史日志能落盘。主账本写入失败时恢复原来的界面存储。
+  const oldUi = localStorage.getItem(UI_STORAGE_KEY)
+  if (!setItemQuiet(UI_STORAGE_KEY, JSON.stringify({ ...buildUiPayload(), operationLogs: backupLogs }))) {
+    throw new Error('空间不足，无法恢复备份中的操作日志，当前账本已保留')
+  }
+  if (!setItemQuiet('ysp_data', serialized)) {
+    if (oldUi === null) localStorage.removeItem(UI_STORAGE_KEY)
+    else localStorage.setItem(UI_STORAGE_KEY, oldUi)
+    return false
+  }
+  replaceArray(state.operationLogs, backupLogs)
+  return true
 }
 
 function persistData(serialized) {
@@ -951,7 +1001,7 @@ export function saveToLocalStorage(options = {}) {
   }
   const serialized = JSON.stringify(currentData)
   // 导入需先落盘，失败时由调用方恢复内存，避免生成撤销记录或同步未保存的数据。
-  if (options.requirePersistence && !setItemQuiet('ysp_data', serialized)) return false
+  if (options.requirePersistence && !persistImportedData(serialized, options.backupLogs)) return false
 
   if (hasDataChange && !suppressHistory) {
     pushHistoryEntry(lastPersistedData, currentData)
@@ -1481,8 +1531,12 @@ export function addOperationLog(type, message, detail) {
     detail,
   })
 
-  if (state.operationLogs.length > 500) {
-    state.operationLogs.splice(500)
+  if (state.operationLogs.length > MAX_OPERATION_LOGS) {
+    // 恢复本身及其自动备份留一条审计记录，避免刚导入就挤掉备份尾部。
+    const firstNonAudit = state.operationLogs.findIndex(log =>
+      log.fromBackup || (log.type !== 'app_import' && log.type !== 'app_auto_backup'))
+    const extra = state.operationLogs[firstNonAudit]?.fromBackup ? Math.min(firstNonAudit, 2) : 0
+    state.operationLogs.splice(MAX_OPERATION_LOGS + extra)
   }
 
   saveUiStateToLocalStorage()
@@ -1525,7 +1579,7 @@ export function getUnsyncedOperations() {
   const loadTs = state.cloudStatus.lastCloudLoadAt ? new Date(state.cloudStatus.lastCloudLoadAt).getTime() : 0
   const threshold = Math.max(syncTs, loadTs) || 0
   return state.operationLogs.filter((log) => {
-    if (NON_MUTATING_LOG_TYPES[log.type]) return false
+    if (log.fromBackup || NON_MUTATING_LOG_TYPES[log.type]) return false
     const t = new Date(log.time).getTime()
     return Number.isFinite(t) && t > threshold
   })
@@ -1550,7 +1604,7 @@ export function reconstructCalcField(field, targetDate) {
   let value = state.calc[field]
 
   const logs = state.operationLogs
-    .filter(l => l.type === 'calc_update' && l.detail?.field === field)
+    .filter(l => !l.fromBackup && l.type === 'calc_update' && l.detail?.field === field)
     .filter(l => new Date(l.time).getTime() > target)
     .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
 

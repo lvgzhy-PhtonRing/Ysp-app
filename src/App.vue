@@ -209,7 +209,7 @@ const fullImportReady = ref(false)
 
 function getLatestImportSnapshot() {
   const entry = store.operationLogs.find((log) =>
-    log.type === 'app_import' && Object.hasOwn(log.detail || {}, 'snapshotAdoptId'))
+    !log.fromBackup && log.type === 'app_import' && Object.hasOwn(log.detail || {}, 'snapshotAdoptId'))
   if (!entry) return latestFullImportSnapshot()
   const snap = getAdoptBeforeById(entry.detail.snapshotAdoptId)
   return snap?.slot === '__full_import__' ? snap.before : null
@@ -850,7 +850,7 @@ function handleImport(event) {
   const file = event.target.files?.[0]
   if (!file) return
 
-  const ok = confirm('导入将覆盖当前全部数据，且将同步至云端（如有启用）。建议先导出备份。是否继续？')
+  const ok = confirm('导入将覆盖当前主账本，且将同步至云端（如有启用）。若文件含操作日志，也会替换本机日志。建议先导出备份。是否继续？')
   if (!ok) {
     event.target.value = ''
     return
@@ -1376,7 +1376,7 @@ watch(
               </span>
               <div class="min-w-0">
                 <div class="text-sm text-gray-800 break-words">{{ getLogBrief(log) }}</div>
-                <div class="mt-0.5 text-[11px] text-gray-400">{{ getLogModule(log.type) }}</div>
+                <div class="mt-0.5 text-[11px] text-gray-400">{{ getLogModule(log.type) }}<span v-if="log.fromBackup"> · 来自备份</span></div>
               </div>
             </div>
             <div class="text-right whitespace-nowrap ml-2 shrink-0">

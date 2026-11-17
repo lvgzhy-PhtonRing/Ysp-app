@@ -156,7 +156,7 @@ export function rollbackSale(itemId, restoreState = null) {
 
   const savedState = normalizeRestoreState(item.saleDetails.beforeSaleState)
   const loggedState = store.operationLogs
-    .filter((log) => log?.type === 'sales_submit' && log?.detail?.itemId === itemId)
+    .filter((log) => !log?.fromBackup && log?.type === 'sales_submit' && log?.detail?.itemId === itemId)
     .map((log) => normalizeRestoreState(log.detail.before))
     .find(Boolean)
   const nextState = savedState || loggedState || normalizeRestoreState(restoreState)
