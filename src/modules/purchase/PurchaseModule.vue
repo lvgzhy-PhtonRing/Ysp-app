@@ -22,7 +22,7 @@ import { getBusinessDate } from '../../utils/businessDate'
 import { comparePurchaseItemsDesc, getItemCreationOrder } from '../../utils/itemIdentity'
 import { addOperationLog, clone, formatChangesSummary, saveToLocalStorage, state as store } from '../../data/store'
 import { CATEGORY_BATCHES } from './purchaseOptions'
-import { getPurchaseGroupKey, getPurchaseGroupTransferIds } from './purchaseGrouping'
+import { getPurchaseGroupKey, getPurchaseGroupTransferIds, groupPendingTransferItems } from './purchaseGrouping'
 import {
   createInventoryAssignmentRows,
   setInventoryAssignmentOwner,
@@ -367,32 +367,9 @@ const filteredTransferItems = computed(() => {
   return pendingTransferItems.value.filter((i) => i?.batch === transferCategoryBatch.value)
 })
 
-const groupedTransferItemsBySid = computed(() => {
-  const map = new Map()
-  filteredTransferItems.value.forEach((item) => {
-    const key = item.sid || String(item.id)
-    if (!map.has(key)) {
-      map.set(key, {
-        sid: item.sid,
-        name: item.name,
-        category: item.category,
-        batch: item.batch,
-        itemIds: [],
-        qty: 0,
-        preTransferCost: 0,
-        transferCoefficient: 0,
-        selected: false,
-      })
-    }
-    const g = map.get(key)
-    g.itemIds.push(item.id)
-    g.qty += 1
-    g.preTransferCost += Number(item.purchaseDetails?.preTransferCost || 0)
-    g.transferCoefficient += Number(item.purchaseDetails?.transferCoefficient || 1)
-    if (selectedItemIds.value.includes(item.id)) g.selected = true
-  })
-  return Array.from(map.values())
-})
+const groupedTransferItemsByPurchaseGroup = computed(() =>
+  groupPendingTransferItems(filteredTransferItems.value, selectedItemIds.value),
+)
 
 const selectedTransferItemCount = computed(() => selectedItemIds.value.length)
 
@@ -2030,18 +2007,27 @@ watch(purchaseViewCategory, () => {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="item in groupedTransferItemsBySid" :key="item.sid" class="border-t border-gray-100">
-                  <td class="py-2 px-3 text-center">
-                    <input type="checkbox" :checked="item.selected" @change="toggleTransferSelectionBySid(item)" class="w-4 h-4 text-primary rounded">
-                  </td>
-                  <td class="py-2 px-3">
-                    <div class="font-medium text-[13px] text-gray-800">{{ item.name }}</div>
-                    <div class="text-[12px] text-gray-400 mt-0.5">{{ item.category }} | {{ item.batch }}</div>
-                  </td>
-                  <td class="py-2 px-3 text-center text-gray-700">{{ item.qty }}</td>
-                  <td class="py-2 px-3 text-right text-warning font-medium">{{ fmtMoney(item.preTransferCost || 0) }}</td>
-                  <td class="py-2 px-3 text-right text-gray-700">{{ item.transferCoefficient || 1 }}</td>
-                </tr>
+                <template v-for="group in groupedTransferItemsByPurchaseGroup" :key="group.key">
+                  <tr class="border-t border-gray-200 bg-blue-50/80">
+                    <td colspan="5" class="px-3 py-2 text-left">
+                      <span class="font-semibold text-[12px] text-blue-900">{{ group.purchaseGroupId ? `购买组 ${group.purchaseGroupId}` : `旧组 ${group.legacyGroupNumber}` }}</span>
+                      <span class="ml-2 text-[12px] text-gray-500">采购日期：{{ group.purchaseDate || '未记录' }}</span>
+                      <span class="ml-2 text-[11px] text-gray-400">{{ group.itemCount }} 件</span>
+                    </td>
+                  </tr>
+                  <tr v-for="item in group.rows" :key="`${group.key}_${item.key}`" class="border-t border-gray-100">
+                    <td class="py-2 px-3 text-center">
+                      <input type="checkbox" :checked="item.selected" @change="toggleTransferSelectionBySid(item)" class="w-4 h-4 text-primary rounded">
+                    </td>
+                    <td class="py-2 px-3">
+                      <div class="font-medium text-[13px] text-gray-800">{{ item.name }}</div>
+                      <div class="text-[12px] text-gray-400 mt-0.5">{{ item.category }} | {{ item.batch }}<span v-if="item.sid"> | SID {{ item.sid }}</span></div>
+                    </td>
+                    <td class="py-2 px-3 text-center text-gray-700">{{ item.qty }}</td>
+                    <td class="py-2 px-3 text-right text-warning font-medium">{{ fmtMoney(item.preTransferCost || 0) }}</td>
+                    <td class="py-2 px-3 text-right text-gray-700">{{ item.transferCoefficient || 1 }}</td>
+                  </tr>
+                </template>
               </tbody>
             </table>
           </div>
