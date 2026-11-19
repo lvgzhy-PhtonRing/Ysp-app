@@ -1,6 +1,8 @@
 // 销售分析数据聚合和计算逻辑
 
 const DAYS_PER_MONTH = 30.4375
+export const QUADRANT_TURNOVER_DAYS_THRESHOLD = 30
+export const QUADRANT_PROFIT_RATE_THRESHOLD = 0.15
 
 /**
  * 获取聚合 SKU 的 key
@@ -161,8 +163,8 @@ export function getTurnoverColor(avgDays) {
  * @returns {string} 颜色字符串
  */
 export function getQuadrantColor(profitRate, avgDays) {
-  const isHighProfit = profitRate >= 0.2
-  const isFastTurnover = avgDays < 60
+  const isHighProfit = profitRate >= QUADRANT_PROFIT_RATE_THRESHOLD
+  const isFastTurnover = avgDays < QUADRANT_TURNOVER_DAYS_THRESHOLD
   
   if (isHighProfit && isFastTurnover) {
     return 'rgba(34, 197, 94, 0.7)'   // 绿色：高利润·快周转
@@ -190,8 +192,8 @@ export function calcQuadrantStats(skus = []) {
   }
   
   skus.forEach(sku => {
-    const isHighProfit = sku.profitRate >= 0.2
-    const isFastTurnover = sku.avgDays < 60
+    const isHighProfit = sku.profitRate >= QUADRANT_PROFIT_RATE_THRESHOLD
+    const isFastTurnover = sku.avgDays < QUADRANT_TURNOVER_DAYS_THRESHOLD
     
     if (isHighProfit && isFastTurnover) {
       stats.ideal.count++

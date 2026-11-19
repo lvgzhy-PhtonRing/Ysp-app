@@ -12,6 +12,8 @@ import {
   getQuadrantColor,
   calcCategoryDualAxisData,
   calcProfitContributionData,
+  QUADRANT_TURNOVER_DAYS_THRESHOLD,
+  QUADRANT_PROFIT_RATE_THRESHOLD,
 } from './useSalesAnalysis'
 
 // 注册 annotation 插件
@@ -168,13 +170,13 @@ function initScatterChart() {
           annotations: {
             lineX: {
               type: 'line',
-              xMin: 60,
-              xMax: 60,
+              xMin: QUADRANT_TURNOVER_DAYS_THRESHOLD,
+              xMax: QUADRANT_TURNOVER_DAYS_THRESHOLD,
               borderColor: 'rgba(239, 68, 68, 0.5)',
               borderWidth: 2,
               borderDash: [5, 5],
               label: {
-                content: '60天',
+                content: `${QUADRANT_TURNOVER_DAYS_THRESHOLD}天`,
                 display: true,
                 position: 'start',
                 backgroundColor: 'rgba(239, 68, 68, 0.8)',
@@ -185,13 +187,13 @@ function initScatterChart() {
             },
             lineY: {
               type: 'line',
-              yMin: 0.2,
-              yMax: 0.2,
+              yMin: nonlinearProfitScale(QUADRANT_PROFIT_RATE_THRESHOLD),
+              yMax: nonlinearProfitScale(QUADRANT_PROFIT_RATE_THRESHOLD),
               borderColor: 'rgba(239, 68, 68, 0.5)',
               borderWidth: 2,
               borderDash: [5, 5],
               label: {
-                content: '20%',
+                content: `${(QUADRANT_PROFIT_RATE_THRESHOLD * 100).toFixed(0)}%`,
                 display: true,
                 position: 'end',
                 backgroundColor: 'rgba(239, 68, 68, 0.8)',
